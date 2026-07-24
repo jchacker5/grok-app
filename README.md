@@ -293,6 +293,4 @@ Upstream project and original Chinese community content: [RongleCat/grok-app](ht
 <p align="center">
   If Grok App helps you, please star the repo and follow
   <a href="https://x.com/joedefendre">@joedefendre</a> on X for more.
-  <a href="https://x.com/cgnot996"><strong>@cgnot996</strong></a> on X
-  and the WeChat account <strong>铁柱AGI</strong> 🙏
 </p>
