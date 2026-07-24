@@ -34,6 +34,7 @@ import {
   IconFolder as TbFolder,
   IconFolderPlus as TbFolderPlus,
   IconHandStop as TbHandStop,
+  IconHeadset as TbHeadset,
   IconInfoCircle as TbInfoCircle,
   IconLanguage as TbLanguage,
   IconExternalLink as TbExternalLink,
@@ -215,6 +216,7 @@ export const IconClose = wrap(TbX);
 export const IconSend = wrap(TbSend);
 export const IconQueue = wrap(TbStack2);
 export const IconMic = wrap(TbMicrophone);
+export const IconHeadset = wrap(TbHeadset);
 export const IconPanel = wrap(TbLayoutSidebar);
 /** Right files / context pane (Codex-style top bar). */
 export const IconPanelRight = wrap(TbLayoutSidebarRight);

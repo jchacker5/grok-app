@@ -175,6 +175,7 @@ import {
   IconQueue,
   IconStop,
   IconMic,
+  IconHeadset,
   IconFolder,
   IconFolderPlus,
   IconClock,
@@ -7929,7 +7930,7 @@ export default function App() {
                       setVoiceOpen(true);
                     }}
                   >
-                    <IconMic size={16} />
+                    <IconHeadset size={16} />
                   </button>
                 </Tip>
                 {canStop(session.state) ? (
