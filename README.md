@@ -5,7 +5,8 @@
 <h1 align="center">Grok App</h1>
 
 <p align="center"><strong>Desktop workbench for local Grok Build</strong></p>
-<p align="center"><em>Sessions, projects, media, automations — for the real <code>grok</code> CLI</em></p>
+<p align="center"><em>Sessions, projects, media, voice, automations — for the real <code>grok</code> CLI</em></p>
+<p align="center"><em>English-first open-source fork · upstream <a href="https://github.com/RongleCat/grok-app">RongleCat/grok-app</a></em></p>
 
 <p align="center">
   <a href="./README.md">English</a> ·
@@ -14,30 +15,24 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
-  <a href="https://github.com/jchacker5/grok-app/stargazers"><img src="https://img.shields.io/github/stars/RongleCat/grok-app?style=social" alt="GitHub stars" /></a>
+  <a href="https://github.com/jchacker5/grok-app/stargazers"><img src="https://img.shields.io/github/stars/jchacker5/grok-app?style=social" alt="GitHub stars" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platforms" />
   <img src="https://img.shields.io/badge/Tauri-2-orange" alt="Tauri 2" />
   <img src="https://img.shields.io/badge/note-unofficial-yellow" alt="Unofficial" />
 </p>
 
 <p align="center">
-  <a href="https://x.com/cgnot996"><img src="https://img.shields.io/badge/X-铁柱AGI%20%40cgnot996-black?logo=x&logoColor=white" alt="X 铁柱AGI" /></a>
-  <img src="https://img.shields.io/badge/WeChat-铁柱AGI-07C160?logo=wechat&logoColor=white" alt="WeChat 铁柱AGI" />
+  <a href="https://x.com/joedefendre"><img src="https://img.shields.io/badge/X-%40joedefendre-black?logo=x&logoColor=white" alt="X @joedefendre" /></a>
 </p>
 
 <p align="center">
-  <strong>Follow the author</strong><br/>
-  <a href="https://x.com/cgnot996"><strong>X / Twitter → 铁柱AGI @cgnot996</strong></a><br/>
-  WeChat Official Account: search <strong>「铁柱AGI」</strong> (scan or WeChat Search below)
-</p>
-
-<p align="center">
-  <img src="assets/wechat/mp-search-scan.png" alt="WeChat Search 铁柱AGI — scan to follow" width="480" />
+  <strong>Follow for more</strong><br/>
+  <a href="https://x.com/joedefendre"><strong>X / Twitter → @joedefendre</strong></a>
 </p>
 
 <p align="center">
   Repo ·
-  <a href="https://github.com/jchacker5/grok-app">RongleCat/grok-app</a>
+  <a href="https://github.com/jchacker5/grok-app">jchacker5/grok-app</a>
 </p>
 
 ---
@@ -68,14 +63,15 @@
 
 ## Overview
 
-The `grok` CLI is powerful in a terminal. Day-to-day work still needs multi-project sessions, a permission bar, rich previews, scheduled jobs, and bilingual UI.
+The `grok` CLI is powerful in a terminal. Day-to-day work still needs multi-project sessions, a permission bar, rich previews, voice, scheduled jobs, and a clear UI.
 
-**Grok App** is that workbench:
+**Grok App** is that workbench (UI language defaults to **English**):
 
 1. Install the app and prepare Grok Build CLI  
 2. Add a project / new session  
 3. Connect the agent; chat under Ask or YOLO  
-4. Preview artifacts, schedule automations, manage account & relays in Settings  
+4. Use **dictation** or **Live Voice** to talk and (optionally) delegate Build agent tasks  
+5. Preview artifacts, schedule automations, manage account & relays in Settings  
 
 **Stack:** Tauri 2 + Rust · React + TypeScript + Vite · Tailwind CSS
 
@@ -92,14 +88,15 @@ The `grok` CLI is powerful in a terminal. Day-to-day work still needs multi-proj
 | **Permissions** | Default Ask; allow once / session / deny; YOLO; **per-project** permission tier |
 | **Plan / Goal** | Sticky execution progress; resource-pane Markdown review + steps; Goal entry |
 | **Slash · Extensions** | Slash palette, Skills; Settings → Extensions for MCP / Plugins |
-| **Composer** | Follow-up send queue while busy; paste screenshots; context usage chip |
+| **Composer** | Follow-up send queue while busy; paste screenshots; context usage chip; **voice dictation** |
+| **Live voice** | Full-duplex voice session (xAI realtime) with host tools to **delegate Grok Build agents** (mock mode: `GROK_APP_VOICE=mock`) |
 | **Media & files** | Image / video / PDF / Office / code preview; **edit & save** text in Resources; Changes (session diffs + workspace git) |
 | **Agent runtime** | Stall cancel; structured error deck; **diagnostic zip** export; no early “ready” while tools/permissions open |
 | **Automations** | Scheduled list; natural-language create-from-chat (silent fence, no JSON in UI) |
 | **Account & quota** | Multi-account switcher, official login, SuperGrok quota + heatmap, custom-provider local usage |
 | **Custom relays** | Independent `GROK_HOME` agent profile (keeps `~/.grok` clean when desired) |
 | **Security** | Optional OS keychain for API keys (default `secrets.json` 0600); store write locks; in-app confirms only |
-| **i18n** | Simplified Chinese / Traditional Chinese / English + tray |
+| **i18n** | **English default**; optional Simplified Chinese / Traditional Chinese + tray |
 | **Packaging** | macOS ARM / Intel · Windows x64 (setup + portable) · Linux x64 (AppImage / deb / rpm) |
 
 ---
@@ -208,9 +205,11 @@ Grok Build’s own config remains under **`~/.grok`** (CLI login, `auth.json`, �
 # Needs: Node 22+, pnpm 9, Rust stable, Xcode CLT (macOS)
 pnpm install
 
-pnpm dev                 # full app (real CLI by default)
-pnpm dev:ui              # frontend only
-GROK_APP_ACP=mock pnpm dev
+pnpm install --ignore-scripts   # if needed
+pnpm dev                        # full app (real CLI by default)
+pnpm dev:ui                     # frontend only
+GROK_APP_ACP=mock pnpm dev      # UI without real agent
+GROK_APP_VOICE=mock pnpm dev    # voice UI without xAI voice API
 
 pnpm typecheck && pnpm test
 cd src-tauri && cargo test
@@ -278,25 +277,22 @@ Thanks to everyone who has contributed to Grok App. Data from the GitHub Contrib
 
 ## License
 
-[MIT](./LICENSE) © RongleCat
+[MIT](./LICENSE) — upstream © RongleCat; this fork maintained by [jchacker5](https://github.com/jchacker5)
 
 ---
 
-## Follow the author
-
-Updates, walkthroughs, and AI practice content land first on:
+## Follow for more
 
 | Channel | Link |
 |---------|------|
-| **X / Twitter** | [铁柱AGI @cgnot996](https://x.com/cgnot996) ← highly recommended |
-| **WeChat Official Account** | Search **「铁柱AGI」**, or scan / use the card below |
+| **X / Twitter** | [**@joedefendre**](https://x.com/joedefendre) |
+| **GitHub** | [jchacker5/grok-app](https://github.com/jchacker5/grok-app) |
 
-<p align="center">
-  <img src="assets/wechat/mp-search-scan.png" alt="WeChat Search 铁柱AGI" width="420" />
-</p>
+Upstream project and original Chinese community content: [RongleCat/grok-app](https://github.com/RongleCat/grok-app).
 
 <p align="center">
   If Grok App helps you, please star the repo and follow
+  <a href="https://x.com/joedefendre">@joedefendre</a> on X for more.
   <a href="https://x.com/cgnot996"><strong>@cgnot996</strong></a> on X
   and the WeChat account <strong>铁柱AGI</strong> 🙏
 </p>
