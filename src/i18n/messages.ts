@@ -25,6 +25,10 @@ const en = {
   "sidebar.projects": "Projects",
   "sidebar.addProject": "Add project",
   "sidebar.noProjects": "No projects yet. Click + to add a folder.",
+  "sidebar.spaces": "Spaces",
+  "sidebar.addSpace": "New space",
+  "sidebar.allSpaces": "All",
+  "sidebar.noProjectsInSpace": "No projects in this space yet.",
   "sidebar.untrusted": "untrusted",
   "sidebar.pathMissing": "missing",
   "sidebar.newConversation": "New conversation",
@@ -52,11 +56,17 @@ const en = {
   "project.rename": "Rename project",
   "project.relocate": "Relocate…",
   "project.relocateOk": '"{name}" now points to {path}',
+  "project.addToSpace": "Add to space",
+  "project.noSpace": "No space",
   "project.archiveChats": "Archive chats",
   "project.remove": "Remove",
   "project.removeTitle": "Remove project",
   "project.removeConfirm":
     'Remove "{name}" from the app?\nDisk folder and chats are kept.',
+  "space.rename": "Rename space",
+  "space.delete": "Delete space",
+  "space.deleteConfirm":
+    'Delete "{name}"? Projects in this space are kept, just ungrouped.',
   "project.removeConfirmDetail":
     'Remove "{name}" from the app list? The folder on disk and related chats are kept.',
   "project.trustConfirm":
@@ -507,6 +517,7 @@ const en = {
   "settings.nav.general": "General",
   "settings.nav.appearance": "Appearance",
   "settings.nav.account": "Account",
+  "settings.nav.voice": "Voice",
   "settings.nav.archived": "Archived chats",
   "settings.nav.extensions": "Extensions",
   "settings.nav.runtime": "CLI / Runtime",
@@ -931,6 +942,7 @@ const en = {
   "shortcuts.stop": "Stop generation / close overlay",
   "shortcuts.send": "Send message",
   "shortcuts.help": "Show shortcuts",
+  "shortcuts.spaceSwitch": "Switch space (while Grok is focused)",
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
@@ -1280,6 +1292,10 @@ const zh: Record<MessageKey, string> = {
   "sidebar.projects": "项目",
   "sidebar.addProject": "添加项目",
   "sidebar.noProjects": "还没有项目。点击 + 添加本地目录。",
+  "sidebar.spaces": "空间",
+  "sidebar.addSpace": "新建空间",
+  "sidebar.allSpaces": "全部",
+  "sidebar.noProjectsInSpace": "此空间还没有项目。",
   "sidebar.untrusted": "未信任",
   "sidebar.pathMissing": "路径失效",
   "sidebar.newConversation": "新建会话",
@@ -1306,11 +1322,17 @@ const zh: Record<MessageKey, string> = {
   "project.rename": "重命名项目",
   "project.relocate": "重新定位…",
   "project.relocateOk": "「{name}」已指向 {path}",
+  "project.addToSpace": "添加到空间",
+  "project.noSpace": "无空间",
   "project.archiveChats": "归档任务",
   "project.remove": "移除",
   "project.removeTitle": "移除项目",
   "project.removeConfirm":
     "从应用中移除「{name}」？\n不会删除磁盘目录，也不会删除其下的会话。",
+  "space.rename": "重命名空间",
+  "space.delete": "删除空间",
+  "space.deleteConfirm":
+    "删除「{name}」？该空间下的项目会保留，只是取消分组。",
   "project.removeConfirmDetail":
     "从应用列表移除「{name}」？仅删除项目记录；磁盘上的文件夹以及相关会话都不会删除。",
   "project.trustConfirm":
@@ -1744,6 +1766,7 @@ const zh: Record<MessageKey, string> = {
   "settings.nav.general": "常规",
   "settings.nav.appearance": "外观",
   "settings.nav.account": "账户",
+  "settings.nav.voice": "语音",
   "settings.nav.archived": "已归档会话",
   "settings.nav.extensions": "扩展",
   "settings.nav.runtime": "CLI / 运行时",
@@ -2159,6 +2182,7 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.stop": "停止生成 / 关闭浮层",
   "shortcuts.send": "发送消息",
   "shortcuts.help": "显示快捷键",
+  "shortcuts.spaceSwitch": "切换空间（需 Grok 窗口聚焦）",
 
   "session.exportMd": "导出会话为 Markdown",
   "session.exportBundle": "导出完整诊断包…",

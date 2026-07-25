@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
+  isTauri,
   voiceInvokeTool,
   voicePushPcm,
   voiceStart,
@@ -12,6 +13,8 @@ import {
   type VoiceSessionState,
 } from "@/lib/api";
 import { playPcm16Base64, startPcmCapture } from "@/lib/voiceAudio";
+import { fakeRms } from "@/lib/voiceOrbDemo";
+import { VoiceOrb, type VoiceOrbState } from "@/components/VoiceOrb";
 import type { Locale, MessageKey } from "@/i18n";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -50,6 +53,7 @@ export function VoiceOverlay({
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [level, setLevel] = useState(0);
   const stopCapture = useRef<(() => void) | null>(null);
   const started = useRef(false);
 
@@ -104,53 +108,64 @@ export function VoiceOverlay({
 
         // Mic → host (skip in pure mock if getUserMedia fails)
         try {
-          const cap = await startPcmCapture((b64) => {
-            void voicePushPcm(b64).catch(() => {});
-          });
+          const cap = await startPcmCapture(
+            (b64) => {
+              void voicePushPcm(b64).catch(() => {});
+            },
+            16000,
+            (rms) => setLevel(rms),
+          );
           stopCapture.current = cap.stop;
         } catch {
           setError(tt("voice.micDenied"));
         }
 
-        const u1 = await listen<VoiceSessionState>("voice://state", (e) => {
-          setState(e.payload);
-        });
-        unsubs.push(u1);
+        // Tauri event bridge isn't present in a plain browser (mock/dev preview) —
+        // voiceStart()/voiceState() already work there via their own fallback,
+        // but `listen()` itself would throw without a real Tauri runtime.
+        if (isTauri()) {
+          const u1 = await listen<VoiceSessionState>("voice://state", (e) => {
+            setState(e.payload);
+          });
+          unsubs.push(u1);
 
-        const u2 = await listen<{ role?: string; text?: string; final?: boolean }>(
-          "voice://transcript",
-          (e) => {
-            const role = e.payload.role ?? "assistant";
-            const text = e.payload.text ?? "";
-            if (text) appendLine(role, text, e.payload.final);
-          },
-        );
-        unsubs.push(u2);
-
-        const u3 = await listen<{ delta?: string }>("voice://audio", (e) => {
-          if (e.payload.delta) {
-            void playPcm16Base64(e.payload.delta).catch(() => {});
-          }
-        });
-        unsubs.push(u3);
-
-        const u4 = await listen<{ message?: string }>("voice://error", (e) => {
-          setError(
-            tt("voice.error", { message: e.payload.message ?? "unknown" }),
+          const u2 = await listen<{ role?: string; text?: string; final?: boolean }>(
+            "voice://transcript",
+            (e) => {
+              const role = e.payload.role ?? "assistant";
+              const text = e.payload.text ?? "";
+              if (text) appendLine(role, text, e.payload.final);
+            },
           );
-        });
-        unsubs.push(u4);
+          unsubs.push(u2);
 
-        const u5 = await listen<{ name?: string }>("voice://tool", (e) => {
-          if (e.payload.name) {
-            appendLine(
-              "system",
-              tt("voice.toolRan", { name: e.payload.name }),
-              true,
+          const u3 = await listen<{ delta?: string }>("voice://audio", (e) => {
+            if (e.payload.delta) {
+              void playPcm16Base64(e.payload.delta, 24000, (rms) =>
+                setLevel(rms),
+              ).catch(() => {});
+            }
+          });
+          unsubs.push(u3);
+
+          const u4 = await listen<{ message?: string }>("voice://error", (e) => {
+            setError(
+              tt("voice.error", { message: e.payload.message ?? "unknown" }),
             );
-          }
-        });
-        unsubs.push(u5);
+          });
+          unsubs.push(u4);
+
+          const u5 = await listen<{ name?: string }>("voice://tool", (e) => {
+            if (e.payload.name) {
+              appendLine(
+                "system",
+                tt("voice.toolRan", { name: e.payload.name }),
+                true,
+              );
+            }
+          });
+          unsubs.push(u5);
+        }
       } catch (e) {
         setError(String(e));
       } finally {
@@ -168,6 +183,18 @@ export function VoiceOverlay({
       });
     };
   }, [open, projectPath, projectId, projectName, appendLine, tt]);
+
+  // Mock mode has no real audio stream — drive the orb with a fake signal.
+  useEffect(() => {
+    if (!open || !state?.mock) return;
+    let raf = 0;
+    const tick = (now: number) => {
+      setLevel(fakeRms(now));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [open, state?.mock]);
 
   const handleEnd = async () => {
     stopCapture.current?.();
@@ -208,6 +235,14 @@ export function VoiceOverlay({
         ? tt("voice.listening")
         : tt("voice.live");
 
+  const orbState: VoiceOrbState = busy
+    ? "connecting"
+    : state?.speaking
+      ? "speaking"
+      : state?.listening
+        ? "listening"
+        : "idle";
+
   return (
     <div
       className="voice-overlay"
@@ -227,12 +262,8 @@ export function VoiceOverlay({
 
         {error ? <div className="voice-overlay__error">{error}</div> : null}
 
-        <div className="voice-overlay__wave" aria-hidden>
-          <span className={cn("voice-overlay__bar", state?.listening && "is-on")} />
-          <span className={cn("voice-overlay__bar", state?.speaking && "is-on")} />
-          <span className={cn("voice-overlay__bar", state?.listening && "is-on")} />
-          <span className={cn("voice-overlay__bar", state?.speaking && "is-on")} />
-          <span className={cn("voice-overlay__bar", state?.listening && "is-on")} />
+        <div className="voice-overlay__orb-wrap">
+          <VoiceOrb state={orbState} level={level} size={96} />
         </div>
 
         <div className="voice-overlay__transcript">

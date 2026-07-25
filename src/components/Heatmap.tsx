@@ -213,7 +213,7 @@ export function Heatmap({
 
   const cell = useMemo(() => {
     if (weeks.length === 0) return MIN_CELL;
-    // Reserve a little right padding so the last month label ("7月") is not clipped.
+    // Reserve a little right padding so the last month label ("Jul") is not clipped.
     const rightPad = 12;
     if (containerWidth <= 0) return MIN_CELL;
     const available = Math.max(0, containerWidth - LABEL_COL - rightPad);

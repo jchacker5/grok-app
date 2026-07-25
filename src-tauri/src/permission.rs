@@ -460,7 +460,7 @@ pub fn may_auto_allow(
             .unwrap_or(true) // no project → fail closed for path-bearing tools
     };
 
-    // §17.3: 项目外路径永不被 session allow 覆盖
+    // §17.3: paths outside the project are never overridden by session allow
     if outside {
         return matches!(policy, PermissionPolicy::AlwaysApprove);
     }

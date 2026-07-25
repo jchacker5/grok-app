@@ -57,6 +57,12 @@ export const SHORTCUTS: ShortcutRow[] = [
     mac: "⌘ /",
     win: "Ctrl /",
   },
+  {
+    id: "spaceSwitch",
+    labelKey: "shortcuts.spaceSwitch",
+    mac: "⌘ ⌥ 1-9",
+    win: "Ctrl Alt 1-9",
+  },
 ];
 
 export function shortcutsForPlatform(

@@ -618,6 +618,41 @@ pub async fn automation_delete(id: String) -> Result<(), String> {
     store::delete_automation(&id)
 }
 
+// ─── Spaces ────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn spaces_list() -> Result<Vec<store::Space>, String> {
+    Ok(store::load_spaces())
+}
+
+#[tauri::command]
+pub async fn space_create(name: String) -> Result<store::Space, String> {
+    store::create_space(name)
+}
+
+#[tauri::command]
+pub async fn space_rename(id: String, name: String) -> Result<store::Space, String> {
+    store::rename_space(&id, &name)
+}
+
+#[tauri::command]
+pub async fn space_delete(id: String) -> Result<(), String> {
+    store::delete_space(&id)
+}
+
+#[tauri::command]
+pub async fn space_reorder(ids: Vec<String>) -> Result<Vec<store::Space>, String> {
+    store::reorder_spaces(ids)
+}
+
+#[tauri::command]
+pub async fn project_set_space(
+    id: String,
+    space_id: Option<String>,
+) -> Result<store::Project, String> {
+    store::set_project_space(&id, space_id)
+}
+
 #[tauri::command]
 pub async fn settings_get() -> Result<AppSettings, String> {
     Ok(store::load_settings())

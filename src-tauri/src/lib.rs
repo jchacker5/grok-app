@@ -46,6 +46,7 @@ mod voice_auth;
 mod voice_host;
 mod voice_stt;
 mod voice_tools;
+mod voice_tts;
 
 use std::sync::Arc;
 
@@ -236,6 +237,12 @@ pub fn run() {
             commands::automation_set_enabled,
             commands::automation_mark_run,
             commands::automation_delete,
+            commands::spaces_list,
+            commands::space_create,
+            commands::space_rename,
+            commands::space_delete,
+            commands::space_reorder,
+            commands::project_set_space,
             commands::account_status,
             commands::account_login,
             commands::account_login_cancel,
@@ -264,6 +271,7 @@ pub fn run() {
             voice_host::voice_push_pcm,
             voice_host::voice_invoke_tool,
             voice_host::voice_dictation_transcribe,
+            voice_host::voice_list_voices,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Grok App")

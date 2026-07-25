@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::paths::{
     automations_file, ensure_app_dirs, projects_file, session_dir, sessions_index_file,
-    settings_file,
+    settings_file, spaces_file,
 };
 
 /// Where composer model / effort / mode / permission choices are remembered.
@@ -79,6 +79,9 @@ pub struct Project {
     /// Pinned projects float to the top of the sidebar.
     #[serde(default)]
     pub pinned: bool,
+    /// Grok Spaces membership — which named space (if any) this project belongs to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space_id: Option<String>,
     /// Per-project composer prefs (used when scope = project).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
@@ -391,6 +394,7 @@ pub fn add_project(path: String, trust: bool) -> Result<Project, String> {
         last_opened_at: Utc::now(),
         path_ok: true,
         pinned: false,
+        space_id: None,
         model_id: None,
         effort: None,
         mode: None,
@@ -511,6 +515,123 @@ pub fn set_project_permission_policy(
     let clone = p.clone();
     save_projects(&list)?;
     Ok(clone)
+}
+
+/// Assign (or clear, with `space_id = None`) a project's Grok Spaces membership.
+pub fn set_project_space(id: &str, space_id: Option<String>) -> Result<Project, String> {
+    let mut list = load_projects();
+    let p = list
+        .iter_mut()
+        .find(|p| p.id == id)
+        .ok_or_else(|| "project not found".to_string())?;
+    p.space_id = space_id;
+    let clone = p.clone();
+    save_projects(&list)?;
+    Ok(clone)
+}
+
+/// A named grouping of projects ("Grok Spaces") — Work / Indie / Business / etc.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Space {
+    pub id: String,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    /// Display + shortcut order (Cmd+Alt+1 = sort_index 0, etc.).
+    pub sort_index: u32,
+}
+
+pub fn load_spaces() -> Vec<Space> {
+    let _ = ensure_app_dirs();
+    let mut list: Vec<Space> = read_json(&spaces_file());
+    list.sort_by_key(|s| s.sort_index);
+    list
+}
+
+pub fn save_spaces(list: &[Space]) -> Result<(), String> {
+    let _ = ensure_app_dirs();
+    write_json(&spaces_file(), &list)
+}
+
+pub fn create_space(name: String) -> Result<Space, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("name empty".into());
+    }
+    let mut list = load_spaces();
+    let space = Space {
+        id: Uuid::new_v4().to_string(),
+        name,
+        created_at: Utc::now(),
+        sort_index: list.len() as u32,
+    };
+    list.push(space.clone());
+    save_spaces(&list)?;
+    Ok(space)
+}
+
+pub fn rename_space(id: &str, name: &str) -> Result<Space, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("name empty".into());
+    }
+    let mut list = load_spaces();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "space not found".to_string())?;
+    s.name = name.to_string();
+    let clone = s.clone();
+    save_spaces(&list)?;
+    Ok(clone)
+}
+
+/// Delete a space and clear its membership from any projects that pointed at it
+/// (projects themselves are never deleted).
+pub fn delete_space(id: &str) -> Result<(), String> {
+    let mut list = load_spaces();
+    let before = list.len();
+    list.retain(|s| s.id != id);
+    if list.len() == before {
+        return Err("space not found".into());
+    }
+    save_spaces(&list)?;
+
+    let mut projects = load_projects();
+    let mut changed = false;
+    for p in &mut projects {
+        if p.space_id.as_deref() == Some(id) {
+            p.space_id = None;
+            changed = true;
+        }
+    }
+    if changed {
+        save_projects(&projects)?;
+    }
+    Ok(())
+}
+
+/// Re-order spaces (drag-to-reorder / future UI) — `ordered_ids` is the full
+/// new order; unknown ids are ignored, missing ids keep their relative order
+/// appended at the end.
+pub fn reorder_spaces(ordered_ids: Vec<String>) -> Result<Vec<Space>, String> {
+    let mut list = load_spaces();
+    let mut by_id: std::collections::HashMap<String, Space> =
+        list.drain(..).map(|s| (s.id.clone(), s)).collect();
+    let mut next: Vec<Space> = Vec::new();
+    for id in &ordered_ids {
+        if let Some(s) = by_id.remove(id) {
+            next.push(s);
+        }
+    }
+    let mut rest: Vec<Space> = by_id.into_values().collect();
+    rest.sort_by_key(|s| s.sort_index);
+    next.extend(rest);
+    for (i, s) in next.iter_mut().enumerate() {
+        s.sort_index = i as u32;
+    }
+    save_spaces(&next)?;
+    Ok(next)
 }
 
 /// Pinned first, then newest `updated_at` (mirrors project pin sort).
@@ -1294,6 +1415,46 @@ pub fn save_composer_prefs(
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn delete_space_clears_membership_on_member_projects() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-spaces-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+
+        let space = create_space("Work".into()).expect("create space");
+        let other_dir = tmp.join("proj-a");
+        fs::create_dir_all(&other_dir).unwrap();
+        let project = add_project(other_dir.to_string_lossy().to_string(), true)
+            .expect("add project");
+        set_project_space(&project.id, Some(space.id.clone())).expect("assign space");
+
+        let assigned = load_projects();
+        assert_eq!(
+            assigned.iter().find(|p| p.id == project.id).unwrap().space_id,
+            Some(space.id.clone())
+        );
+
+        delete_space(&space.id).expect("delete space");
+
+        let after = load_projects();
+        assert_eq!(
+            after.iter().find(|p| p.id == project.id).unwrap().space_id,
+            None
+        );
+        assert!(load_spaces().is_empty());
+
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
+    }
 
     #[test]
     fn redact_scrubs_long_tokenish() {

@@ -697,6 +697,11 @@ pub async fn voice_dictation_transcribe(
     .await
 }
 
+#[tauri::command]
+pub async fn voice_list_voices() -> Result<Vec<crate::voice_tts::VoiceOption>, String> {
+    crate::voice_tts::list_voices().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -533,6 +533,67 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 /* 3-level project tree — fixed row heights, no hover layout shift */
+/* Grok Spaces — chip row switcher above the Projects tree */
+.space-switcher {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+
+.space-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.space-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.space-chip.is-active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.space-chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.space-add-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.space-add-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
 .tree-l1 {
   display: flex;
   align-items: center;
@@ -1949,8 +2010,8 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 
 /*
  * Account card layout:
- *   [avatar]  Name                    重置 MM-DD HH:mm   ← top-right
- *             SuperGrok Heavy         72% 剩余           ← remain beside tier
+ *   [avatar]  Name                    Reset MM-DD HH:mm   ← top-right
+ *             SuperGrok Heavy         72% remaining       ← remain beside tier
  *             ████████░░░░░░░░
  */
 .user-menu__account {
@@ -2538,7 +2599,7 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   transform: none;
   isolation: auto;
 }
-/* Top row: 未选项目 | 添加项目 */
+/* Top row: No project selected | Add project */
 .cpm__actions {
   display: flex;
   flex-direction: row;
@@ -6518,7 +6579,7 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 .composer__row {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex-wrap: nowrap;
   min-height: 32px;
   /* Do not use overflow-x:auto here — it clips absolute/portaled popovers
@@ -10575,7 +10636,7 @@ textarea::-webkit-scrollbar-thumb:active,
   font-weight: 600;
 }
 
-/* ===== Scheduled automations page (Codex-style 已安排) ===== */
+/* ===== Scheduled automations page (Codex-style “Scheduled”) ===== */
 .auto-page {
   flex: 1;
   min-height: 0;
@@ -10832,7 +10893,7 @@ textarea::-webkit-scrollbar-thumb:active,
 
 /*
  * Mute paused rows with color, not opacity — opacity creates a stacking
- * context that traps the dropdown under the next list item (穿透).
+ * context that traps the dropdown under the next list item (click-through).
  */
 .auto-row--paused .auto-row__title {
   color: var(--text-secondary, var(--text-tertiary));
@@ -12078,23 +12139,14 @@ div.composer__input:empty::before {
   font-size: 0.8rem;
   color: #fda4af;
 }
-.voice-overlay__wave {
+.voice-overlay__orb-wrap {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  height: 2.5rem;
+  height: 6.5rem;
 }
-.voice-overlay__bar {
-  width: 0.35rem;
-  height: 0.6rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
-  transition: height 0.15s ease, background 0.15s ease;
-}
-.voice-overlay__bar.is-on {
-  height: 1.8rem;
-  background: #34d399;
+.voice-orb {
+  display: block;
 }
 .voice-overlay__transcript {
   flex: 1;

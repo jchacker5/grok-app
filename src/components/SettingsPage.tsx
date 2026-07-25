@@ -1,6 +1,6 @@
 /**
  * Full-page settings shell (ChatGPT-desktop style): left nav + content.
- * Back control returns to the workbench ("返回应用").
+ * Back control returns to the workbench ("Back to app").
  */
 
 import {
@@ -19,6 +19,7 @@ import {
   IconArrowLeft,
   IconCheck,
   IconDoctor,
+  IconHeadset,
   IconInfo,
   IconLanguage,
   IconMinimize,
@@ -56,6 +57,7 @@ export type SettingsSectionId =
   | "general"
   | "appearance"
   | "account"
+  | "voice"
   | "archived"
   | "extensions"
   | "runtime"
@@ -159,6 +161,15 @@ export interface SettingsPageProps {
   projectPath?: string | null;
   /** After skill enable toggle — refresh slash palette in App. */
   onSkillsPrefsChanged?: () => void;
+  /** xAI realtime voice id (e.g. eve). */
+  voiceId?: string;
+  onVoiceId?: (v: string) => void;
+  /** Auto-send composer text after dictation ends. */
+  voiceDictationAutoSend?: boolean;
+  onVoiceDictationAutoSend?: (v: boolean) => void;
+  /** Keep delegated agents running when live voice ends. */
+  voiceKeepAgentsOnEnd?: boolean;
+  onVoiceKeepAgentsOnEnd?: (v: boolean) => void;
 }
 
 const NAV: {
@@ -167,6 +178,7 @@ const NAV: {
     | "settings"
     | "appearance"
     | "user"
+    | "voice"
     | "archive"
     | "extensions"
     | "doctor"
@@ -177,6 +189,7 @@ const NAV: {
   { id: "general", icon: "settings", labelKey: "settings.nav.general", group: "personal" },
   { id: "appearance", icon: "appearance", labelKey: "settings.nav.appearance", group: "personal" },
   { id: "account", icon: "user", labelKey: "settings.nav.account", group: "personal" },
+  { id: "voice", icon: "voice", labelKey: "settings.nav.voice", group: "personal" },
   { id: "archived", icon: "archive", labelKey: "settings.nav.archived", group: "personal" },
   {
     id: "extensions",
@@ -197,6 +210,7 @@ function NavIcon({
 }) {
   if (name === "appearance") return <IconAppearance size={size} />;
   if (name === "user") return <IconUser size={size} />;
+  if (name === "voice") return <IconHeadset size={size} />;
   if (name === "archive") return <IconArchive size={size} />;
   if (name === "extensions") return <IconPuzzle size={size} />;
   if (name === "doctor") return <IconDoctor size={size} />;
@@ -447,8 +461,24 @@ export function SettingsPage({
   onDeleteArchivedSessions,
   projectPath = null,
   onSkillsPrefsChanged,
+  voiceId = "eve",
+  onVoiceId,
+  voiceDictationAutoSend = false,
+  onVoiceDictationAutoSend,
+  voiceKeepAgentsOnEnd = true,
+  onVoiceKeepAgentsOnEnd,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
+  const [voiceOptions, setVoiceOptions] = useState<api.VoiceOption[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void api.voiceListVoices().then((opts) => {
+      if (!cancelled) setVoiceOptions(opts);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [accountTab, setAccountTab] = useState<"official" | "providers">(
     "official",
   );
@@ -669,7 +699,9 @@ export function SettingsPage({
         ? t("settings.nav.appearance")
         : section === "account"
           ? t("settings.nav.account")
-          : section === "archived"
+          : section === "voice"
+            ? t("settings.nav.voice")
+            : section === "archived"
             ? t("settings.nav.archived")
             : section === "extensions"
               ? t("settings.nav.extensions")
@@ -1018,6 +1050,52 @@ export function SettingsPage({
                   {t("settings.themeDark")}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {section === "voice" && (
+          <div className="settings-card">
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  <IconHeadset size={16} />
+                  {t("voice.settingsVoiceId")}
+                </div>
+              </div>
+              <Select
+                value={voiceId}
+                options={voiceOptions.map((o) => ({
+                  value: o.voiceId,
+                  label: o.name,
+                }))}
+                onChange={(v) => onVoiceId?.(v)}
+                aria-label={t("voice.settingsVoiceId")}
+              />
+            </div>
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("voice.settingsAutoSend")}
+                </div>
+              </div>
+              <UiCheck
+                checked={voiceDictationAutoSend}
+                onChange={() => onVoiceDictationAutoSend?.(!voiceDictationAutoSend)}
+                ariaLabel={t("voice.settingsAutoSend")}
+              />
+            </div>
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("voice.settingsKeepAgents")}
+                </div>
+              </div>
+              <UiCheck
+                checked={voiceKeepAgentsOnEnd}
+                onChange={() => onVoiceKeepAgentsOnEnd?.(!voiceKeepAgentsOnEnd)}
+                ariaLabel={t("voice.settingsKeepAgents")}
+              />
             </div>
           </div>
         )}

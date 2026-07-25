@@ -174,7 +174,7 @@ function UserMessageBody({
   scheduledLabel,
 }: {
   content: string;
-  /** Short badge word, e.g. 已安排 / Scheduled */
+  /** Short badge word, e.g. Scheduled */
   scheduledLabel: string;
 }) {
   const scheduled = parseScheduledUserContent(content);

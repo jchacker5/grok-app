@@ -99,7 +99,7 @@ export function buildComposerPlusEntries(opts: {
 
 /**
  * Rows for rendering: section headers + the same entries used for keyboard.
- * Order always: 添加 → 命令 (builtins like 目标/计划) → 技能.
+ * Order always: Add → Commands (builtins like Goals/Plan) → Skills.
  * Built-in commands must never sit under the skills section.
  */
 export function buildComposerPlusRows(
@@ -135,7 +135,7 @@ export function buildComposerPlusRows(
       continue;
     }
 
-    // mode / action / prompt → built-in commands (目标, 计划, …)
+    // mode / action / prompt → built-in commands (Goals, Plan, …)
     if (!addedCmdSection) {
       rows.push({ type: "section", id: "sec-cmd", label: labels.commands });
       addedCmdSection = true;

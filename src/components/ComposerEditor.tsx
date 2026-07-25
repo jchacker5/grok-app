@@ -245,7 +245,7 @@ export function ComposerEditor({
     if (!el || !onSlashQueryChange) return;
     const beforeCaret = getTextBeforeCaret(el);
     const full = serializeDom(el);
-    // Prefer full text — more reliable after IME confirms 汉字.
+    // Prefer full text — more reliable after IME confirms Chinese characters.
     const fromFull = detectSlashQuery(full);
     const fromCaret =
       beforeCaret != null ? detectSlashQuery(beforeCaret) : null;
@@ -398,7 +398,7 @@ export function ComposerEditor({
   /**
    * Live sync while focused: contenteditable + IME can change the DOM without a
    * clean input event. MutationObserver keeps draft + slash filter aligned with
-   * what the user actually sees (including after 汉字 selection).
+   * what the user actually sees (including after Chinese-character selection).
    */
   useEffect(() => {
     const el = elRef.current;

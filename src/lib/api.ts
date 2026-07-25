@@ -269,6 +269,7 @@ export async function projectsList() {
       trusted: boolean;
       pathOk: boolean;
       pinned?: boolean;
+      spaceId?: string | null;
     }>
   >("projects_list");
 }
@@ -693,7 +694,7 @@ export async function sessionSetPinned(id: string, pinned: boolean) {
   return invoke("session_set_pinned", { id, pinned });
 }
 
-/** Bind session to a project, or clear (`projectId: null`) for orphan / 其他会话. */
+/** Bind session to a project, or clear (`projectId: null`) for orphan / other sessions. */
 export async function sessionSetProject(
   id: string,
   projectId: string | null,
@@ -813,7 +814,18 @@ export interface SttResult {
   language?: string | null;
 }
 
+/** Browser-mode (no Tauri) synthetic voice session — dev-in-browser + headless testing. */
+let browserVoiceState: VoiceSessionState = {
+  active: false,
+  mode: "mock",
+  mock: true,
+  listening: false,
+  speaking: false,
+  delegatedSessionIds: [],
+};
+
 export async function voiceState(): Promise<VoiceSessionState> {
+  if (!isTauri()) return browserVoiceState;
   return invoke("voice_state");
 }
 
@@ -822,6 +834,18 @@ export async function voiceStart(opts?: {
   projectId?: string | null;
   projectName?: string | null;
 }): Promise<VoiceSessionState> {
+  if (!isTauri()) {
+    browserVoiceState = {
+      ...browserVoiceState,
+      active: true,
+      projectPath: opts?.projectPath ?? null,
+      projectId: opts?.projectId ?? null,
+      projectName: opts?.projectName ?? null,
+      listening: true,
+      speaking: false,
+    };
+    return browserVoiceState;
+  }
   return invoke("voice_start", {
     projectPath: opts?.projectPath ?? null,
     projectId: opts?.projectId ?? null,
@@ -830,10 +854,20 @@ export async function voiceStart(opts?: {
 }
 
 export async function voiceStop(): Promise<VoiceSessionState> {
+  if (!isTauri()) {
+    browserVoiceState = {
+      ...browserVoiceState,
+      active: false,
+      listening: false,
+      speaking: false,
+    };
+    return browserVoiceState;
+  }
   return invoke("voice_stop");
 }
 
 export async function voicePushPcm(pcmBase64: string): Promise<void> {
+  if (!isTauri()) return;
   return invoke("voice_push_pcm", { pcmBase64 });
 }
 
@@ -857,6 +891,25 @@ export async function voiceDictationTranscribe(
     mime: mime ?? null,
     language: language ?? null,
   });
+}
+
+export interface VoiceOption {
+  voiceId: string;
+  name: string;
+  language: string;
+}
+
+const BUILT_IN_VOICES: VoiceOption[] = [
+  { voiceId: "ara", name: "Ara", language: "en" },
+  { voiceId: "eve", name: "Eve", language: "en" },
+  { voiceId: "leo", name: "Leo", language: "en" },
+  { voiceId: "rex", name: "Rex", language: "en" },
+  { voiceId: "sal", name: "Sal", language: "en" },
+];
+
+export async function voiceListVoices(): Promise<VoiceOption[]> {
+  if (!isTauri()) return BUILT_IN_VOICES;
+  return invoke("voice_list_voices");
 }
 
 export interface AvailableModel {
@@ -1839,4 +1892,89 @@ export async function automationDelete(id: string): Promise<void> {
     return;
   }
   return invoke<void>("automation_delete", { id });
+}
+
+// ─── Spaces ────────────────────────────────────────────────────────────────
+
+export interface SpaceDto {
+  id: string;
+  name: string;
+  createdAt: string;
+  sortIndex: number;
+}
+
+export async function spacesList(): Promise<SpaceDto[]> {
+  if (!isTauri()) {
+    const { loadSpacesLocal, sortSpaces } = await import("./spaces");
+    return sortSpaces(loadSpacesLocal()) as SpaceDto[];
+  }
+  return invoke<SpaceDto[]>("spaces_list");
+}
+
+export async function spaceCreate(name: string): Promise<SpaceDto> {
+  if (!isTauri()) {
+    const { loadSpacesLocal, saveSpacesLocal } = await import("./spaces");
+    const list = loadSpacesLocal();
+    const space: SpaceDto = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      createdAt: new Date().toISOString(),
+      sortIndex: list.length,
+    };
+    list.push(space);
+    saveSpacesLocal(list);
+    return space;
+  }
+  return invoke<SpaceDto>("space_create", { name });
+}
+
+export async function spaceRename(id: string, name: string): Promise<SpaceDto> {
+  if (!isTauri()) {
+    const { loadSpacesLocal, saveSpacesLocal } = await import("./spaces");
+    const list = loadSpacesLocal();
+    const space = list.find((s) => s.id === id);
+    if (!space) throw new Error("space not found");
+    space.name = name.trim();
+    saveSpacesLocal(list);
+    return space;
+  }
+  return invoke<SpaceDto>("space_rename", { id, name });
+}
+
+export async function spaceDelete(id: string): Promise<void> {
+  if (!isTauri()) {
+    const { loadSpacesLocal, saveSpacesLocal } = await import("./spaces");
+    const list = loadSpacesLocal().filter((s) => s.id !== id);
+    saveSpacesLocal(list);
+    return;
+  }
+  return invoke<void>("space_delete", { id });
+}
+
+export async function spaceReorder(ids: string[]): Promise<SpaceDto[]> {
+  if (!isTauri()) {
+    const { loadSpacesLocal, saveSpacesLocal } = await import("./spaces");
+    const byId = new Map(loadSpacesLocal().map((s) => [s.id, s]));
+    const next: SpaceDto[] = [];
+    for (const id of ids) {
+      const s = byId.get(id);
+      if (s) {
+        next.push(s);
+        byId.delete(id);
+      }
+    }
+    next.push(...byId.values());
+    next.forEach((s, i) => (s.sortIndex = i));
+    saveSpacesLocal(next);
+    return next;
+  }
+  return invoke<SpaceDto[]>("space_reorder", { ids });
+}
+
+export async function projectSetSpace(
+  id: string,
+  spaceId: string | null,
+): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("project_set_space", { id, spaceId });
 }

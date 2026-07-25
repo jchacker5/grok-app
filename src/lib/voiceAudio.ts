@@ -26,6 +26,18 @@ export async function blobToBase64(blob: Blob): Promise<string> {
   return arrayBufferToBase64(buf);
 }
 
+/** Root-mean-square amplitude of a Float32 PCM buffer, normalized to ~0..1. */
+export function rmsFloat32(samples: Float32Array): number {
+  if (samples.length === 0) return 0;
+  let sumSquares = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i]!;
+    sumSquares += s * s;
+  }
+  const rms = Math.sqrt(sumSquares / samples.length);
+  return Math.max(0, Math.min(1, rms));
+}
+
 /**
  * Capture mic as 16 kHz mono PCM chunks (≈100ms) via AudioWorklet-less ScriptProcessor fallback.
  * Returns a stop() function.
@@ -33,6 +45,7 @@ export async function blobToBase64(blob: Blob): Promise<string> {
 export async function startPcmCapture(
   onChunk: (pcmBase64: string) => void,
   sampleRate = 16000,
+  onLevel?: (rms: number) => void,
 ): Promise<{ stop: () => void; stream: MediaStream }> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -48,6 +61,7 @@ export async function startPcmCapture(
   const processor = ctx.createScriptProcessor(bufferSize, 1, 1);
   processor.onaudioprocess = (ev) => {
     const input = ev.inputBuffer.getChannelData(0);
+    onLevel?.(rmsFloat32(input));
     // Resample if needed (simple decimate when ctx.sampleRate != target).
     const ratio = ctx.sampleRate / sampleRate;
     if (ratio <= 1.01 && ratio >= 0.99) {
@@ -83,6 +97,7 @@ export async function startPcmCapture(
 export async function playPcm16Base64(
   b64: string,
   sampleRate = 24000,
+  onLevel?: (rms: number) => void,
 ): Promise<void> {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -92,6 +107,7 @@ export async function playPcm16Base64(
   for (let i = 0; i < samples.length; i++) {
     samples[i] = view.getInt16(i * 2, true) / 0x8000;
   }
+  onLevel?.(rmsFloat32(samples));
   const ctx = new AudioContext({ sampleRate });
   const buf = ctx.createBuffer(1, samples.length, sampleRate);
   buf.copyToChannel(samples, 0);

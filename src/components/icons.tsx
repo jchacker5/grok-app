@@ -38,6 +38,7 @@ import {
   IconInfoCircle as TbInfoCircle,
   IconLanguage as TbLanguage,
   IconExternalLink as TbExternalLink,
+  IconLayoutGrid as TbLayoutGrid,
   IconLayoutSidebar as TbLayoutSidebar,
   IconLayoutSidebarRight as TbLayoutSidebarRight,
   IconLink as TbLink,
@@ -196,7 +197,7 @@ export const IconEdit = wrap(TbEdit);
 export const IconNotes = wrap(TbNotes);
 export const IconImagine = wrap(TbWand);
 export const IconAutomations = wrap(TbBolt);
-/** Scheduled / “已安排” nav — calendar clock. */
+/** Scheduled nav — calendar clock. */
 export const IconScheduled = wrap(TbCalendarTime);
 export const IconClock = wrap(TbClock);
 export const IconSkills = wrap(TbTool);
@@ -204,6 +205,7 @@ export const IconChevronDown = wrap(TbChevronDown);
 export const IconChevronLeft = wrap(TbChevronLeft);
 export const IconChevronRight = wrap(TbChevronRight);
 export const IconFolderPlus = wrap(TbFolderPlus);
+export const IconLayoutGrid = wrap(TbLayoutGrid);
 export const IconPlus = wrap(TbPlus);
 export const IconMore = wrap(TbDots);
 export const IconFolder = wrap(TbFolder);

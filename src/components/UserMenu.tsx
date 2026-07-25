@@ -36,7 +36,7 @@ export interface UserMenuProps {
     logout: string;
     remaining: string;
     customProvider: string;
-    /** Prefix for quota refresh time, e.g. 重置 / Resets */
+    /** Prefix for quota refresh time, e.g. Reset / Resets */
     resetsAt: string;
   };
   account: AccountStatus | null;

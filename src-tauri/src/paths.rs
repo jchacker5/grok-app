@@ -92,6 +92,11 @@ pub fn automations_file() -> PathBuf {
     app_data_root().join("automations.json")
 }
 
+/// Named project groupings ("Grok Spaces").
+pub fn spaces_file() -> PathBuf {
+    app_data_root().join("spaces.json")
+}
+
 /// App MCP/Skills enable prefs (`extensions.json`).
 pub fn extensions_file() -> PathBuf {
     app_data_root().join("extensions.json")

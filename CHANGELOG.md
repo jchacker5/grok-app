@@ -11,6 +11,8 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-07-24
+
 ### Added
 
 - **App update check** (#58): Settings → about / update checks GitHub Releases for newer installers.
@@ -21,11 +23,18 @@ See `docs/llm-wiki/release.md`.
 - **Pin sessions** (#73): pin chats to the top of the sidebar (like projects).
 - **Project inspect** (#75): Settings → Runtime summary from `grok inspect --json` (secret-safe).
 - **CLI doctor in App Doctor** (#76): merge `grok doctor --json` findings into the Doctor modal.
+- **Grok Spaces**: group projects into named workspaces (Work / Indie / Business / …). Switch instantly with `⌘⌥1`–`⌘⌥9` (while the app is focused), or right-click a project → "Add to space." Manage spaces from the new chip row above Projects.
+- **Live voice orb**: the live-voice overlay now shows an animated, audio-reactive glowing orb (idle / listening / speaking states) instead of static waveform bars.
+- **Voice settings**: Settings → Voice lets you pick the realtime voice (fetched live from the xAI voice catalog) and toggle auto-send-on-silence / keep-agents-running-after-voice-ends.
 
 ### Fixed
 
 - **Session data mode switch** (#62): flipping independent↔shared recycles live/background/parked agents so none keep the old `GROK_HOME`.
 - **Missing project folder** (#65): pathOk UX to relocate deleted/moved project directories.
+- **Composer icon spacing**: the mic / live-voice / send button cluster at the end of the composer row was visually crowded; increased row gap so icon-only buttons read as distinct actions.
+- **Duplicate mic icon**: the live-voice "Start voice" button used the same glyph as the dictation mic; now uses a distinct headset icon.
+- **Settings deep link**: `#/settings/voice` (and any future new section) now actually opens that section instead of silently falling back to General.
+- **Browser/dev-preview mode**: Spaces now loads via its localStorage fallback outside Tauri, and the live-voice overlay no longer throws when Tauri's event bridge isn't present (falls back to the mock voice session cleanly).
 
 ### Community
 
@@ -33,8 +42,8 @@ See `docs/llm-wiki/release.md`.
 - Remaining open PRs (**#63–#64**, **#67–#72**, **#74**, **#77–#89**) need conflict resolution against this batch (heavy overlap on `App.tsx` / `Settings` / `commands.rs` / spawn flags).
 
 **中文**
-- 新增：应用更新检查、活动任务面板、会话正文搜索、插件安装更新、沙箱配置、会话置顶、项目 inspect、CLI Doctor 合并。  
-- 修复：会话模式切换回收 Agent；缺失项目目录可重定位。
+- 新增：应用更新检查、活动任务面板、会话正文搜索、插件安装更新、沙箱配置、会话置顶、项目 inspect、CLI Doctor 合并、Grok 空间（项目分组 + ⌘⌥1-9 切换）、语音圆球动效、语音设置页。  
+- 修复：会话模式切换回收 Agent；缺失项目目录可重定位；工具栏图标间距过窄；语音图标重复；设置深链接缺少 voice 分区；浏览器预览模式下的空间加载与语音浮层报错。
 
 ## [0.1.6] - 2026-07-24
 

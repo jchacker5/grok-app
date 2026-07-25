@@ -71,6 +71,11 @@ import {
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import * as api from "@/lib/api";
+import type { SpaceDto } from "@/lib/api";
+import {
+  colorForSpaceIndex,
+  spaceForShortcutIndex,
+} from "@/lib/spaces";
 import { createT, resolveLocale, type Locale } from "@/i18n";
 import {
   DEFAULT_EFFORT,
@@ -176,6 +181,7 @@ import {
   IconStop,
   IconMic,
   IconHeadset,
+  IconLayoutGrid,
   IconFolder,
   IconFolderPlus,
   IconClock,
@@ -265,6 +271,8 @@ interface Project {
   pinned?: boolean;
   /** Project-level permission tier (L10). Null/undefined → app default. */
   permissionPolicy?: string | null;
+  /** Grok Spaces membership — which named space (if any) this project belongs to. */
+  spaceId?: string | null;
 }
 
 interface SessionRow {
@@ -282,6 +290,8 @@ interface SessionRow {
 type ContextMenuState =
   | { kind: "project"; id: string; x: number; y: number }
   | { kind: "project-policy"; id: string; x: number; y: number }
+  | { kind: "project-space"; id: string; x: number; y: number }
+  | { kind: "space"; id: string; x: number; y: number }
   | { kind: "session"; id: string; x: number; y: number }
   | null;
 
@@ -398,6 +408,22 @@ export default function App() {
   editingUserMessageIdRef.current = editingUserMessageId;
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [spaces, setSpaces] = useState<SpaceDto[]>([]);
+  /** View filter only — not app data, so it lives in localStorage, not settings. */
+  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("grok-app:activeSpaceId") || null;
+    } catch {
+      return null;
+    }
+  });
+  const visibleProjects = useMemo(
+    () =>
+      activeSpaceId
+        ? projects.filter((p) => p.spaceId === activeSpaceId)
+        : projects,
+    [projects, activeSpaceId],
+  );
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   /** Per-session message cache so switching away mid-turn does not drop the UI. */
@@ -580,6 +606,7 @@ export default function App() {
   const shortcutHandlersRef = useRef({
     newChat: () => {},
     openSettings: () => {},
+    switchSpace: (_index: number) => {},
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -616,6 +643,14 @@ export default function App() {
       if (key === "d" && e.shiftKey) {
         e.preventDefault();
         setShowDoctor(true);
+        return;
+      }
+      // Grok Spaces: Cmd/Ctrl+Alt+0-9. Use e.code (layout-independent) since
+      // Option+digit remaps to punctuation via e.key on macOS (e.g. ¡ for ⌥1).
+      if (e.altKey && /^Digit[0-9]$/.test(e.code)) {
+        e.preventDefault();
+        const n = Number(e.code.slice(5));
+        shortcutHandlersRef.current.switchSpace(n);
         return;
       }
     };
@@ -675,7 +710,7 @@ export default function App() {
   /** Chat file/url card → open in right resource pane. */
   const [resourceOpenTarget, setResourceOpenTarget] =
     useState<ResourceOpenTarget | null>(null);
-  /** Bump to force ResourceViewer into Plan review mode (详情 / auto-open). */
+  /** Bump to force ResourceViewer into Plan review mode (Details / auto-open). */
   const [planFocusKey, setPlanFocusKey] = useState(0);
   /** Live drag-drop target for zone overlays (null = not dragging). */
   const [dragZone, setDragZone] = useState<"sidebar" | "main" | null>(null);
@@ -701,6 +736,9 @@ export default function App() {
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
+  const [voiceId, setVoiceId] = useState("eve");
+  const [voiceDictationAutoSend, setVoiceDictationAutoSend] = useState(false);
+  const [voiceKeepAgentsOnEnd, setVoiceKeepAgentsOnEnd] = useState(true);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -809,7 +847,8 @@ export default function App() {
 
   const refreshLists = useCallback(async () => {
     if (!api.isTauri()) {
-      // Browser/Vite-only preview: skip Host gate.
+      // Browser/Vite-only preview: skip Host gate, but Spaces has its own
+      // localStorage-backed fallback and doesn't need the CLI/Host at all.
       setAppGate("ready");
       setSetupCliSeed({
         found: true,
@@ -818,15 +857,17 @@ export default function App() {
         source: "browser",
         cliAuthPresent: false,
       });
+      void api.spacesList().then(setSpaces).catch(() => {});
       return;
     }
     try {
-      const [p, s, settings, cli, modelsRes] = await Promise.all([
+      const [p, s, settings, cli, modelsRes, spacesRes] = await Promise.all([
         api.projectsList(),
         api.sessionsList(),
         api.settingsGet(),
         api.probeCli(),
         api.modelsListAvailable().catch(() => null),
+        api.spacesList().catch(() => []),
       ]);
       setProjects(
         (p as Project[]).map((x) => ({
@@ -834,6 +875,7 @@ export default function App() {
           pinned: !!(x as Project).pinned,
         })),
       );
+      setSpaces(spacesRes);
       setSessions(
         (
           s as Array<
@@ -931,6 +973,9 @@ export default function App() {
         const known = ["off", "workspace", "read-only", "strict", "devbox"];
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
+      setVoiceId((settings.voiceId || "eve").trim() || "eve");
+      setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
+      setVoiceKeepAgentsOnEnd(settings.voiceKeepAgentsOnEnd !== false);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -1090,7 +1135,7 @@ export default function App() {
   /**
    * After any turn, if the last assistant message contains a grok-automation
    * fence, strip it from the bubble and call automation_create.
-   * Applies to all sessions (not only “用 AI 创建”), so normal chat can schedule.
+   * Applies to all sessions (not only “Created with AI”), so normal chat can schedule.
    * Deduped per assistant message id.
    */
   const tryApplyAutomationFromSession = useCallback(
@@ -1772,6 +1817,7 @@ export default function App() {
           "general",
           "appearance",
           "account",
+          "voice",
           "archived",
           "extensions",
           "runtime",
@@ -2136,7 +2182,7 @@ export default function App() {
   /**
    * Draft new chat (Codex-style): clear UI only.
    * No store row / CLI until first successful send via ensureConnected.
-   * Pass `null` for a project-less session (listed under “其他会话”).
+   * Pass `null` for a project-less session (listed under “Other sessions”).
    * Omit / pass undefined to use the active project (requires one).
    */
   const newChat = async (
@@ -2574,6 +2620,82 @@ export default function App() {
     }
   };
 
+  const refreshSpaces = async () => {
+    try {
+      setSpaces(await api.spacesList());
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const selectSpace = useCallback((id: string | null) => {
+    setActiveSpaceId(id);
+    try {
+      if (id) localStorage.setItem("grok-app:activeSpaceId", id);
+      else localStorage.removeItem("grok-app:activeSpaceId");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const createSpace = () => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "prompt",
+      title: tr("sidebar.addSpace"),
+      initial: "",
+      onSubmit: async (name) => {
+        const next = name.trim();
+        if (!next) return;
+        try {
+          await api.spaceCreate(next);
+          await refreshSpaces();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  const renameSpace = (space: SpaceDto) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "prompt",
+      title: tr("space.rename"),
+      initial: space.name,
+      onSubmit: async (name) => {
+        const next = name.trim();
+        if (!next || next === space.name) return;
+        try {
+          await api.spaceRename(space.id, next);
+          await refreshSpaces();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  const deleteSpace = (space: SpaceDto) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "confirm",
+      title: tr("space.delete"),
+      message: tr("space.deleteConfirm", { name: space.name }),
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await api.spaceDelete(space.id);
+          if (activeSpaceId === space.id) selectSpace(null);
+          await refreshSpaces();
+          await refreshProjects();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
   const applySessionTitle = useCallback(
     (sessionId: string, title: string) => {
       setSessions((list) =>
@@ -2810,7 +2932,7 @@ export default function App() {
         const proj = s.projectId
           ? projects.find((p) => p.id === s.projectId) ?? null
           : null;
-        // Same project context when possible; orphan → “其他会话” draft.
+        // Same project context when possible; orphan → “Other sessions” draft.
         if (proj) await newChat(proj, { switchToChat: true });
         else await newChat(null, { switchToChat: true });
       } else if (!archived && s.projectId) {
@@ -2950,6 +3072,12 @@ export default function App() {
     e.preventDefault();
     e.stopPropagation();
     setCtxMenu({ kind: "project", id: proj.id, x: e.clientX, y: e.clientY });
+  };
+
+  const openSpaceMenu = (e: ReactMouseEvent, space: SpaceDto) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ kind: "space", id: space.id, x: e.clientX, y: e.clientY });
   };
 
   const searchHits = useMemo(
@@ -4195,7 +4323,7 @@ export default function App() {
     }));
   }, [plan.rpcId]);
 
-  /** Open resource pane Plan review (replaces scroll-to-card “详情”). */
+  /** Open resource pane Plan review (replaces scroll-to-card “Details”). */
   const openPlanInResource = useCallback(() => {
     setLayout((l) => {
       if (!l.asideCollapsed) return l;
@@ -5083,6 +5211,11 @@ export default function App() {
       setAppView("settings");
       setSettingsSection("general");
       window.location.hash = "#/settings/general";
+    },
+    switchSpace: (index: number) => {
+      const target = spaceForShortcutIndex(spaces, index);
+      if (target === null) return;
+      selectSpace(target === "all" ? null : target);
     },
   };
   trayHandlersRef.current = {
@@ -6236,6 +6369,27 @@ export default function App() {
               api.settingsSet({ ...s, sandboxProfile: v }),
             );
           }}
+          voiceId={voiceId}
+          onVoiceId={(v) => {
+            setVoiceId(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceId: v }),
+            );
+          }}
+          voiceDictationAutoSend={voiceDictationAutoSend}
+          onVoiceDictationAutoSend={(v) => {
+            setVoiceDictationAutoSend(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceDictationAutoSend: v }),
+            );
+          }}
+          voiceKeepAgentsOnEnd={voiceKeepAgentsOnEnd}
+          onVoiceKeepAgentsOnEnd={(v) => {
+            setVoiceKeepAgentsOnEnd(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceKeepAgentsOnEnd: v }),
+            );
+          }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           versionFooter={tr("app.versionFooter")}
@@ -6396,6 +6550,58 @@ export default function App() {
           </div>
 
           <OverlayScroll className="sidebar__scroll" viewportClassName="sidebar__scroll-inner">
+            {/* Grok Spaces — switch which projects the sidebar shows */}
+            {(spaces.length > 0 || projects.length > 0) && (
+              <div
+                className="space-switcher"
+                role="tablist"
+                aria-label={tr("sidebar.spaces")}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeSpaceId === null}
+                  className={
+                    "space-chip" + (activeSpaceId === null ? " is-active" : "")
+                  }
+                  onClick={() => selectSpace(null)}
+                >
+                  {tr("sidebar.allSpaces")}
+                </button>
+                {spaces.map((space, i) => (
+                  <button
+                    key={space.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeSpaceId === space.id}
+                    className={
+                      "space-chip" +
+                      (activeSpaceId === space.id ? " is-active" : "")
+                    }
+                    onClick={() => selectSpace(space.id)}
+                    onContextMenu={(e) => openSpaceMenu(e, space)}
+                  >
+                    <span
+                      className="space-chip__dot"
+                      style={{ background: colorForSpaceIndex(i) }}
+                      aria-hidden
+                    />
+                    {space.name}
+                  </button>
+                ))}
+                <Tip label={tr("sidebar.addSpace")}>
+                  <button
+                    type="button"
+                    className="space-add-btn"
+                    onClick={createSpace}
+                    aria-label={tr("sidebar.addSpace")}
+                  >
+                    <IconPlus size={13} />
+                  </button>
+                </Tip>
+              </div>
+            )}
+
             {/* L1 — Projects section */}
             <div className="tree-l1">
               <button
@@ -6428,9 +6634,14 @@ export default function App() {
                 {tr("sidebar.noProjects")}
               </div>
             )}
+            {projectsOpen && projects.length > 0 && visibleProjects.length === 0 && (
+              <div className="sidebar-empty">
+                {tr("sidebar.noProjectsInSpace")}
+              </div>
+            )}
 
             {projectsOpen &&
-              projects.map((proj) => {
+              visibleProjects.map((proj) => {
                 const open = expandedProjects[proj.id] !== false;
                 const projSessions = sessionsForProject(proj.id);
                 return (
@@ -8614,6 +8825,19 @@ export default function App() {
                 icon: <IconRename size={16} />,
                 onClick: () => renameProject(proj),
               },
+              {
+                id: "add-to-space",
+                label: tr("project.addToSpace"),
+                icon: <IconLayoutGrid size={16} />,
+                onClick: () => {
+                  setCtxMenu({
+                    kind: "project-space",
+                    id: proj.id,
+                    x: ctxMenu.x,
+                    y: ctxMenu.y,
+                  });
+                },
+              },
               ...(proj.trusted
                 ? [
                     {
@@ -8682,6 +8906,58 @@ export default function App() {
                     onClick: () => applyProjectPermissionPolicy(proj, p.id),
                   }) satisfies ContextMenuItem,
               ),
+            ];
+          }
+        } else if (ctxMenu?.kind === "project-space") {
+          const proj = projects.find((p) => p.id === ctxMenu.id);
+          if (proj) {
+            const current = proj.spaceId ?? null;
+            items = [
+              {
+                id: "no-space",
+                label: tr("project.noSpace"),
+                icon: !current ? <IconCheck size={16} /> : undefined,
+                onClick: () => {
+                  void api
+                    .projectSetSpace(proj.id, null)
+                    .then(() => refreshProjects());
+                },
+              },
+              ...spaces.map(
+                (space) =>
+                  ({
+                    id: `space-${space.id}`,
+                    label: space.name,
+                    icon:
+                      current === space.id ? (
+                        <IconCheck size={16} />
+                      ) : undefined,
+                    onClick: () => {
+                      void api
+                        .projectSetSpace(proj.id, space.id)
+                        .then(() => refreshProjects());
+                    },
+                  }) satisfies ContextMenuItem,
+              ),
+            ];
+          }
+        } else if (ctxMenu?.kind === "space") {
+          const space = spaces.find((s) => s.id === ctxMenu.id);
+          if (space) {
+            items = [
+              {
+                id: "rename",
+                label: tr("space.rename"),
+                icon: <IconRename size={16} />,
+                onClick: () => renameSpace(space),
+              },
+              {
+                id: "delete",
+                label: tr("space.delete"),
+                icon: <IconTrash size={16} />,
+                danger: true,
+                onClick: () => deleteSpace(space),
+              },
             ];
           }
         } else if (ctxMenu?.kind === "session") {
@@ -8780,7 +9056,11 @@ export default function App() {
             onClose={() => setCtxMenu(null)}
             items={items}
             estimatedHeight={
-              ctxMenu?.kind === "project-policy" ? 280 : 240
+              ctxMenu?.kind === "project-policy"
+                ? 280
+                : ctxMenu?.kind === "project-space"
+                  ? 240 + spaces.length * 32
+                  : 240
             }
           />
         );
