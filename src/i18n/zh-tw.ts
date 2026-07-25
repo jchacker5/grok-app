@@ -989,6 +989,7 @@ export const zhTW: Record<MessageKey, string> = {
   "notify.permissionBody": "Agent 正在等待你的批准。",
 
   "slash.section.commands": "指令",
+  "slash.section.cli": "CLI",
   "slash.section.skills": "技能",
   "slash.empty": "沒有相符的指令或技能",
   "slash.goal": "目標",

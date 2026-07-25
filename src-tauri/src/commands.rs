@@ -1875,6 +1875,93 @@ pub async fn skills_list(project_path: Option<String>) -> Result<serde_json::Val
     Ok(out)
 }
 
+/// CLI-built-in slash commands extracted from `grok inspect --json` (future field)
+/// or `~/.grok/commands.json` manifest.
+/// Always returns Ok; on CLI missing / timeout, `commands` is empty and `error` is set.
+#[tauri::command]
+pub async fn cli_builtin_commands() -> Result<serde_json::Value, String> {
+    let mut commands: Vec<serde_json::Value> = Vec::new();
+    let mut error: Option<String> = None;
+
+    // 1. Try `grok inspect --json` for a future `commands` field.
+    let (parsed, inspect_err) = run_grok_inspect(None);
+    if let Some(ref v) = parsed {
+        if let Some(arr) = v.get("commands").and_then(|x| x.as_array()) {
+            for cmd in arr {
+                let name = cmd
+                    .get("name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if name.is_empty() {
+                    continue;
+                }
+                let description = cmd
+                    .get("description")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                commands.push(serde_json::json!({
+                    "name": name,
+                    "description": description,
+                }));
+            }
+        }
+    }
+    if let Some(e) = inspect_err {
+        error = Some(e);
+    }
+
+    // 2. Also try `~/.grok/commands.json` manifest (forward-compatible).
+    let home = std::env::var("HOME").unwrap_or_default();
+    let manifest_path = std::path::Path::new(&home).join(".grok/commands.json");
+    if let Ok(contents) = std::fs::read_to_string(&manifest_path) {
+        if let Ok(manifest) =
+            serde_json::from_str::<serde_json::Value>(&contents)
+        {
+            if let Some(arr) = manifest.get("commands").and_then(|x| x.as_array()) {
+                for cmd in arr {
+                    let name = cmd
+                        .get("name")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    // Dedupe by name — CLI manifest wins over inspect.
+                    let already = commands.iter().any(|c| {
+                        c.get("name")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            == name
+                    });
+                    if already {
+                        continue;
+                    }
+                    let description = cmd
+                        .get("description")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    commands.push(serde_json::json!({
+                        "name": name,
+                        "description": description,
+                    }));
+                }
+            }
+        }
+    }
+
+    let mut out = serde_json::json!({ "commands": commands });
+    if let Some(err) = error {
+        out["error"] = serde_json::Value::String(err);
+    }
+    Ok(out)
+}
+
 /// List MCP servers from `grok inspect --json`.
 /// Always returns Ok; on CLI missing / timeout, `servers` is empty and `error` is set.
 /// Each server includes `enabled` from App Extensions prefs (default true).

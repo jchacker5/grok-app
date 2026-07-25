@@ -1201,6 +1201,17 @@ export interface SkillsListResult {
   error?: string;
 }
 
+/** Built-in slash command bundled with the CLI binary (from inspect or manifest). */
+export interface CliBuiltinCommand {
+  name: string;
+  description: string;
+}
+
+export interface CommandsListResult {
+  commands: CliBuiltinCommand[];
+  error?: string;
+}
+
 export interface InspectMcpResult {
   servers: McpDto[];
   error?: string;
@@ -1285,6 +1296,16 @@ export async function skillsList(projectPath?: string | null) {
   return invoke<SkillsListResult>("skills_list", {
     projectPath: projectPath ?? null,
   });
+}
+
+/**
+ * List CLI-built-in slash commands.
+ * Tries `grok inspect --json` (future `commands` field) and
+ * `~/.grok/commands.json` manifest (forward-compatible).
+ * Returns `{ commands: CliBuiltinCommand[], error?: string }`.
+ */
+export async function cliBuiltinCommands() {
+  return invoke<CommandsListResult>("cli_builtin_commands");
 }
 
 /** List MCP servers via `grok inspect --json` (optional project cwd). */

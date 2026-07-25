@@ -142,6 +142,7 @@ import {
 import {
   buildSlashCatalog,
   flattenFilteredCatalog,
+  type CliBuiltinCommandInfo,
   type SlashItem,
   type SkillInfo,
 } from "@/lib/slashCatalog";
@@ -375,6 +376,9 @@ export default function App() {
     async () => false,
   );
   const [skillInfos, setSkillInfos] = useState<SkillInfo[]>([]);
+  const [cliCommandsState, setCliCommandsState] = useState<
+    CliBuiltinCommandInfo[]
+  >([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [slashQuery, setSlashQuery] = useState<{
     start: number;
@@ -4168,18 +4172,17 @@ export default function App() {
   /** Bumped when Extensions skill toggles change so slash palette refilters. */
   const [skillsReloadToken, setSkillsReloadToken] = useState(0);
 
-  // Load skills catalog for slash palette (Grok inspect).
+  // Load skills + CLI commands for slash palette.
   useEffect(() => {
     if (!api.isTauri()) return;
     let cancelled = false;
     setSkillsLoading(true);
-    void api
-      .skillsList(activeProject?.path ?? null)
-      .then((res) => {
+
+    const skillPromise = api.skillsList(activeProject?.path ?? null).then(
+      (res) => {
         if (cancelled) return;
         setSkillInfos(
           (res.skills ?? [])
-            // Extensions enable flag (default on); hide disabled from slash palette.
             .filter((s) => s.enabled !== false)
             .map((s) => ({
               name: s.name,
@@ -4188,21 +4191,34 @@ export default function App() {
               userInvocable: s.userInvocable,
             })),
         );
-      })
-      .catch(() => {
+      },
+      () => {
         if (!cancelled) setSkillInfos([]);
-      })
-      .finally(() => {
-        if (!cancelled) setSkillsLoading(false);
-      });
+      },
+    );
+
+    const cliPromise = api.cliBuiltinCommands().then(
+      (res) => {
+        if (cancelled) return;
+        setCliCommandsState(res.commands ?? []);
+      },
+      () => {
+        if (!cancelled) setCliCommandsState([]);
+      },
+    );
+
+    void Promise.all([skillPromise, cliPromise]).finally(() => {
+      if (!cancelled) setSkillsLoading(false);
+    });
+
     return () => {
       cancelled = true;
     };
   }, [activeProject?.path, skillsReloadToken]);
 
   const slashCatalog = useMemo(
-    () => buildSlashCatalog(skillInfos),
-    [skillInfos],
+    () => buildSlashCatalog(skillInfos, cliCommandsState),
+    [skillInfos, cliCommandsState],
   );
   const resolveSlashTitle = useCallback(
     (item: SlashItem) => {
@@ -4260,9 +4276,15 @@ export default function App() {
       buildComposerPlusEntries({
         showUpload: showUploadInMenu,
         commands: slashFiltered.commands,
+        cli: slashFiltered.cli,
         skills: slashFiltered.skills,
       }),
-    [showUploadInMenu, slashFiltered.commands, slashFiltered.skills],
+    [
+      showUploadInMenu,
+      slashFiltered.commands,
+      slashFiltered.cli,
+      slashFiltered.skills,
+    ],
   );
   const composerMenuEntriesRef = useRef(composerMenuEntries);
   composerMenuEntriesRef.current = composerMenuEntries;
@@ -4914,8 +4936,18 @@ export default function App() {
             applyPermissionPolicy(next, { toastYoloToggle: true });
             return;
           }
-          default:
+          default: {
+            // CLI-builtin commands — insert `/name` text into draft.
+            if (item.action?.startsWith("cli:")) {
+              const cmdName = item.name;
+              setDraft((d) => {
+                const needsSpace = d.length > 0 && !/\s$/.test(d);
+                return `${d}${needsSpace ? " " : ""}/${cmdName} `;
+              });
+              return;
+            }
             return;
+          }
         }
       }
     },
