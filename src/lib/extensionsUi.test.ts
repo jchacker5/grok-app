@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPluginComponentGraph,
   countDisabled,
   filterEnabledByName,
   filterPluginsByLoadState,
@@ -293,5 +294,103 @@ describe("truncateInstallLog", () => {
   it("is a no-op when head+tail already cover the whole log", () => {
     const lines = Array.from({ length: 20 }, (_, i) => `line ${i}`);
     expect(truncateInstallLog(lines, 10, 10, 10)).toEqual(lines);
+  });
+});
+
+describe("buildPluginComponentGraph", () => {
+  const plugins = [
+    {
+      name: "superpowers",
+      path: "/home/user/.grok/installed-plugins/superpowers",
+      enabled: true,
+      version: "1.2.0",
+      provides: { skills: 2, agents: 0, hooks: false, mcpServers: 1 },
+    },
+    {
+      name: "disabled-plugin",
+      path: "/home/user/.grok/installed-plugins/disabled-plugin",
+      enabled: false,
+      provides: { skills: 0, agents: 0, hooks: false, mcpServers: 0 },
+    },
+  ];
+
+  it("attributes skills and MCP servers by path containment under a plugin dir", () => {
+    const skills = [
+      {
+        name: "brainstorm",
+        source: "plugin",
+        path: "/home/user/.grok/installed-plugins/superpowers/skills/brainstorm/SKILL.md",
+      },
+      { name: "user-skill", source: "user", path: "/home/user/.grok/skills/user-skill/SKILL.md" },
+    ];
+    const servers = [
+      {
+        name: "sp-server",
+        target: "/home/user/.grok/installed-plugins/superpowers/mcp/sp-server",
+      },
+    ];
+    const graph = buildPluginComponentGraph(plugins, skills, servers);
+
+    const superpowersNode = graph.plugins.find((p) => p.name === "superpowers");
+    expect(superpowersNode?.attributedCount).toBe(2);
+    expect(graph.components.some((c) => c.name === "brainstorm" && c.kind === "skill")).toBe(
+      true,
+    );
+    expect(graph.components.some((c) => c.name === "sp-server" && c.kind === "mcp")).toBe(true);
+    expect(graph.unattributedSkills).toBe(1);
+    expect(graph.unattributedMcp).toBe(0);
+    const brainstormEdge = graph.edges.find((e) => e.to.includes("brainstorm"));
+    expect(brainstormEdge?.from).toBe(`plugin:${pluginRowKey(plugins[0])}`);
+  });
+
+  it("flags same-name components as conflicts", () => {
+    const skills = [
+      {
+        name: "shared-name",
+        source: "plugin",
+        path: "/home/user/.grok/installed-plugins/superpowers/skills/shared-name/SKILL.md",
+      },
+      {
+        name: "shared-name",
+        source: "plugin",
+        path: "/home/user/.grok/installed-plugins/disabled-plugin/skills/shared-name/SKILL.md",
+      },
+    ];
+    const graph = buildPluginComponentGraph(plugins, skills, []);
+    expect(graph.components.every((c) => c.conflict)).toBe(true);
+  });
+
+  it("leaves skills/servers with no matching plugin dir as unattributed", () => {
+    const graph = buildPluginComponentGraph(
+      plugins,
+      [{ name: "loose", source: "user", path: "/home/user/somewhere/loose/SKILL.md" }],
+      [{ name: "loose-mcp", target: "not-a-path" }],
+    );
+    expect(graph.unattributedSkills).toBe(1);
+    expect(graph.unattributedMcp).toBe(1);
+    expect(graph.components).toHaveLength(0);
+  });
+
+  it("marks the graph as large past the node threshold", () => {
+    const bigPlugins = Array.from({ length: 60 }, (_, i) => ({
+      name: `p${i}`,
+      path: `/plugins/p${i}`,
+      enabled: true,
+    }));
+    const graph = buildPluginComponentGraph(bigPlugins, [], []);
+    expect(graph.isLarge).toBe(true);
+  });
+
+  it("does not falsely attribute a plugin whose name is a prefix of another", () => {
+    const prefixPlugins = [
+      { name: "foo", path: "/plugins/foo", enabled: true },
+      { name: "foobar", path: "/plugins/foobar", enabled: true },
+    ];
+    const skills = [
+      { name: "s1", source: "plugin", path: "/plugins/foobar/skills/s1/SKILL.md" },
+    ];
+    const graph = buildPluginComponentGraph(prefixPlugins, skills, []);
+    const edge = graph.edges[0];
+    expect(edge.from).toBe(`plugin:${pluginRowKey(prefixPlugins[1])}`);
   });
 });

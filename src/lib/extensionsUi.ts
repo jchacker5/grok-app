@@ -315,3 +315,176 @@ export function truncateInstallLog(
     ...lines.slice(lines.length - tail),
   ];
 }
+
+// ── Plugin component graph (Extensions → dependency/provenance view) ───────
+//
+// Grok Build plugins have no `requires` manifest field — the CLI only reports
+// per-plugin *counts* of what they provide (skills/agents/hooks/mcpServers).
+// We derive real provenance edges instead: a skill/MCP server "belongs to" a
+// plugin when its file path lives under that plugin's install directory
+// (`PluginDto.path`). This is real, already-fetched data — no invented CLI
+// fields — and it surfaces the same practical question the graph is for:
+// "what does (dis/un)installing this plugin actually affect?"
+
+/** Graph node count above which the SVG view is replaced with a flat list. */
+export const PLUGIN_GRAPH_LARGE_THRESHOLD = 50;
+
+export interface GraphPluginNode {
+  id: string;
+  kind: "plugin";
+  name: string;
+  version?: string | null;
+  enabled: boolean;
+  scope?: string | null;
+  attributedCount: number;
+  providesLine: string;
+}
+
+export interface GraphComponentNode {
+  id: string;
+  kind: "skill" | "mcp";
+  name: string;
+  meta: string;
+  /** Same name used by another component of the same kind (only one can be active). */
+  conflict: boolean;
+  ownerPluginId: string;
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+}
+
+export interface PluginComponentGraph {
+  plugins: GraphPluginNode[];
+  components: GraphComponentNode[];
+  edges: GraphEdge[];
+  /** Skills discovered but not under any installed plugin's directory (user/project scope). */
+  unattributedSkills: number;
+  /** MCP servers discovered but not under any installed plugin's directory. */
+  unattributedMcp: number;
+  isLarge: boolean;
+}
+
+function normalizeDirPath(p: string | null | undefined): string {
+  return (p ?? "").trim().replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function pathIsUnderDir(path: string | null | undefined, dir: string): boolean {
+  const p = normalizeDirPath(path);
+  if (!p || !dir) return false;
+  return p === dir || p.startsWith(`${dir}/`);
+}
+
+/** Count occurrences of each (trimmed, case-insensitive) name in a list. */
+function countByName<T extends { name: string }>(items: T[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const key = (item.name ?? "").trim().toLowerCase();
+    if (!key) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Build a Plugin → Skill/MCP provenance graph from already-fetched Extensions
+ * data (plugins, skills, MCP servers). Pure and read-only; attribution is by
+ * file-path containment under each plugin's install directory.
+ */
+export function buildPluginComponentGraph(
+  plugins: PluginLike[],
+  skills: SkillLike[],
+  servers: McpLike[],
+): PluginComponentGraph {
+  const pluginDirs = plugins
+    .map((plugin) => ({ plugin, dir: normalizeDirPath(plugin.path) }))
+    .filter((entry) => entry.dir.length > 0);
+
+  const findOwner = (path: string | null | undefined): PluginLike | null => {
+    if (!path) return null;
+    let best: { plugin: PluginLike; dir: string } | null = null;
+    for (const cand of pluginDirs) {
+      if (pathIsUnderDir(path, cand.dir) && (!best || cand.dir.length > best.dir.length)) {
+        best = cand;
+      }
+    }
+    return best?.plugin ?? null;
+  };
+
+  const skillNameCounts = countByName(skills);
+  const mcpNameCounts = countByName(servers);
+  const attributedCountByPlugin = new Map<string, number>();
+  const components: GraphComponentNode[] = [];
+  const edges: GraphEdge[] = [];
+  let unattributedSkills = 0;
+  let unattributedMcp = 0;
+
+  skills.forEach((skill, idx) => {
+    const owner = findOwner(skill.path);
+    if (!owner) {
+      unattributedSkills++;
+      return;
+    }
+    const pluginId = `plugin:${pluginRowKey(owner)}`;
+    const conflict = (skillNameCounts.get(skill.name.trim().toLowerCase()) ?? 0) > 1;
+    const id = `skill:${idx}:${skill.name}`;
+    components.push({
+      id,
+      kind: "skill",
+      name: skill.name,
+      meta: skillMetaLine(skill),
+      conflict,
+      ownerPluginId: pluginId,
+    });
+    edges.push({ from: pluginId, to: id });
+    attributedCountByPlugin.set(pluginId, (attributedCountByPlugin.get(pluginId) ?? 0) + 1);
+  });
+
+  servers.forEach((server, idx) => {
+    const owner = findOwner(server.target);
+    if (!owner) {
+      unattributedMcp++;
+      return;
+    }
+    const pluginId = `plugin:${pluginRowKey(owner)}`;
+    const conflict = (mcpNameCounts.get(server.name.trim().toLowerCase()) ?? 0) > 1;
+    const id = `mcp:${idx}:${server.name}`;
+    components.push({
+      id,
+      kind: "mcp",
+      name: server.name,
+      meta: mcpMetaLine(server),
+      conflict,
+      ownerPluginId: pluginId,
+    });
+    edges.push({ from: pluginId, to: id });
+    attributedCountByPlugin.set(pluginId, (attributedCountByPlugin.get(pluginId) ?? 0) + 1);
+  });
+
+  const pluginNodes: GraphPluginNode[] = plugins.map((plugin) => {
+    const pluginId = `plugin:${pluginRowKey(plugin)}`;
+    return {
+      id: pluginId,
+      kind: "plugin",
+      name: plugin.name,
+      version: plugin.version,
+      enabled: plugin.enabled !== false,
+      scope: plugin.scope,
+      attributedCount: attributedCountByPlugin.get(pluginId) ?? 0,
+      providesLine: pluginProvidesLine(plugin),
+    };
+  });
+
+  const isLarge =
+    pluginNodes.length + components.length > PLUGIN_GRAPH_LARGE_THRESHOLD;
+
+  return {
+    plugins: pluginNodes,
+    components,
+    edges,
+    unattributedSkills,
+    unattributedMcp,
+    isLarge,
+  };
+}

@@ -13017,6 +13017,224 @@ div.composer__input:empty::before {
   opacity: 0.8;
 }
 
+/* ── Plugin component graph (Extensions → Plugins → Component graph) ──── */
+
+.ext-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ext-graph__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+.ext-graph__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ext-graph__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.ext-graph__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ext-graph__swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  font-style: normal;
+}
+
+.ext-graph__swatch--plugin {
+  background: color-mix(in srgb, var(--accent, #6b8cff) 65%, transparent);
+}
+
+.ext-graph__swatch--skill {
+  background: var(--success, #3ecf8e);
+}
+
+.ext-graph__swatch--mcp {
+  background: var(--text-tertiary);
+}
+
+.ext-graph__swatch--conflict {
+  background: var(--danger);
+}
+
+.ext-graph__view-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.ext-graph__view-toggle .ext-plugin-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ext-graph__canvas-wrap {
+  position: relative;
+}
+
+.ext-graph__zoom-controls {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.ext-graph__canvas {
+  width: 100%;
+  max-height: 420px;
+  overflow: auto;
+  background: var(--bg-secondary, var(--bg-hover));
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.ext-graph__svg {
+  display: block;
+}
+
+.ext-graph__node {
+  fill: var(--bg-hover);
+  stroke: var(--border-subtle);
+  stroke-width: 1.25;
+}
+
+.ext-graph__node--plugin {
+  stroke: color-mix(in srgb, var(--accent, #6b8cff) 55%, var(--border-subtle));
+}
+
+.ext-graph__node--disabled {
+  opacity: 0.55;
+}
+
+.ext-graph__node--skill {
+  stroke: color-mix(in srgb, var(--success, #3ecf8e) 55%, var(--border-subtle));
+}
+
+.ext-graph__node--mcp {
+  stroke: var(--border-subtle);
+}
+
+.ext-graph__node--conflict {
+  stroke: var(--danger);
+  stroke-width: 1.75;
+}
+
+.ext-graph__node-group {
+  cursor: pointer;
+}
+
+.ext-graph__node-title {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--text-primary, #fff);
+  pointer-events: none;
+}
+
+.ext-graph__node-sub {
+  font-size: 10.5px;
+  fill: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.ext-graph__edge {
+  fill: none;
+  stroke: var(--border-subtle);
+  stroke-width: 1.25;
+}
+
+.ext-graph__edge--conflict {
+  stroke: var(--danger);
+}
+
+.ext-graph__arrowhead {
+  fill: var(--border-subtle);
+}
+
+.ext-graph__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ext-graph__list-item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ext-graph__list-item:last-child {
+  border-bottom: none;
+}
+
+.ext-graph__list-plugin {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+}
+
+.ext-graph__list-plugin:disabled {
+  cursor: default;
+  color: var(--text-secondary);
+}
+
+.ext-graph__list-empty {
+  margin: 4px 0 0;
+}
+
+.ext-graph__list-components {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.ext-graph__list-components .ext-badge {
+  margin-right: 6px;
+}
+
+.ext-graph__list-conflict {
+  color: var(--danger);
+}
+
+.ext-graph__footnotes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 
 /* ── Project inspect (Settings → Runtime) ───────────────────────────────── */
 

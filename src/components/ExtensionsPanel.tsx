@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
+import { PluginDependencyGraph } from "@/components/PluginDependencyGraph";
 import {
   IconExternalLink,
   IconFolder,
@@ -16,6 +17,7 @@ import {
   IconRefresh,
   IconSkills,
   IconTrash,
+  IconTunnel,
 } from "@/components/icons";
 import {
   filterPluginsByLoadState,
@@ -81,6 +83,7 @@ export function ExtensionsPanel({
   /** Grok Build Plugins tab filter: all | enabled | disabled */
   const [pluginFilter, setPluginFilter] = useState<PluginFilter>("all");
   const [installSource, setInstallSource] = useState("");
+  const [graphOpen, setGraphOpen] = useState(false);
 
   // Marketplace catalog
   const [mpPlugins, setMpPlugins] = useState<api.MarketplacePluginDto[]>([]);
@@ -711,6 +714,16 @@ export function ExtensionsPanel({
           <button
             type="button"
             className="btn btn--ghost ext-bulk-btn"
+            onClick={() => setGraphOpen(true)}
+          >
+            <IconTunnel size={14} />
+            <span>{tr("ext.graph.button")}</span>
+          </button>
+        ) : null}
+        {!loading && plugins.length > 0 ? (
+          <button
+            type="button"
+            className="btn btn--ghost ext-bulk-btn"
             disabled={!!actionBusy || !!busyKey || cliMissing}
             onClick={() => updateAllPlugins()}
           >
@@ -1225,6 +1238,26 @@ export function ExtensionsPanel({
         ) : (
           <pre className="ext-details-pre">{detailsBody}</pre>
         )}
+      </GlassModal>
+
+      <GlassModal
+        open={graphOpen}
+        onClose={() => setGraphOpen(false)}
+        title={tr("ext.graph.title")}
+        size="lg"
+        closeLabel={tr("common.close")}
+        wrapBody
+      >
+        <PluginDependencyGraph
+          locale={locale}
+          plugins={plugins}
+          skills={skills}
+          servers={servers}
+          onOpenPlugin={(p) => {
+            setGraphOpen(false);
+            void showDetails(p as api.PluginDto);
+          }}
+        />
       </GlassModal>
     </div>
   );

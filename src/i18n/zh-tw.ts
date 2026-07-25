@@ -1251,6 +1251,28 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.plugins.updating": "正在更新…",
   "ext.plugins.note":
     "與 Grok Build 共用同一清單（`grok plugin list`）。安裝/更新/啟用/停用走 CLI；啟用狀態寫入 `~/.grok/config.toml`。變更後 agent soft-respawn，下一輪對話重新載入外掛。",
+  "ext.graph.button": "元件關係圖",
+  "ext.graph.title": "外掛元件關係圖",
+  "ext.graph.hint":
+    "展示每個已安裝外掛提供了哪些技能與 MCP 伺服器，依檔案是否位於該外掛安裝目錄下判定。僅供檢視。",
+  "ext.graph.empty": "目前沒有已安裝的外掛可繪製。",
+  "ext.graph.viewGraph": "關係圖",
+  "ext.graph.viewList": "清單",
+  "ext.graph.legendPlugin": "外掛",
+  "ext.graph.legendSkill": "技能",
+  "ext.graph.legendMcp": "MCP 伺服器",
+  "ext.graph.legendConflict": "名稱衝突",
+  "ext.graph.noComponents": "未辨識出此外掛提供的技能或 MCP 伺服器。",
+  "ext.graph.unattributedSkills":
+    "有 {count} 個技能未歸屬於任何外掛（使用者/專案範圍）。",
+  "ext.graph.unattributedMcp":
+    "有 {count} 個 MCP 伺服器未歸屬於任何外掛（使用者/專案範圍）。",
+  "ext.graph.large": "關係圖過大（{count} 個節點）— 已切換為簡化清單檢視。",
+  "ext.graph.zoomIn": "放大",
+  "ext.graph.zoomOut": "縮小",
+  "ext.graph.zoomReset": "縮放至適應",
+  "ext.graph.conflictNote": "同名項目同時只能有一個生效。",
+  "ext.graph.openDetails": "查看外掛詳情",
   "ext.skills.title": "技能",
   "ext.skills.loading": "正在載入技能…",
   "ext.skills.empty": "未發現技能",
