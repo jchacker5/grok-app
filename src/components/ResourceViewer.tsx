@@ -46,6 +46,7 @@ import { PlanReviewPanel } from "@/components/PlanReviewPanel";
 import type { PlanReviewState } from "@/lib/planBody";
 import { OfficeDocumentPreview } from "@/components/OfficeDocumentPreview";
 import { CodePreview } from "@/components/CodePreview";
+import { DiffPanel } from "@/components/DiffPanel";
 import { isOfficeKind } from "@/lib/filePreviewSrc";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { Tip } from "@/components/ui/tooltip";
@@ -59,6 +60,8 @@ import {
   pathRelativeToProject,
   type SessionFileChange,
 } from "@/lib/sessionChanges";
+import { parseUnifiedDiff } from "@/lib/diffModel";
+import type { DiffComment, DiffCommentAnchor } from "@/lib/reviewComments";
 import {
   collectSessionTasks,
   countRunningTasks,
@@ -153,6 +156,13 @@ export interface ResourceViewerProps {
   onElementPicked?: (info: api.PickedElementInfo, sourceUrl: string) => void;
   /** Fired with base64 PNG bytes after a resource-pane screenshot capture. */
   onScreenshot?: (pngBase64: string, sourceUrl: string) => void;
+  /**
+   * Pending inline diff review comments for the active session (Changes tab).
+   * In-memory only — owned by App.tsx, not disk-persisted.
+   */
+  reviewComments?: DiffComment[];
+  onAddReviewComment?: (anchor: DiffCommentAnchor, body: string) => void;
+  onRemoveReviewComment?: (id: string) => void;
 }
 
 type SideMode = "files" | "changes" | "plan" | "tasks";
@@ -273,6 +283,9 @@ export function ResourceViewer({
   onDismissPlan,
   onElementPicked,
   onScreenshot,
+  reviewComments = [],
+  onAddReviewComment,
+  onRemoveReviewComment,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [root, setRoot] = useState<TreeNode[]>([]);
@@ -1651,6 +1664,17 @@ export function ResourceViewer({
     [tr],
   );
 
+  const diffModel = useMemo(() => {
+    if (!diffView?.unified) return null;
+    return parseUnifiedDiff(diffView.unified, diffView.path);
+  }, [diffView?.unified, diffView?.path]);
+
+  const diffComments = useMemo(() => {
+    if (!diffView?.path) return [];
+    const n = normalizePath(diffView.path);
+    return reviewComments.filter((c) => normalizePath(c.path) === n);
+  }, [reviewComments, diffView?.path]);
+
   const previewBody = useMemo(() => {
     // Session change diff takes over the preview when selected in Changes mode.
     if (sideMode === "changes" && diffView) {
@@ -1659,7 +1683,7 @@ export function ResourceViewer({
           <div className="rp-preview__msg">{tr("changes.loadingDiff")}</div>
         );
       }
-      if (diffView.unified) {
+      if (diffView.unified && diffModel) {
         const srcLabel =
           diffView.source === "git"
             ? tr("changes.sourceGit")
@@ -1669,12 +1693,29 @@ export function ResourceViewer({
                 ? tr("changes.sourcePayload")
                 : null;
         return (
-          <CodePreview
-            code={diffView.unified}
-            fileName={`${diffView.name}.diff`}
-            language="diff"
-            footer={srcLabel}
-          />
+          <div className="rp-diff-panel-host">
+            {(srcLabel || diffComments.length > 0) && (
+              <div className="rp-diff-panel-meta">
+                {srcLabel ? <span>{srcLabel}</span> : null}
+                {diffComments.length > 0 ? (
+                  <span className="rp-diff-panel-meta__pending">
+                    {tr("changes.review.pendingBadge", {
+                      n: String(diffComments.length),
+                    })}
+                    {" · "}
+                    {tr("changes.review.includedInNextTurn")}
+                  </span>
+                ) : null}
+              </div>
+            )}
+            <DiffPanel
+              model={diffModel}
+              comments={diffComments}
+              onAddComment={(anchor, body) => onAddReviewComment?.(anchor, body)}
+              onRemoveComment={(id) => onRemoveReviewComment?.(id)}
+              tr={tr}
+            />
+          </div>
         );
       }
       if (diffView.afterOnly) {
@@ -1931,6 +1972,10 @@ export function ResourceViewer({
     locale,
     sideMode,
     diffView,
+    diffModel,
+    diffComments,
+    onAddReviewComment,
+    onRemoveReviewComment,
     openChangeInEditor,
     revealChangePath,
     copyChangePath,

@@ -233,6 +233,13 @@ import {
   sessionChangesFromMessages,
   type SessionFileChange,
 } from "@/lib/sessionChanges";
+import {
+  addComment as addReviewCommentPure,
+  prependReviewComments,
+  removeComment as removeReviewCommentPure,
+  type DiffComment,
+  type DiffCommentAnchor,
+} from "@/lib/reviewComments";
 import { ConversationThread } from "@/components/lobe-chat";
 import {
   preferPermissionFocus,
@@ -326,6 +333,9 @@ type AppDialog =
     }
   | null;
 
+/** Stable empty array ref — avoids re-render churn when a session has no pending review comments. */
+const EMPTY_REVIEW_COMMENTS: DiffComment[] = [];
+
 interface PlanState {
   title: string;
   body: string;
@@ -358,6 +368,14 @@ export default function App() {
    */
   const [sessionChangesById, setSessionChangesById] = useState<
     Record<string, SessionFileChange[]>
+  >({});
+  /**
+   * Pending inline diff review comments (Changes panel), keyed by session id.
+   * In-memory only for v1 — not disk-persisted, cleared on restart and when
+   * switching sessions (a fresh session simply has no bucket yet).
+   */
+  const [reviewCommentsById, setReviewCommentsById] = useState<
+    Record<string, DiffComment[]>
   >({});
   /** Composer stored form (may include [[skill:name]] tokens). */
   const [draft, setDraft] = useState("");
@@ -3489,6 +3507,15 @@ export default function App() {
 
     const agentBody = serializeForAgent(segments, { goalMode: useGoal });
     let agentText = buildAgentPrompt(agentBody, att);
+    // Pending inline diff review comments (Changes panel) — bundled into this
+    // turn as a silent prefix (same technique as automationSetup.ts), then
+    // cleared below once the send actually succeeds.
+    const reviewCommentsKey = (sendTargetId ?? session.sessionId) || "";
+    const includedReviewComments =
+      reviewCommentsById[reviewCommentsKey] ?? EMPTY_REVIEW_COMMENTS;
+    if (includedReviewComments.length > 0) {
+      agentText = prependReviewComments(agentText, includedReviewComments);
+    }
     const scheduleIntent = looksLikeScheduleIntent(agentText);
     const inAutomationSetup =
       automationSetupDraftRef.current ||
@@ -3668,6 +3695,19 @@ export default function App() {
       // real session. If this threw, claim requeues under `__draft__` intact.
       if (!sendTargetId) {
         sendQueue.migrateDraft(sessionId);
+      }
+      // Drop exactly the comments bundled into this turn (not any added
+      // concurrently while the send was in flight).
+      if (includedReviewComments.length > 0) {
+        setReviewCommentsById((prev) => {
+          const cur = prev[reviewCommentsKey];
+          if (!cur?.length) return prev;
+          const includedIds = new Set(includedReviewComments.map((c) => c.id));
+          return {
+            ...prev,
+            [reviewCommentsKey]: cur.filter((c) => !includedIds.has(c.id)),
+          };
+        });
       }
       if (shouldAutoTitle && api.isTauri()) {
         void api
@@ -4555,6 +4595,34 @@ export default function App() {
       barDismissed: true,
     }));
   }, [plan.rpcId]);
+
+  /** Inline diff review comments (Changes panel) — scoped to the viewed session. */
+  const reviewCommentsSessionKey = session.sessionId || "";
+  const reviewComments =
+    reviewCommentsById[reviewCommentsSessionKey] ?? EMPTY_REVIEW_COMMENTS;
+
+  const addReviewComment = useCallback(
+    (anchor: DiffCommentAnchor, body: string) => {
+      const key = session.sessionId || "";
+      setReviewCommentsById((prev) => ({
+        ...prev,
+        [key]: addReviewCommentPure(prev[key] ?? [], anchor, body),
+      }));
+    },
+    [session.sessionId],
+  );
+
+  const removeReviewComment = useCallback(
+    (id: string) => {
+      const key = session.sessionId || "";
+      setReviewCommentsById((prev) => {
+        const cur = prev[key];
+        if (!cur?.length) return prev;
+        return { ...prev, [key]: removeReviewCommentPure(cur, id) };
+      });
+    },
+    [session.sessionId],
+  );
 
   /** Open resource pane Plan review (replaces scroll-to-card “Details”). */
   const openPlanInResource = useCallback(() => {
@@ -9023,6 +9091,9 @@ export default function App() {
               onDismissPlan={() => void dismissPlan()}
               onElementPicked={handleElementPicked}
               onScreenshot={handleResourceScreenshot}
+              reviewComments={reviewComments}
+              onAddReviewComment={addReviewComment}
+              onRemoveReviewComment={removeReviewComment}
               onClose={() =>
                 setLayout((l) => {
                   const n = { ...l, asideCollapsed: true };

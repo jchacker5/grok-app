@@ -312,6 +312,13 @@ export const zhTW: Record<MessageKey, string> = {
   "changes.pr.noBranch": "目前不在任何分支上",
   "changes.pr.openedGh": "已透過 GitHub CLI（gh）開啟 PR 頁面。",
   "changes.pr.openedBrowser": "已在瀏覽器中開啟 GitHub 比較頁面。",
+  "changes.review.addComment": "新增評論",
+  "changes.review.editComment": "編輯評論",
+  "changes.review.deleteComment": "刪除評論",
+  "changes.review.placeholder": "給 Agent 留下一則評論…",
+  "changes.review.pendingBadge": "{n} 則待傳送",
+  "changes.review.staleAnchor": "自新增以來，此評論錨定的行可能已變更",
+  "changes.review.includedInNextTurn": "將隨你的下一則訊息一併傳送給 Agent",
   "tasks.title": "任務",
   "tasks.empty": "本輪尚無 Agent 任務",
   "tasks.emptyHint":
