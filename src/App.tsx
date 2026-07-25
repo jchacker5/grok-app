@@ -175,6 +175,8 @@ import {
 } from "@/components/ComposerPlusPanel";
 import { StatusModal } from "@/components/StatusModal";
 import { McpStatusModal } from "@/components/McpStatusModal";
+import { SessionDiffModal } from "@/components/SessionDiffModal";
+import type { SessionDiffMessage } from "@/lib/sessionDiff";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -210,6 +212,7 @@ import {
   IconShield,
   IconCheck,
   IconPromptLibrary,
+  IconFileDiff,
 } from "@/components/icons";
 import { AutomationsPage } from "@/components/AutomationsPage";
 import { PromptLibraryPanel } from "@/components/PromptLibraryPanel";
@@ -431,6 +434,11 @@ export default function App() {
   const [mcpServers, setMcpServers] = useState<api.McpDto[]>([]);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [mcpLoading, setMcpLoading] = useState(false);
+  /** Session diff modal (plan 012) — session A is fixed at open time. */
+  const [sessionDiffA, setSessionDiffA] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
   const [showCompactModal, setShowCompactModal] = useState(false);
   const [compactNote, setCompactNote] = useState("");
   const [showPromptLibrary, setShowPromptLibrary] = useState(false);
@@ -6136,6 +6144,25 @@ export default function App() {
     [session.sessionId, showToast, tr],
   );
 
+  /** Fetch + normalize one session's messages for the session diff modal (plan 012). */
+  const loadSessionDiffMessages = useCallback(
+    async (id: string): Promise<SessionDiffMessage[]> => {
+      const msgs: ChatMessage[] =
+        id === session.sessionId
+          ? messages
+          : ((await api.sessionMessages(id)) as ChatMessage[]);
+      return msgs
+        .filter((m) => !m.marker && (m.content || "").trim().length > 0)
+        .map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content.trim(),
+          createdAt: m.createdAt,
+        }));
+    },
+    [session.sessionId, messages],
+  );
+
   const beginEditLastUser = useCallback(
     (msg: ChatMessage) => {
       if (msg.role !== "user") return;
@@ -9533,6 +9560,19 @@ export default function App() {
         onClose={() => setShowMcpModal(false)}
         onManage={() => navigateSettings("extensions")}
       />
+      <SessionDiffModal
+        open={!!sessionDiffA}
+        onClose={() => setSessionDiffA(null)}
+        locale={locale}
+        sessionA={sessionDiffA}
+        candidates={sessions
+          .filter((s) => s.id !== sessionDiffA?.id)
+          .map((s) => ({ id: s.id, title: s.title, projectId: s.projectId }))}
+        projectNameFor={(projectId) =>
+          projects.find((p) => p.id === projectId)?.name ?? null
+        }
+        loadMessages={loadSessionDiffMessages}
+      />
       {rewindTimeline && (
         <div
           className="overlay"
@@ -10278,6 +10318,14 @@ export default function App() {
                 icon: <IconCopy size={16} />,
                 onClick: () => {
                   void exportSessionDiagnostic(s.id);
+                },
+              },
+              {
+                id: "compare",
+                label: tr("session.compareWith"),
+                icon: <IconFileDiff size={16} />,
+                onClick: () => {
+                  setSessionDiffA({ id: s.id, title: s.title });
                 },
               },
               {
