@@ -1232,7 +1232,10 @@ pub async fn account_status(manual_cli: Option<&str>, refresh_billing: bool) -> 
     };
 
     // 371 days ≈ GitHub contribution year (matches grok-go heatmap).
-    let (heatmap, call_logs) = local_usage(371, 40);
+    // log_limit 100 (clamp max) — Account panel table scrolls; the Analytics
+    // tab aggregates model breakdown / top sessions over this same list, so
+    // a deeper window makes those stats meaningfully non-trivial.
+    let (heatmap, call_logs) = local_usage(371, 100);
 
     AccountStatus {
         profile,

@@ -57,6 +57,7 @@ import {
 import type { AccountStatus, DetectedEditor } from "@/lib/api";
 import * as api from "@/lib/api";
 import { AccountPanel } from "@/components/AccountPanel";
+import { SessionAnalyticsPanel } from "@/components/SessionAnalyticsPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
@@ -1138,9 +1139,9 @@ export function SettingsPage({
       setMicDevices(mics);
     }).catch(() => {});
   }, []);
-  const [accountTab, setAccountTab] = useState<"official" | "providers">(
-    "official",
-  );
+  const [accountTab, setAccountTab] = useState<
+    "official" | "providers" | "analytics"
+  >("official");
   const [editors, setEditors] = useState<DetectedEditor[]>([]);
   /** Selected archived session ids (settings → archived multi-select). */
   const [archivedSelected, setArchivedSelected] = useState<Set<string>>(
@@ -2195,6 +2196,18 @@ export function SettingsPage({
                 >
                   {t("settings.tabProviders")}
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={
+                    "settings-seg__btn" +
+                    (accountTab === "analytics" ? " is-on" : "")
+                  }
+                  aria-selected={accountTab === "analytics"}
+                  onClick={() => setAccountTab("analytics")}
+                >
+                  {t("settings.tabAnalytics")}
+                </button>
               </div>
               {accountTab === "official" ? (
                 <p className="settings-account-tabs__hint">
@@ -2213,6 +2226,32 @@ export function SettingsPage({
                   )
                 }
                 onProviderActivated={onProviderActivated}
+              />
+            ) : accountTab === "analytics" ? (
+              <SessionAnalyticsPanel
+                callLogs={account?.callLogs ?? []}
+                heatmap={account?.heatmap ?? []}
+                locale={locale}
+                labels={{
+                  overview: t("account.analytics.overview"),
+                  perSession: t("account.analytics.perSession"),
+                  totalSessions: t("account.analytics.totalSessions"),
+                  totalTurns: t("account.analytics.totalTurns"),
+                  totalToolCalls: t("account.analytics.totalToolCalls"),
+                  totalTokens: t("account.analytics.totalTokens"),
+                  avgDuration: t("account.analytics.avgDuration"),
+                  modelBreakdown: t("account.analytics.modelBreakdown"),
+                  dailyActivity: t("account.analytics.dailyActivity"),
+                  topSessions: t("account.analytics.topSessions"),
+                  selectSession: t("account.analytics.selectSession"),
+                  sessionTurns: t("account.analytics.sessionTurns"),
+                  sessionToolCalls: t("account.analytics.sessionToolCalls"),
+                  sessionTokens: t("account.analytics.sessionTokens"),
+                  sessionDuration: t("account.analytics.sessionDuration"),
+                  sessionErrors: t("account.analytics.sessionErrors"),
+                  vsAverage: t("account.analytics.vsAverage"),
+                  noData: t("account.analytics.noData"),
+                }}
               />
             ) : (
           <AccountPanel

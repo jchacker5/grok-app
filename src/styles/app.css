@@ -3544,6 +3544,190 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   white-space: nowrap;
 }
 
+/* Session analytics (Settings → Account → Analytics tab) */
+.account-analytics {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.account-analytics__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.analytics-summary {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.analytics-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg, 10px);
+  padding: 14px 10px;
+  text-align: center;
+  min-width: 0;
+}
+
+.analytics-card__value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-card__label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.analytics-card__trend {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-card__trend.is-above {
+  color: var(--heatmap-3, #30a14e);
+}
+
+.analytics-card__trend.is-below {
+  color: var(--text-tertiary);
+}
+
+.analytics-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analytics-model-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) 2fr 28px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.analytics-model-row__name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-model-row__count {
+  color: var(--text-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-bar-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+.analytics-bar-track__fill {
+  height: 100%;
+  min-width: 2px;
+  border-radius: 4px 0 0 4px;
+  background: var(--heatmap-3, #30a14e);
+}
+
+.analytics-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 100px;
+}
+
+.analytics-bar-chart__col {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+
+.analytics-bar {
+  width: 100%;
+  background: var(--heatmap-3, #30a14e);
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+}
+
+.analytics-top-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.analytics-top-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1.6fr) minmax(70px, 1fr) 64px 72px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.analytics-top-row:last-child {
+  border-bottom: none;
+}
+
+.analytics-top-row__title {
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-top-row__mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.analytics-select select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .analytics-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 720px) {
   .account-hero__head {
     flex-wrap: wrap;
