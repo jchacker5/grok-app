@@ -180,6 +180,11 @@ pub struct AppSettings {
     /// Keep delegated agent sessions running after ending a live voice chat.
     #[serde(default = "default_true")]
     pub voice_keep_agents_on_end: bool,
+    /// Show native OS notifications (turn done, background permission requests).
+    /// Default true; the OS-level permission prompt is a separate gate handled
+    /// by `tauri-plugin-notification` / the browser `Notification` API fallback.
+    #[serde(default = "default_true")]
+    pub notifications_enabled: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -237,6 +242,7 @@ impl Default for AppSettings {
             voice_id: default_voice_id(),
             voice_dictation_auto_send: false,
             voice_keep_agents_on_end: true,
+            notifications_enabled: true,
         }
     }
 }
@@ -1476,6 +1482,7 @@ mod tests {
         assert_eq!(s.agent_idle_minutes, 30);
         assert_eq!(s.stream_stall_seconds, 120);
         assert_eq!(s.sandbox_profile, "off");
+        assert!(s.notifications_enabled);
     }
 
     #[test]
@@ -1495,6 +1502,44 @@ mod tests {
         }"#;
         let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
         assert_eq!(s.sandbox_profile, "off");
+    }
+
+    #[test]
+    fn notifications_enabled_defaults_true_when_missing_from_json() {
+        // Old settings files without the field must deserialize to enabled (true).
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "en",
+            "sessionDataMode": "independent",
+            "manualCliPath": null,
+            "permissionPolicy": "ask",
+            "modelId": null,
+            "effort": "medium",
+            "mode": "agent",
+            "onboardingDone": true,
+            "setupSkipped": false
+        }"#;
+        let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
+        assert!(s.notifications_enabled);
+    }
+
+    #[test]
+    fn notifications_enabled_roundtrips_false() {
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "en",
+            "sessionDataMode": "independent",
+            "manualCliPath": null,
+            "permissionPolicy": "ask",
+            "modelId": null,
+            "effort": "medium",
+            "mode": "agent",
+            "onboardingDone": true,
+            "setupSkipped": false,
+            "notificationsEnabled": false
+        }"#;
+        let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
+        assert!(!s.notifications_enabled);
     }
 
     fn sample_session(id: &str, pinned: bool, updated: DateTime<Utc>) -> SessionMeta {

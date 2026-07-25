@@ -11,6 +11,7 @@ import {
   IconArrowBackUp as TbArrowBackUp,
   IconArrowLeft as TbArrowLeft,
   IconArrowsMinimize as TbArrowsMinimize,
+  IconBell as TbBell,
   IconBolt as TbBolt,
   IconGitBranch as TbGitBranch,
   IconBox as TbBox,
@@ -276,6 +277,8 @@ export const IconArrowsMinimize = wrap(TbArrowsMinimize);
 export const IconCircleDashed = wrap(TbCircleDashed);
 export const IconPlug = wrap(TbPlug);
 export const IconActivity = wrap(TbActivity);
+/** Desktop notification toggle (Settings). */
+export const IconBell = wrap(TbBell);
 export const IconSparkles = wrap(TbSparkles);
 export const IconBox = wrap(TbBox);
 export const IconPuzzle = wrap(TbPuzzle);

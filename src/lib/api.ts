@@ -793,6 +793,11 @@ export interface AppSettings {
   voiceDictationAutoSend?: boolean;
   /** Keep delegated agents running when live voice ends. */
   voiceKeepAgentsOnEnd?: boolean;
+  /**
+   * Show native OS notifications (turn done, background permission requests).
+   * Default true. Separate from the OS-level notification permission grant.
+   */
+  notificationsEnabled?: boolean;
 }
 
 export interface VoiceSessionState {

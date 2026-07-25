@@ -28,6 +28,7 @@
     "core:webview:allow-webview-position",
     "core:webview:allow-webview-size",
     "core:webview:allow-get-all-webviews",
-    "store:default"
+    "store:default",
+    "notification:allow-is-permission-granted"
   ]
 }

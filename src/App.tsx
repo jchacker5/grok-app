@@ -739,6 +739,9 @@ export default function App() {
   const [voiceId, setVoiceId] = useState("eve");
   const [voiceDictationAutoSend, setVoiceDictationAutoSend] = useState(false);
   const [voiceKeepAgentsOnEnd, setVoiceKeepAgentsOnEnd] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const notificationsEnabledRef = useRef(notificationsEnabled);
+  notificationsEnabledRef.current = notificationsEnabled;
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -976,6 +979,7 @@ export default function App() {
       setVoiceId((settings.voiceId || "eve").trim() || "eve");
       setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
       setVoiceKeepAgentsOnEnd(settings.voiceKeepAgentsOnEnd !== false);
+      setNotificationsEnabled(settings.notificationsEnabled !== false);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -1251,8 +1255,8 @@ export default function App() {
                   }
                   return next;
                 });
-                if (s.state === "ready") {
-                  showDesktopNotification({
+                if (s.state === "ready" && notificationsEnabledRef.current) {
+                  void showDesktopNotification({
                     title: trRef.current("notify.turnDoneTitle"),
                     body: trRef.current("notify.turnDoneBody"),
                     tag: `turn-${s.sessionId || "x"}`,
@@ -1605,21 +1609,25 @@ export default function App() {
               // Multi-session stream: another chat needs approval — nudge user.
               setToast(trRef.current("session.backgroundPermission"));
               window.setTimeout(() => setToast(null), 4200);
-              showDesktopNotification({
-                title: trRef.current("notify.permissionTitle"),
-                body: trRef.current("session.backgroundPermission"),
-                tag: `perm-bg-${p.rpcId}`,
-                force: true,
-              });
+              if (notificationsEnabledRef.current) {
+                void showDesktopNotification({
+                  title: trRef.current("notify.permissionTitle"),
+                  body: trRef.current("session.backgroundPermission"),
+                  tag: `perm-bg-${p.rpcId}`,
+                  force: true,
+                });
+              }
               return;
             }
             setPerm(p);
-            showDesktopNotification({
-              title: trRef.current("notify.permissionTitle"),
-              body: trRef.current("notify.permissionBody"),
-              tag: `perm-${p.rpcId}`,
-              force: true,
-            });
+            if (notificationsEnabledRef.current) {
+              void showDesktopNotification({
+                title: trRef.current("notify.permissionTitle"),
+                body: trRef.current("notify.permissionBody"),
+                tag: `perm-${p.rpcId}`,
+                force: true,
+              });
+            }
           }),
         );
         await track(
@@ -6388,6 +6396,13 @@ export default function App() {
             setVoiceKeepAgentsOnEnd(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, voiceKeepAgentsOnEnd: v }),
+            );
+          }}
+          notificationsEnabled={notificationsEnabled}
+          onNotificationsEnabled={(v) => {
+            setNotificationsEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, notificationsEnabled: v }),
             );
           }}
           cliInfo={cliInfo}
