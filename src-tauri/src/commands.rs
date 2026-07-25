@@ -654,69 +654,75 @@ fn is_blank_capture(width: u32, height: u32, rgba: &[u8]) -> bool {
     uniform && avg < 4.0
 }
 
+/// Blocking: capture the resource-browser webview's current on-screen pixels
+/// as raw RGBA. Shared by the one-shot screenshot command and the recording
+/// loop (Stage 4) so both use the exact same geometry/monitor-resolution
+/// logic. Must run off the async runtime (called via `spawn_blocking`).
+fn capture_resource_webview_rgba(app: &tauri::AppHandle) -> Result<(u32, u32, Vec<u8>), String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    let window = webview.window();
+    let outer_pos = window.outer_position().map_err(|e| e.to_string())?;
+    let scale_factor = window.scale_factor().map_err(|e| e.to_string())?;
+    let wv_pos = webview.position().map_err(|e| e.to_string())?;
+    let wv_size = webview.size().map_err(|e| e.to_string())?;
+
+    let monitors = xcap::Monitor::all().map_err(|e| format!("list monitors: {e}"))?;
+    let abs_cx = outer_pos.x as f64 + wv_pos.x as f64 + wv_size.width as f64 / 2.0;
+    let abs_cy = outer_pos.y as f64 + wv_pos.y as f64 + wv_size.height as f64 / 2.0;
+    let logical_cx = (abs_cx / scale_factor).round() as i32;
+    let logical_cy = (abs_cy / scale_factor).round() as i32;
+
+    let monitor = monitors
+        .into_iter()
+        .find(|m| {
+            let (mx, my, mw, mh) = match (m.x(), m.y(), m.width(), m.height()) {
+                (Ok(x), Ok(y), Ok(w), Ok(h)) => (x, y, w as i32, h as i32),
+                _ => return false,
+            };
+            logical_cx >= mx && logical_cx < mx + mw && logical_cy >= my && logical_cy < my + mh
+        })
+        .ok_or_else(|| "resource browser is off-screen".to_string())?;
+
+    let monitor_x = monitor.x().map_err(|e| e.to_string())?;
+    let monitor_y = monitor.y().map_err(|e| e.to_string())?;
+    let monitor_w = monitor.width().map_err(|e| e.to_string())?;
+    let monitor_h = monitor.height().map_err(|e| e.to_string())?;
+
+    let (rx, ry, rw, rh) = compute_capture_region(
+        outer_pos.x,
+        outer_pos.y,
+        wv_pos.x,
+        wv_pos.y,
+        wv_size.width,
+        wv_size.height,
+        scale_factor,
+        monitor_x,
+        monitor_y,
+        monitor_w,
+        monitor_h,
+    )?;
+
+    let image = monitor
+        .capture_region(rx, ry, rw, rh)
+        .map_err(|e| format!("capture: {e}"))?;
+    let (iw, ih) = (image.width(), image.height());
+    Ok((iw, ih, image.into_raw()))
+}
+
 /// Capture a PNG screenshot of the resource-pane embedded browser's native
 /// child webview (label `"resource-browser"`), base64-encoded. Errors with
 /// `SCREEN_RECORDING_PERMISSION_ERROR` when macOS Screen Recording
 /// permission hasn't been granted yet (detected via `is_blank_capture`).
 #[tauri::command]
 pub async fn capture_resource_webview(app: tauri::AppHandle) -> Result<String, String> {
-    use tauri::Manager;
     tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
-        let webview = app
-            .get_webview(RESOURCE_WEBVIEW_LABEL)
-            .ok_or_else(|| "resource browser is not open".to_string())?;
-        let window = webview.window();
-        let outer_pos = window.outer_position().map_err(|e| e.to_string())?;
-        let scale_factor = window.scale_factor().map_err(|e| e.to_string())?;
-        let wv_pos = webview.position().map_err(|e| e.to_string())?;
-        let wv_size = webview.size().map_err(|e| e.to_string())?;
-
-        let monitors = xcap::Monitor::all().map_err(|e| format!("list monitors: {e}"))?;
-        let abs_cx = outer_pos.x as f64 + wv_pos.x as f64 + wv_size.width as f64 / 2.0;
-        let abs_cy = outer_pos.y as f64 + wv_pos.y as f64 + wv_size.height as f64 / 2.0;
-        let logical_cx = (abs_cx / scale_factor).round() as i32;
-        let logical_cy = (abs_cy / scale_factor).round() as i32;
-
-        let monitor = monitors
-            .into_iter()
-            .find(|m| {
-                let (mx, my, mw, mh) = match (m.x(), m.y(), m.width(), m.height()) {
-                    (Ok(x), Ok(y), Ok(w), Ok(h)) => (x, y, w as i32, h as i32),
-                    _ => return false,
-                };
-                logical_cx >= mx && logical_cx < mx + mw && logical_cy >= my && logical_cy < my + mh
-            })
-            .ok_or_else(|| "resource browser is off-screen".to_string())?;
-
-        let monitor_x = monitor.x().map_err(|e| e.to_string())?;
-        let monitor_y = monitor.y().map_err(|e| e.to_string())?;
-        let monitor_w = monitor.width().map_err(|e| e.to_string())?;
-        let monitor_h = monitor.height().map_err(|e| e.to_string())?;
-
-        let (rx, ry, rw, rh) = compute_capture_region(
-            outer_pos.x,
-            outer_pos.y,
-            wv_pos.x,
-            wv_pos.y,
-            wv_size.width,
-            wv_size.height,
-            scale_factor,
-            monitor_x,
-            monitor_y,
-            monitor_w,
-            monitor_h,
-        )?;
-
-        let image = monitor
-            .capture_region(rx, ry, rw, rh)
-            .map_err(|e| format!("capture: {e}"))?;
-
-        let (iw, ih) = (image.width(), image.height());
-        let raw = image.into_raw();
+        let (iw, ih, raw) = capture_resource_webview_rgba(&app)?;
         if is_blank_capture(iw, ih, &raw) {
             return Err(SCREEN_RECORDING_PERMISSION_ERROR.to_string());
         }
-
         let png = rgba_to_png_bytes(iw as usize, ih as usize, &raw)?;
         use base64::Engine;
         Ok(base64::engine::general_purpose::STANDARD.encode(png))
@@ -799,6 +805,327 @@ mod capture_tests {
             rgba.extend_from_slice(&[v, 255 - v, v / 2, 255]);
         }
         assert!(!is_blank_capture(64, 64, &rgba));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Resource-pane recording (Live Preview Panel v2, Stage 4).
+//
+// Reuses `capture_resource_webview_rgba` (Stage 3) in a `tokio::time::interval`
+// loop, JPEG-encoding (not PNG — much smaller over IPC) and emitting each
+// frame as a `preview:recording-frame` event. The frontend draws frames onto
+// an offscreen <canvas> and records `canvas.captureStream(fps)` with
+// MediaRecorder to produce a WebM file.
+//
+// Safeguards live in the loop itself, not just the frontend:
+//   - hard auto-stop at RECORDING_MAX_FRAMES or RECORDING_MAX_SECS, whichever
+//     first;
+//   - `MissedTickBehavior::Skip` on the interval means a slow capture+encode
+//     tick (backpressure) coalesces the missed ticks instead of bursting a
+//     queue of catch-up frames — frames are dropped, never queued
+//     unboundedly.
+// ---------------------------------------------------------------------------
+
+const RECORDING_MIN_FPS: u32 = 1;
+const RECORDING_MAX_FPS: u32 = 12;
+const RECORDING_DEFAULT_FPS: u32 = 7;
+const RECORDING_MAX_FRAMES: u32 = 500;
+const RECORDING_MAX_SECS: u64 = 180;
+const RECORDING_JPEG_QUALITY: u8 = 70;
+
+/// Clamp a requested recording frame rate to the supported/safe range.
+fn clamp_recording_fps(fps: u32) -> u32 {
+    fps.clamp(RECORDING_MIN_FPS, RECORDING_MAX_FPS)
+}
+
+/// JPEG-encode raw RGBA8 pixels (dropping alpha — JPEG has none) as base64.
+/// Used per-frame in the recording loop; much smaller than PNG for the
+/// IPC-event payload at the cost of (tunable, currently fixed) lossy quality.
+fn rgba_to_jpeg_base64(width: u32, height: u32, rgba: &[u8], quality: u8) -> Result<String, String> {
+    use base64::Engine;
+    use image::codecs::jpeg::JpegEncoder;
+    use image::ImageEncoder;
+
+    let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
+    if width == 0 || height == 0 || rgba.len() < expected {
+        return Err("rgba buffer too short".into());
+    }
+    let mut rgb = Vec::with_capacity((width as usize) * (height as usize) * 3);
+    for px in rgba[..expected].chunks_exact(4) {
+        rgb.extend_from_slice(&px[..3]);
+    }
+    let mut jpeg = Vec::new();
+    JpegEncoder::new_with_quality(&mut jpeg, quality)
+        .write_image(&rgb, width, height, image::ExtendedColorType::Rgb8)
+        .map_err(|e| format!("jpeg encode: {e}"))?;
+    if jpeg.is_empty() {
+        return Err("jpeg encode produced empty buffer".into());
+    }
+    Ok(base64::engine::general_purpose::STANDARD.encode(jpeg))
+}
+
+/// Tracks in-flight recordings so `stop_resource_recording` can signal the
+/// matching loop task to stop. Managed Tauri state (`app.manage(...)`).
+pub struct RecordingRegistry {
+    active: std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::atomic::AtomicBool>>>,
+}
+
+impl RecordingRegistry {
+    pub fn new() -> Self {
+        Self {
+            active: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+}
+
+impl Default for RecordingRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordingFramePayload {
+    recording_id: String,
+    frame_index: u32,
+    width: u32,
+    height: u32,
+    jpeg_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordingStoppedPayload {
+    recording_id: String,
+    /// One of `"stopped"` (host-requested), `"max_frames"`, `"max_duration"`,
+    /// or `"capture_failed"` (e.g. the resource browser tab closed mid-recording).
+    reason: String,
+    frame_count: u32,
+}
+
+/// Start recording the resource-browser webview at `fps` (clamped to
+/// [1, 12], default 7). Spawns a background loop and returns immediately
+/// with a `recording_id`; frames arrive as `preview:recording-frame` events
+/// and a terminal `preview:recording-stopped` event marks the end (whether
+/// stopped by the host, a safeguard, or a capture failure).
+#[tauri::command]
+pub async fn start_resource_recording(
+    app: tauri::AppHandle,
+    registry: State<'_, Arc<RecordingRegistry>>,
+    fps: Option<u32>,
+) -> Result<String, String> {
+    use tauri::Manager;
+    if app.get_webview(RESOURCE_WEBVIEW_LABEL).is_none() {
+        return Err("resource browser is not open".to_string());
+    }
+    let fps = clamp_recording_fps(fps.unwrap_or(RECORDING_DEFAULT_FPS));
+    let recording_id = uuid::Uuid::new_v4().to_string();
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let mut guard = registry
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        guard.insert(recording_id.clone(), cancel.clone());
+    }
+
+    let app_task = app.clone();
+    let registry_task = registry.inner().clone();
+    let id_task = recording_id.clone();
+    tauri::async_runtime::spawn(async move {
+        run_resource_recording_loop(app_task, registry_task, id_task, cancel, fps).await;
+    });
+
+    Ok(recording_id)
+}
+
+/// Signal a running recording to stop after its current tick. The loop
+/// itself removes the registry entry and emits the terminal
+/// `preview:recording-stopped` event — this just flips the cancel flag.
+#[tauri::command]
+pub async fn stop_resource_recording(
+    registry: State<'_, Arc<RecordingRegistry>>,
+    recording_id: String,
+) -> Result<(), String> {
+    let guard = registry
+        .active
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    match guard.get(&recording_id) {
+        Some(flag) => {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }
+        None => Err("recording not found".to_string()),
+    }
+}
+
+async fn run_resource_recording_loop(
+    app: tauri::AppHandle,
+    registry: Arc<RecordingRegistry>,
+    recording_id: String,
+    cancel: Arc<std::sync::atomic::AtomicBool>,
+    fps: u32,
+) {
+    use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+
+    let period_ms = (1000 / fps.max(1)).max(1) as u64;
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(period_ms));
+    // Backpressure safeguard: if a capture+encode takes longer than one
+    // period (slow machine / large display), coalesce the missed ticks
+    // instead of bursting a queue of catch-up frames once capture catches up.
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    let started = std::time::Instant::now();
+    let mut frame_index: u32 = 0;
+    let mut reason = "stopped".to_string();
+
+    loop {
+        interval.tick().await;
+
+        if cancel.load(Ordering::Relaxed) {
+            reason = "stopped".to_string();
+            break;
+        }
+        if frame_index >= RECORDING_MAX_FRAMES {
+            reason = "max_frames".to_string();
+            break;
+        }
+        if started.elapsed().as_secs() >= RECORDING_MAX_SECS {
+            reason = "max_duration".to_string();
+            break;
+        }
+
+        let app_capture = app.clone();
+        let captured =
+            tauri::async_runtime::spawn_blocking(move || capture_resource_webview_rgba(&app_capture))
+                .await;
+        let (iw, ih, raw) = match captured {
+            Ok(Ok(v)) => v,
+            Ok(Err(_)) | Err(_) => {
+                // Resource browser closed mid-recording, or a capture
+                // failed — stop cleanly instead of spamming error events.
+                reason = "capture_failed".to_string();
+                break;
+            }
+        };
+
+        let jpeg_b64 = match rgba_to_jpeg_base64(iw, ih, &raw, RECORDING_JPEG_QUALITY) {
+            Ok(v) => v,
+            Err(_) => continue, // drop this single frame, keep recording
+        };
+
+        let payload = RecordingFramePayload {
+            recording_id: recording_id.clone(),
+            frame_index,
+            width: iw,
+            height: ih,
+            jpeg_base64: jpeg_b64,
+        };
+        let _ = app.emit("preview:recording-frame", payload);
+        frame_index += 1;
+    }
+
+    {
+        let mut guard = registry
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        guard.remove(&recording_id);
+    }
+    let _ = app.emit(
+        "preview:recording-stopped",
+        RecordingStoppedPayload {
+            recording_id,
+            reason,
+            frame_count: frame_index,
+        },
+    );
+}
+
+/// Save a finished WebM recording (base64-encoded blob from the frontend's
+/// MediaRecorder) via a native save dialog. Returns `None` if the user
+/// cancels. Deliberately does **not** reuse `save_temp_attachment` — that
+/// command caps payloads at 40 MiB, too small for a multi-minute recording,
+/// and this goes straight to a user-chosen destination file rather than the
+/// attachments dir (mirrors the `rfd::FileDialog` save pattern already used
+/// by `export_support_bundle`/`export_session_bundle` above).
+#[tauri::command]
+pub async fn save_recording(
+    bytes_base64: String,
+    suggested_name: Option<String>,
+) -> Result<Option<String>, String> {
+    use base64::Engine;
+    let raw = bytes_base64.trim();
+    let b64 = raw.split(',').last().unwrap_or(raw).trim();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("empty recording payload".into());
+    }
+
+    let name = suggested_name
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "recording.webm".to_string());
+
+    let dest = tauri::async_runtime::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_title("Save recording")
+            .set_file_name(&name)
+            .add_filter("WebM video", &["webm"])
+            .save_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let Some(dest) = dest else {
+        return Ok(None);
+    };
+    std::fs::write(&dest, &bytes).map_err(|e| format!("write recording: {e}"))?;
+    Ok(Some(dest.display().to_string()))
+}
+
+#[cfg(test)]
+mod recording_tests {
+    use super::{clamp_recording_fps, rgba_to_jpeg_base64, RECORDING_MAX_FPS, RECORDING_MIN_FPS};
+
+    #[test]
+    fn clamps_fps_within_min_max() {
+        assert_eq!(clamp_recording_fps(0), RECORDING_MIN_FPS);
+        assert_eq!(clamp_recording_fps(1), 1);
+        assert_eq!(clamp_recording_fps(7), 7);
+        assert_eq!(clamp_recording_fps(12), RECORDING_MAX_FPS);
+        assert_eq!(clamp_recording_fps(999), RECORDING_MAX_FPS);
+    }
+
+    #[test]
+    fn jpeg_encode_roundtrips_valid_image() {
+        let width = 16u32;
+        let height = 8u32;
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        for i in 0..(width * height) {
+            let v = (i % 256) as u8;
+            rgba.extend_from_slice(&[v, 255 - v, v / 2, 255]);
+        }
+        let b64 = rgba_to_jpeg_base64(width, height, &rgba, 70).expect("encode ok");
+        use base64::Engine;
+        let jpeg_bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .expect("valid base64");
+        // JPEG magic bytes (SOI marker).
+        assert_eq!(&jpeg_bytes[0..2], &[0xFF, 0xD8]);
+        let decoded = image::load_from_memory(&jpeg_bytes).expect("valid jpeg");
+        assert_eq!(decoded.width(), width);
+        assert_eq!(decoded.height(), height);
+    }
+
+    #[test]
+    fn jpeg_encode_rejects_short_buffer() {
+        let rgba = vec![0u8; 10]; // way too short for 16x8x4
+        assert!(rgba_to_jpeg_base64(16, 8, &rgba, 70).is_err());
     }
 }
 

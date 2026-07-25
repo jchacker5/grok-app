@@ -9761,6 +9761,26 @@ textarea::-webkit-scrollbar-thumb:active,
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
 }
 
+.embedded-browser__rec-elapsed {
+  min-width: 34px;
+  font-size: 11px;
+  color: var(--danger, #e5484d);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+/* Offscreen render target for recording frames — MediaRecorder reads its
+   captureStream(); it never needs to be visible. Kept in normal layout flow
+   (not display:none) since some engines pause canvas updates on display:none. */
+.embedded-browser__rec-canvas {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
 /* Side panel mode: Files | Changes */
 .rp-side-modes {
   display: flex;

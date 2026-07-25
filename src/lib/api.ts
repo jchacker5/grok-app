@@ -311,6 +311,51 @@ export async function captureResourceWebview() {
   return invoke<string>("capture_resource_webview");
 }
 
+/** Recording frame — payload of the `preview:recording-frame` Tauri event. */
+export interface RecordingFrameEvent {
+  recordingId: string;
+  frameIndex: number;
+  width: number;
+  height: number;
+  jpegBase64: string;
+}
+
+/** Terminal payload of the `preview:recording-stopped` Tauri event. */
+export interface RecordingStoppedEvent {
+  recordingId: string;
+  reason: "stopped" | "max_frames" | "max_duration" | "capture_failed";
+  frameCount: number;
+}
+
+/**
+ * Start recording the resource-pane embedded browser's webview at `fps`
+ * (server clamps to [1, 12], default 7). Returns a recording id immediately;
+ * frames arrive as `preview:recording-frame` events, and a terminal
+ * `preview:recording-stopped` event (host-stopped, or an in-loop safeguard —
+ * ~3 min / 500 frames hard caps) marks the end.
+ */
+export async function startResourceRecording(fps?: number) {
+  return invoke<string>("start_resource_recording", { fps: fps ?? null });
+}
+
+/** Signal a running recording to stop (the loop emits the terminal event). */
+export async function stopResourceRecording(recordingId: string) {
+  return invoke<void>("stop_resource_recording", { recordingId });
+}
+
+/**
+ * Save a finished WebM recording via a native save dialog. Returns the saved
+ * path, or `null` if the user cancels. Not routed through
+ * `saveTempAttachment` — that command caps payloads at 40 MiB, too small for
+ * a multi-minute recording.
+ */
+export async function saveRecording(bytesBase64: string, suggestedName?: string) {
+  return invoke<string | null>("save_recording", {
+    bytesBase64,
+    suggestedName: suggestedName ?? null,
+  });
+}
+
 /** GitHub Releases check (Settings → About). Does not auto-install. */
 export type AppUpdateCheck = {
   currentVersion: string;

@@ -12,6 +12,12 @@ import { useEffect, useRef, useState } from "react";
 import { isTauri } from "@/lib/api";
 import * as api from "@/lib/api";
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_DEFAULT, clampZoom } from "@/lib/embeddedBrowserZoom";
+import {
+  formatElapsedMs,
+  pickSupportedMimeType,
+  RECORDING_MIME_CANDIDATES,
+} from "@/lib/recordingFormat";
+import { blobToBase64 } from "@/lib/voiceAudio";
 import { createT, type Locale } from "@/i18n";
 import {
   IconExternalLink,
@@ -23,11 +29,15 @@ import {
   IconCrosshair,
   IconCamera,
   IconClose,
+  IconRecord,
+  IconStop,
 } from "@/components/icons";
 
 const WEBVIEW_LABEL = "resource-browser";
 /** Poll interval for the element picker's `eval_with_callback` round-trip. */
 const PICKER_POLL_MS = 200;
+/** Recording capture rate — matches the Rust loop's default/hard cap. */
+const RECORDING_FPS = 7;
 
 export interface EmbeddedBrowserProps {
   url: string;
@@ -41,6 +51,12 @@ export interface EmbeddedBrowserProps {
   /** Fired with base64 PNG bytes after a successful screenshot capture. */
   onScreenshot?: (pngBase64: string) => void;
 }
+
+type RecordingState =
+  | { phase: "idle" }
+  | { phase: "recording"; id: string; startedAt: number; frameCount: number }
+  | { phase: "finalizing"; frameCount: number; durationMs: number }
+  | { phase: "ready"; blob: Blob; frameCount: number; durationMs: number };
 
 function sanitizeLabel(s: string): string {
   return s.replace(/[^a-zA-Z0-9\-_:/]/g, "-").slice(0, 64) || "resource-browser";
@@ -224,6 +240,201 @@ export function EmbeddedBrowser({
       })
       .finally(() => setScreenshotBusy(false));
   };
+
+  // Recording: reuses the screenshot primitive in a capped-rate Rust loop
+  // (start_resource_recording/stop_resource_recording in commands.rs).
+  // Frames arrive as `preview:recording-frame` events (base64 JPEG); each is
+  // drawn onto an offscreen <canvas> whose captureStream() feeds a
+  // MediaRecorder producing a WebM blob. A terminal
+  // `preview:recording-stopped` event — host-stopped, or a Rust-side
+  // safeguard (~3 min / 500 frames hard cap) — finalizes the recorder.
+  const [recording, setRecording] = useState<RecordingState>({ phase: "idle" });
+  const recordingCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const activeRecordingIdRef = useRef<string | null>(null);
+  const recordingUnlistenRef = useRef<Array<() => void>>([]);
+  const [, forceElapsedTick] = useState(0);
+
+  // Re-render every 500ms while recording so the elapsed mm:ss display ticks.
+  useEffect(() => {
+    if (recording.phase !== "recording") return;
+    const t = window.setInterval(() => forceElapsedTick((n) => n + 1), 500);
+    return () => window.clearInterval(t);
+  }, [recording.phase]);
+
+  const teardownRecordingListeners = () => {
+    for (const un of recordingUnlistenRef.current) {
+      try {
+        un();
+      } catch {
+        /* ignore */
+      }
+    }
+    recordingUnlistenRef.current = [];
+  };
+
+  const startRecording = () => {
+    if (!isTauri() || recording.phase !== "idle") return;
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const recordingId = await api.startResourceRecording(RECORDING_FPS);
+        activeRecordingIdRef.current = recordingId;
+        recordedChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        setRecording({
+          phase: "recording",
+          id: recordingId,
+          startedAt: Date.now(),
+          frameCount: 0,
+        });
+
+        const unFrame = await listen<api.RecordingFrameEvent>(
+          "preview:recording-frame",
+          (event) => {
+            const payload = event.payload;
+            if (payload.recordingId !== activeRecordingIdRef.current) return;
+            const canvas = recordingCanvasRef.current;
+            if (!canvas) return;
+            const img = new Image();
+            img.onload = () => {
+              if (payload.recordingId !== activeRecordingIdRef.current) return;
+              if (canvas.width !== payload.width || canvas.height !== payload.height) {
+                canvas.width = payload.width;
+                canvas.height = payload.height;
+              }
+              const ctx = canvas.getContext("2d");
+              ctx?.drawImage(img, 0, 0, payload.width, payload.height);
+              // Lazily start the recorder once the canvas has its real size
+              // from the first frame (captureStream on a 0x0 canvas is
+              // useless).
+              if (!mediaRecorderRef.current) {
+                try {
+                  const stream = canvas.captureStream(RECORDING_FPS);
+                  const mimeType = pickSupportedMimeType(
+                    RECORDING_MIME_CANDIDATES,
+                    (m) => window.MediaRecorder?.isTypeSupported?.(m) ?? false,
+                  );
+                  const recorder = new MediaRecorder(stream, { mimeType });
+                  recorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) recordedChunksRef.current.push(e.data);
+                  };
+                  recorder.start(1000);
+                  mediaRecorderRef.current = recorder;
+                } catch (e) {
+                  console.error("[EmbeddedBrowser] MediaRecorder start", e);
+                }
+              }
+            };
+            img.src = "data:image/jpeg;base64," + payload.jpegBase64;
+            setRecording((prev) =>
+              prev.phase === "recording"
+                ? { ...prev, frameCount: payload.frameIndex + 1 }
+                : prev,
+            );
+          },
+        );
+
+        const unStopped = await listen<api.RecordingStoppedEvent>(
+          "preview:recording-stopped",
+          (event) => {
+            const payload = event.payload;
+            if (payload.recordingId !== activeRecordingIdRef.current) return;
+            teardownRecordingListeners();
+            activeRecordingIdRef.current = null;
+            const recorder = mediaRecorderRef.current;
+            setRecording((prev) => {
+              const durationMs = prev.phase === "recording" ? Date.now() - prev.startedAt : 0;
+              return { phase: "finalizing", frameCount: payload.frameCount, durationMs };
+            });
+            if (recorder && recorder.state !== "inactive") {
+              recorder.onstop = () => {
+                const blob = new Blob(recordedChunksRef.current, {
+                  type: recorder.mimeType || "video/webm",
+                });
+                mediaRecorderRef.current = null;
+                setRecording((prev) =>
+                  prev.phase === "finalizing"
+                    ? {
+                        phase: "ready",
+                        blob,
+                        frameCount: prev.frameCount,
+                        durationMs: prev.durationMs,
+                      }
+                    : prev,
+                );
+              };
+              recorder.stop();
+            } else {
+              // No frames were ever captured (e.g. an immediate
+              // capture_failed) — nothing to finalize.
+              setRecording({ phase: "idle" });
+            }
+          },
+        );
+
+        recordingUnlistenRef.current = [unFrame, unStopped];
+      } catch (e) {
+        console.error("[EmbeddedBrowser] startRecording", e);
+        setRecording({ phase: "idle" });
+        setRecordingNotice(tr("resources.recordFailed"));
+        window.setTimeout(() => setRecordingNotice(null), 3200);
+      }
+    })();
+  };
+
+  const stopRecording = () => {
+    const id = activeRecordingIdRef.current;
+    if (!id) return;
+    void api.stopResourceRecording(id).catch((e) => {
+      console.error("[EmbeddedBrowser] stopRecording", e);
+    });
+  };
+
+  const [recordingNotice, setRecordingNotice] = useState<string | null>(null);
+
+  const saveCurrentRecording = () => {
+    if (recording.phase !== "ready") return;
+    const { blob } = recording;
+    void (async () => {
+      try {
+        const b64 = await blobToBase64(blob);
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const path = await api.saveRecording(b64, `recording-${stamp}.webm`);
+        setRecording({ phase: "idle" });
+        if (path) {
+          setRecordingNotice(tr("resources.recordSaved"));
+          window.setTimeout(() => setRecordingNotice(null), 2200);
+        }
+      } catch (e) {
+        console.error("[EmbeddedBrowser] saveRecording", e);
+        setRecordingNotice(tr("resources.recordSaveFailed"));
+        window.setTimeout(() => setRecordingNotice(null), 3200);
+      }
+    })();
+  };
+
+  const discardCurrentRecording = () => {
+    setRecording({ phase: "idle" });
+  };
+
+  // Best-effort stop of any in-flight recording on unmount / URL change /
+  // hide. The Rust loop also auto-stops on its own safeguards regardless,
+  // so this is a UX nicety (stop promptly) rather than a safety requirement.
+  useEffect(() => {
+    return () => {
+      teardownRecordingListeners();
+      const id = activeRecordingIdRef.current;
+      if (id) void api.stopResourceRecording(id).catch(() => undefined);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const id = activeRecordingIdRef.current;
+    if (id) void api.stopResourceRecording(id).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, active]);
 
   // Layout → native webview bounds
   const syncBounds = async () => {
@@ -579,7 +790,52 @@ export function EmbeddedBrowser({
         >
           <IconCamera size={14} />
         </button>
+        {recording.phase === "recording" ? (
+          <>
+            <span className="embedded-browser__rec-elapsed">
+              {formatElapsedMs(Date.now() - recording.startedAt)}
+            </span>
+            <button
+              type="button"
+              className="chrome-btn is-active"
+              onClick={stopRecording}
+              title={tr("resources.recordStop")}
+            >
+              <IconStop size={14} />
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="chrome-btn"
+            onClick={startRecording}
+            disabled={!ready || recording.phase !== "idle"}
+            title={tr("resources.recordStart")}
+          >
+            <IconRecord size={14} />
+          </button>
+        )}
       </div>
+      <canvas ref={recordingCanvasRef} className="embedded-browser__rec-canvas" aria-hidden />
+      {recording.phase === "ready" ? (
+        <div className="embedded-browser__notice" role="status">
+          <span>
+            {tr("resources.recordSave")} — {formatElapsedMs(recording.durationMs)} ·{" "}
+            {recording.frameCount}f
+          </span>
+          <button type="button" className="chrome-btn" onClick={saveCurrentRecording}>
+            {tr("resources.recordSave")}
+          </button>
+          <button type="button" className="chrome-btn" onClick={discardCurrentRecording}>
+            {tr("resources.recordDiscard")}
+          </button>
+        </div>
+      ) : null}
+      {recordingNotice ? (
+        <div className="embedded-browser__notice" role="status">
+          <span>{recordingNotice}</span>
+        </div>
+      ) : null}
       {screenshotNotice ? (
         <div
           className={
