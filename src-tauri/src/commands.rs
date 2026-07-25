@@ -5959,6 +5959,60 @@ pub async fn git_unstage_paths(project_path: String, paths: Vec<String>) -> Resu
     Ok(())
 }
 
+/// Stage exactly one hunk by applying a caller-constructed single-hunk
+/// unidiff patch to the index only (`git apply --cached`). The frontend
+/// builds `patch` from the same parsed diff model it already renders (see
+/// `buildHunkPatch()` in `diffModel.ts`) — this deliberately avoids driving
+/// interactive `git add -p` (too complex to automate reliably); it is the
+/// "construct a patch for just that hunk" approach instead.
+///
+/// Soft requirements enforced by the caller, not here: the patch must be
+/// built from a diff that is still current (worktree unchanged since load)
+/// and from a hunk that has not already been staged — `git apply` fails
+/// clearly (non-zero exit, stderr surfaced) rather than corrupting the index
+/// when either assumption is stale.
+#[tauri::command]
+pub async fn git_stage_hunk(project_path: String, patch: String) -> Result<(), String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty project path".into());
+    }
+    git_probe_work_tree(&project)?;
+    if patch.trim().is_empty() {
+        return Err("empty patch".into());
+    }
+
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let mut child = std::process::Command::new("git")
+        .args(["-C", &project, "apply", "--cached", "--whitespace=nowarn", "-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| "failed to open git apply stdin".to_string())?;
+        stdin
+            .write_all(patch.as_bytes())
+            .map_err(|e| e.to_string())?;
+    }
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if err.is_empty() {
+            "git apply --cached failed — the hunk may be stale or already staged".into()
+        } else {
+            err.chars().take(400).collect()
+        });
+    }
+    Ok(())
+}
+
 /// Result of a successful commit (Commit / Commit & Push actions).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

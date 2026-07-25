@@ -46,11 +46,17 @@ import { cn } from "@/lib/utils";
 import type { createT } from "@/i18n";
 import {
   findLineByStableId,
+  type DiffHunk,
   type DiffLine,
   type ParsedDiff,
 } from "@/lib/diffModel";
 import type { DiffComment, DiffCommentAnchor } from "@/lib/reviewComments";
-import { IconClose, IconMessageSquare, IconMessageSquarePlus } from "@/components/icons";
+import {
+  IconClose,
+  IconMessageSquare,
+  IconMessageSquarePlus,
+  IconPlus,
+} from "@/components/icons";
 
 // Same theme stylesheet as CodePreview (Atom One Dark / Light, scoped by
 // `.rp-code--dark` / `.rp-code--light`) so hljs token colors match exactly.
@@ -141,6 +147,14 @@ export interface DiffPanelProps {
   /** Bound translator (createT(locale)) — copy stays in i18n/messages.ts. */
   tr: ReturnType<typeof createT>;
   className?: string;
+  /**
+   * Workspace git diffs only — stage a single hunk (`git apply --cached`
+   * on a constructed patch; see `buildHunkPatch()` in `lib/diffModel.ts`).
+   * Omitted entirely for session-change diffs, which are not git-backed.
+   */
+  onStageHunk?: (hunk: DiffHunk) => void;
+  /** Hunk header currently mid-stage (disables its button + shows a spinner label). */
+  stagingHunkHeader?: string | null;
 }
 
 export function DiffPanel({
@@ -150,6 +164,8 @@ export function DiffPanel({
   onRemoveComment,
   tr,
   className,
+  onStageHunk,
+  stagingHunkHeader,
 }: DiffPanelProps) {
   ensureLangs();
 
@@ -252,7 +268,22 @@ export function DiffPanel({
     >
       {model.hunks.map((hunk) => (
         <div className="diff-panel__hunk" key={hunk.header + hunk.oldStart}>
-          <div className="diff-panel__hunk-header">{hunk.header}</div>
+          <div className="diff-panel__hunk-header">
+            <span className="diff-panel__hunk-header-text">{hunk.header}</span>
+            {onStageHunk ? (
+              <button
+                type="button"
+                className="diff-panel__btn diff-panel__hunk-stage-btn"
+                disabled={stagingHunkHeader === hunk.header}
+                onClick={() => onStageHunk(hunk)}
+              >
+                <IconPlus size={12} />
+                {stagingHunkHeader === hunk.header
+                  ? tr("changes.stage.stagingHunk")
+                  : tr("changes.stage.stageHunk")}
+              </button>
+            ) : null}
+          </div>
           {hunk.lines.map((line) => {
             const html = highlightContent(line.content, lang);
             const lineComments = commentsByStableId.get(line.stableId) ?? [];

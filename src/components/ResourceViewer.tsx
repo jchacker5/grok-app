@@ -60,7 +60,7 @@ import {
   pathRelativeToProject,
   type SessionFileChange,
 } from "@/lib/sessionChanges";
-import { parseUnifiedDiff } from "@/lib/diffModel";
+import { buildHunkPatch, parseUnifiedDiff, type DiffHunk } from "@/lib/diffModel";
 import type { DiffComment, DiffCommentAnchor } from "@/lib/reviewComments";
 import {
   collectSessionTasks,
@@ -331,6 +331,8 @@ export function ResourceViewer({
   const [stageBusyPaths, setStageBusyPaths] = useState<Set<string>>(new Set());
   const [stageOpBusy, setStageOpBusy] = useState(false);
   const [stageError, setStageError] = useState<string | null>(null);
+  /** Hunk header currently being staged (see `stageHunk` below); null when idle. */
+  const [stagingHunkHeader, setStagingHunkHeader] = useState<string | null>(null);
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [prBusy, setPrBusy] = useState(false);
   const [prError, setPrError] = useState<string | null>(null);
@@ -943,6 +945,41 @@ export function ResourceViewer({
       });
     },
     [projectPath],
+  );
+
+  /**
+   * Stage one hunk of the currently-viewed workspace diff (`git apply
+   * --cached` on a patch built client-side — see `buildHunkPatch()` in
+   * `lib/diffModel.ts`). Only wired up when `hunkStageEntry` (below) is
+   * non-null, i.e. the file has nothing staged yet, so the visible
+   * "diff vs HEAD" hunks are exactly the unstaged hunks and staging one
+   * cannot collide with already-staged content.
+   */
+  const stageHunk = useCallback(
+    async (entry: WorkspaceGitFile, hunk: DiffHunk) => {
+      if (!projectPath || !diffView?.unified) return;
+      const patch = buildHunkPatch(diffView.unified, hunk);
+      if (!patch) {
+        setStageError(tr("changes.stage.stageHunkFailed", { error: "unrecognized diff format" }));
+        return;
+      }
+      setStagingHunkHeader(hunk.header);
+      setStageError(null);
+      try {
+        await api.gitStageHunk(projectPath, patch);
+        await refreshWorkspaceStatus();
+        await loadWorkspaceDiff(entry);
+      } catch (e) {
+        setStageError(
+          tr("changes.stage.stageHunkFailed", {
+            error: e instanceof Error ? e.message : String(e),
+          }),
+        );
+      } finally {
+        setStagingHunkHeader(null);
+      }
+    },
+    [projectPath, diffView, refreshWorkspaceStatus, loadWorkspaceDiff, tr],
   );
 
   const openChangeInEditor = useCallback(async (path: string) => {
@@ -1675,6 +1712,39 @@ export function ResourceViewer({
     return reviewComments.filter((c) => normalizePath(c.path) === n);
   }, [reviewComments, diffView?.path]);
 
+  /**
+   * Workspace entry backing the current diff, when hunk-level staging is
+   * safe to offer: the diff must come from real `git diff HEAD` (source
+   * "git") AND nothing may be staged for this file yet (`indexStatus === " "`).
+   * In that state "diff vs HEAD" is exactly the unstaged diff, so applying a
+   * single-hunk patch with `git apply --cached` can never collide with
+   * already-staged content. Once any hunk is staged the file's indexStatus
+   * flips and this memo returns null — the remaining hunks are still staged
+   * via the existing "Stage file" checkbox instead (see `toggleStage` above).
+   */
+  const hunkStageEntry = useMemo(() => {
+    if (selectedChangeSource !== "workspace" || !selectedChangePath) return null;
+    if (diffView?.source !== "git" || !diffView.unified) return null;
+    const n = normalizePath(selectedChangePath);
+    const entry = workspaceFiles.find((w) => {
+      const abs =
+        normalizePath(w.absolutePath) ||
+        resolveWorkspaceAbsolutePath(projectPath, w.path);
+      return normalizePath(w.path) === n || abs === n;
+    });
+    if (!entry) return null;
+    if (entry.indexStatus !== " ") return null;
+    if (entry.kind !== "modified" && entry.kind !== "typechange") return null;
+    return entry;
+  }, [
+    selectedChangeSource,
+    selectedChangePath,
+    diffView?.source,
+    diffView?.unified,
+    workspaceFiles,
+    projectPath,
+  ]);
+
   const previewBody = useMemo(() => {
     // Session change diff takes over the preview when selected in Changes mode.
     if (sideMode === "changes" && diffView) {
@@ -1714,6 +1784,12 @@ export function ResourceViewer({
               onAddComment={(anchor, body) => onAddReviewComment?.(anchor, body)}
               onRemoveComment={(id) => onRemoveReviewComment?.(id)}
               tr={tr}
+              onStageHunk={
+                hunkStageEntry
+                  ? (hunk) => void stageHunk(hunkStageEntry, hunk)
+                  : undefined
+              }
+              stagingHunkHeader={stagingHunkHeader}
             />
           </div>
         );
@@ -1982,6 +2058,9 @@ export function ResourceViewer({
     pathCopyFlash,
     updateActiveDraft,
     saveActiveFile,
+    hunkStageEntry,
+    stageHunk,
+    stagingHunkHeader,
   ]);
 
   // No project and no open tabs → empty; allow absolute/url tabs without a project.

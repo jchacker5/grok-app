@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   allDiffLines,
+  buildHunkPatch,
   buildStableId,
   findLineByStableId,
   hashLineContent,
@@ -200,5 +201,57 @@ describe("parseUnifiedDiff", () => {
     const model = parseUnifiedDiff("", "empty.ts");
     expect(model.path).toBe("empty.ts");
     expect(model.hunks).toEqual([]);
+  });
+});
+
+describe("buildHunkPatch", () => {
+  const realDiff = [
+    "diff --git a/foo.ts b/foo.ts",
+    "index abc123..def456 100644",
+    "--- a/foo.ts",
+    "+++ b/foo.ts",
+    "@@ -1,3 +1,3 @@",
+    " line1",
+    "-line2",
+    "+line2-changed",
+    " line3",
+    "@@ -10,2 +10,2 @@",
+    " line10",
+    "-line11",
+    "+line11-changed",
+  ].join("\n");
+
+  it("reconstructs a standalone single-hunk patch with the original preamble", () => {
+    const model = parseUnifiedDiff(realDiff, "foo.ts");
+    expect(model.hunks).toHaveLength(2);
+    const patch = buildHunkPatch(realDiff, model.hunks[0]!);
+    expect(patch).not.toBeNull();
+    expect(patch).toContain("diff --git a/foo.ts b/foo.ts");
+    expect(patch).toContain("--- a/foo.ts");
+    expect(patch).toContain("+++ b/foo.ts");
+    expect(patch).toContain("@@ -1,3 +1,3 @@");
+    // Only the first hunk's body — not the second hunk's lines.
+    expect(patch).not.toContain("line11");
+    expect(patch).toContain(" line1\n-line2\n+line2-changed\n line3\n");
+  });
+
+  it("isolates the second hunk without the first hunk's body", () => {
+    const model = parseUnifiedDiff(realDiff, "foo.ts");
+    const patch = buildHunkPatch(realDiff, model.hunks[1]!);
+    expect(patch).toContain("@@ -10,2 +10,2 @@");
+    expect(patch).toContain("line11-changed");
+    expect(patch).not.toContain("line2-changed");
+  });
+
+  it("returns null when there is no preamble to anchor the patch to", () => {
+    const headerless = "@@ -1,2 +1,2 @@\n-a\n+b";
+    const model = parseUnifiedDiff(headerless, "f.ts");
+    const patch = buildHunkPatch(headerless, model.hunks[0]!);
+    expect(patch).toBeNull();
+  });
+
+  it("returns null for empty unified text", () => {
+    const model = parseUnifiedDiff(realDiff, "foo.ts");
+    expect(buildHunkPatch("", model.hunks[0]!)).toBeNull();
   });
 });

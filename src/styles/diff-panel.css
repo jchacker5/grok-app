@@ -53,12 +53,35 @@
 }
 
 .diff-panel__hunk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 3px 10px;
   color: var(--text-tertiary);
   background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
   border-top: 1px solid var(--border-subtle);
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.diff-panel__hunk-header-text {
   white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diff-panel__hunk-stage-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.diff-panel__hunk-stage-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .diff-panel__line-group {

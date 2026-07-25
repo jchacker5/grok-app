@@ -176,3 +176,35 @@ export function findLineByStableId(
   }
   return null;
 }
+
+/**
+ * Build a standalone unidiff patch that stages exactly one hunk of `unified`
+ * (the file's already-parsed diff text — see `parseUnifiedDiff`). Reuses the
+ * diff's own preamble (`diff --git` / `index` / `--- a/` / `+++ b/` lines)
+ * verbatim so `git apply --cached` resolves the same path git itself
+ * emitted, rather than reconstructing paths ourselves. Returns `null` when
+ * `unified` has no recognizable preamble to anchor the patch to (e.g. a
+ * synthetic diff built client-side rather than sourced from real `git diff`
+ * output) — callers should hide the stage-hunk affordance in that case.
+ *
+ * Known limitation: a hunk touching the file's very last line when the file
+ * has no trailing newline will apply cleanly for every hunk except that one
+ * (the parser drops "\ No newline at end of file" markers) — `git apply`
+ * fails atomically rather than corrupting the index, so this surfaces as a
+ * clear error, not silent data loss.
+ */
+export function buildHunkPatch(unified: string, hunk: DiffHunk): string | null {
+  if (!unified || !hunk.lines.length) return null;
+  const rawLines = unified.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const headerIdx = rawLines.findIndex((l) => HUNK_HEADER_RE.test(l));
+  if (headerIdx <= 0) return null;
+  const preamble = rawLines.slice(0, headerIdx).join("\n");
+  const body = hunk.lines
+    .map((line) => {
+      const prefix =
+        line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " ";
+      return prefix + line.content;
+    })
+    .join("\n");
+  return `${preamble}\n${hunk.header}\n${body}\n`;
+}

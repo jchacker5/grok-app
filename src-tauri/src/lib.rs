@@ -254,6 +254,7 @@ pub fn run() {
             commands::git_staged_diff,
             commands::git_stage_paths,
             commands::git_unstage_paths,
+            commands::git_stage_hunk,
             commands::git_commit,
             commands::git_push,
             commands::git_gh_cli_available,

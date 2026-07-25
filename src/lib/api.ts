@@ -627,6 +627,16 @@ export async function gitUnstagePaths(projectPath: string, paths: string[]) {
   return invoke<void>("git_unstage_paths", { projectPath, paths });
 }
 
+/**
+ * Stage exactly one hunk by applying a caller-built single-hunk unidiff
+ * patch to the index (`git apply --cached`). `patch` comes from
+ * `buildHunkPatch()` in `lib/diffModel.ts`. Rejects with a clear message
+ * when the patch is stale or already staged.
+ */
+export async function gitStageHunk(projectPath: string, patch: string) {
+  return invoke<void>("git_stage_hunk", { projectPath, patch });
+}
+
 export interface GitCommitResult {
   sha: string;
   subject: string;
