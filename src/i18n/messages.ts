@@ -441,6 +441,20 @@ const en = {
   "composer.attachRemove": "Remove attachment",
   "composer.attachCount": "{n} attached",
   "composer.projectAdded": "Added project “{name}”",
+
+  // Session presets (saved model / effort / mode / permission bundles)
+  "preset.trigger": "Presets",
+  "preset.hint": "Save and reload model / effort / mode / permission combos",
+  "preset.empty": "No presets yet",
+  "preset.saveCurrent": "Save current as preset…",
+  "preset.save": "Save preset",
+  "preset.namePlaceholder": "Preset name",
+  "preset.saved": "Saved preset “{name}”",
+  "preset.applied": "Loaded preset “{name}”",
+  "preset.rename": "Rename preset",
+  "preset.delete": "Delete preset",
+  "preset.deleteConfirm": "Delete preset “{name}”?",
+
   "attach.open": "Open",
   "attach.reveal": "Reveal in Finder",
   "attach.copyPath": "Copy path",
@@ -1892,6 +1906,20 @@ const zh: Record<MessageKey, string> = {
   "composer.attachRemove": "移除附件",
   "composer.attachCount": "已附加 {n} 项",
   "composer.projectAdded": "已添加项目「{name}」",
+
+  // 会话预设（保存的模型 / 推理强度 / 模式 / 权限组合）
+  "preset.trigger": "预设",
+  "preset.hint": "保存并重新加载模型 / 推理强度 / 模式 / 权限组合",
+  "preset.empty": "暂无预设",
+  "preset.saveCurrent": "将当前配置保存为预设…",
+  "preset.save": "保存预设",
+  "preset.namePlaceholder": "预设名称",
+  "preset.saved": "已保存预设「{name}」",
+  "preset.applied": "已加载预设「{name}」",
+  "preset.rename": "重命名预设",
+  "preset.delete": "删除预设",
+  "preset.deleteConfirm": "删除预设「{name}」？",
+
   "attach.open": "打开",
   "attach.reveal": "在 Finder 中显示",
   "attach.copyPath": "复制路径",

@@ -71,7 +71,7 @@ import {
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import * as api from "@/lib/api";
-import type { SpaceDto } from "@/lib/api";
+import type { SpaceDto, SessionPresetDto } from "@/lib/api";
 import {
   colorForSpaceIndex,
   spaceForShortcutIndex,
@@ -225,6 +225,7 @@ import {
   ComposerAccessMenu,
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
+import { PresetSelector } from "@/components/PresetSelector";
 import {
   ResourceViewer,
   type ResourceOpenTarget,
@@ -443,6 +444,8 @@ export default function App() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [spaces, setSpaces] = useState<SpaceDto[]>([]);
+  /** Saved model/effort/mode/permission bundles (composer preset dropdown). */
+  const [presets, setPresets] = useState<SessionPresetDto[]>([]);
   /** View filter only — not app data, so it lives in localStorage, not settings. */
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(() => {
     try {
@@ -952,17 +955,20 @@ export default function App() {
         cliAuthPresent: false,
       });
       void api.spacesList().then(setSpaces).catch(() => {});
+      void api.presetsList().then(setPresets).catch(() => {});
       return;
     }
     try {
-      const [p, s, settings, cli, modelsRes, spacesRes] = await Promise.all([
-        api.projectsList(),
-        api.sessionsList(),
-        api.settingsGet(),
-        api.probeCli(),
-        api.modelsListAvailable().catch(() => null),
-        api.spacesList().catch(() => []),
-      ]);
+      const [p, s, settings, cli, modelsRes, spacesRes, presetsRes] =
+        await Promise.all([
+          api.projectsList(),
+          api.sessionsList(),
+          api.settingsGet(),
+          api.probeCli(),
+          api.modelsListAvailable().catch(() => null),
+          api.spacesList().catch(() => []),
+          api.presetsList().catch(() => []),
+        ]);
       setProjects(
         (p as Project[]).map((x) => ({
           ...x,
@@ -970,6 +976,7 @@ export default function App() {
         })),
       );
       setSpaces(spacesRes);
+      setPresets(presetsRes);
       setSessions(
         (
           s as Array<
@@ -2822,6 +2829,110 @@ export default function App() {
         }
       },
     });
+  };
+
+  // ── Session presets (model / effort / mode / permission bundles) ────────
+  // Config-only workflow templates (Plan 005); never touches message history
+  // and is never autoloaded — the user always picks a preset explicitly.
+
+  const refreshPresets = async () => {
+    try {
+      setPresets(await api.presetsList());
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  const saveCurrentAsPreset = () => {
+    setAppDialog({
+      kind: "prompt",
+      title: tr("preset.save"),
+      initial: "",
+      placeholder: tr("preset.namePlaceholder"),
+      onSubmit: async (name) => {
+        const next = name.trim();
+        if (!next) return;
+        try {
+          await api.presetCreate({
+            name: next,
+            modelId,
+            effort,
+            mode,
+            permissionPolicy: policy,
+          });
+          await refreshPresets();
+          showToast(tr("preset.saved", { name: next }), 2500);
+        } catch (e) {
+          showToast(String(e), 4000);
+        }
+      },
+    });
+  };
+
+  const renamePreset = (preset: SessionPresetDto) => {
+    setAppDialog({
+      kind: "prompt",
+      title: tr("preset.rename"),
+      initial: preset.name,
+      onSubmit: async (name) => {
+        const next = name.trim();
+        if (!next || next === preset.name) return;
+        try {
+          await api.presetUpdate(preset.id, {
+            name: next,
+            description: preset.description ?? null,
+            modelId: preset.modelId,
+            effort: preset.effort,
+            mode: preset.mode,
+            permissionPolicy: preset.permissionPolicy,
+          });
+          await refreshPresets();
+        } catch (e) {
+          showToast(String(e), 4000);
+        }
+      },
+    });
+  };
+
+  const deletePreset = (preset: SessionPresetDto) => {
+    setAppDialog({
+      kind: "confirm",
+      title: tr("preset.delete"),
+      message: tr("preset.deleteConfirm", { name: preset.name }),
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await api.presetDelete(preset.id);
+          await refreshPresets();
+        } catch (e) {
+          showToast(String(e), 4000);
+        }
+      },
+    });
+  };
+
+  const applyPreset = (preset: SessionPresetDto) => {
+    if (isValidModelId(preset.modelId, availableModels)) {
+      setModelId(preset.modelId);
+    }
+    if (isValidEffort(preset.effort)) {
+      setEffort(preset.effort);
+    }
+    setMode(preset.mode || "agent");
+    if (preset.mode === "plan") setGoalMode(false);
+    void api
+      .composerPrefsSet({
+        projectId: activeProject?.id ?? null,
+        sessionId: session.sessionId ?? null,
+        modelId: preset.modelId,
+        effort: preset.effort,
+        mode: preset.mode,
+      })
+      .catch((e) => showToast(String(e), 4000));
+    if (isValidPolicy(preset.permissionPolicy) && preset.permissionPolicy !== policy) {
+      applyPermissionPolicy(preset.permissionPolicy);
+    }
+    showToast(tr("preset.applied", { name: preset.name }), 2500);
   };
 
   const applySessionTitle = useCallback(
@@ -8792,6 +8903,27 @@ export default function App() {
                       })
                       .catch((e) => showToast(String(e), 4000));
                   }}
+                />
+                <PresetSelector
+                  presets={presets}
+                  current={{
+                    modelId,
+                    effort,
+                    mode,
+                    permissionPolicy: policy,
+                  }}
+                  labels={{
+                    trigger: tr("preset.trigger"),
+                    hint: tr("preset.hint"),
+                    empty: tr("preset.empty"),
+                    saveCurrent: tr("preset.saveCurrent"),
+                    rename: tr("preset.rename"),
+                    delete: tr("preset.delete"),
+                  }}
+                  onApply={applyPreset}
+                  onSaveCurrent={saveCurrentAsPreset}
+                  onRename={renamePreset}
+                  onDelete={deletePreset}
                 />
                 <ComposerAccessMenu
                   mode={mode}

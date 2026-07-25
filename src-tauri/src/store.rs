@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::paths::{
-    automations_file, ensure_app_dirs, projects_file, session_dir, sessions_index_file,
-    settings_file, spaces_file,
+    automations_file, ensure_app_dirs, presets_file, projects_file, session_dir,
+    sessions_index_file, settings_file, spaces_file,
 };
 
 /// Where composer model / effort / mode / permission choices are remembered.
@@ -1313,6 +1313,119 @@ pub fn delete_automation(id: &str) -> Result<(), String> {
         return Err("automation not found".into());
     }
     save_automations(&list)
+}
+
+// ─── Session presets (saved model / effort / mode / permission bundles) ────
+
+/// Reusable composer config snapshot the user can save and re-apply later
+/// (power-user workflow templates). Config only — never includes message
+/// history, and applying one never touches past turns.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPreset {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub model_id: String,
+    pub effort: String,
+    pub mode: String,
+    pub permission_policy: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPresetInput {
+    pub name: String,
+    pub description: Option<String>,
+    pub model_id: String,
+    pub effort: String,
+    pub mode: String,
+    pub permission_policy: String,
+}
+
+/// Hard cap on saved presets (Plan 005 boundary) — surfaced as an error the
+/// UI turns into a "delete one to save another" warning.
+pub const MAX_SESSION_PRESETS: usize = 50;
+
+pub fn load_presets() -> Vec<SessionPreset> {
+    let _ = ensure_app_dirs();
+    let mut list: Vec<SessionPreset> = read_json(&presets_file());
+    list.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    list
+}
+
+pub fn save_presets(list: &[SessionPreset]) -> Result<(), String> {
+    let _ = ensure_app_dirs();
+    write_json(&presets_file(), &list)
+}
+
+pub fn create_preset(input: SessionPresetInput) -> Result<SessionPreset, String> {
+    let name = input.name.trim().to_string();
+    if name.is_empty() {
+        return Err("name empty".into());
+    }
+    let mut list = load_presets();
+    if list.len() >= MAX_SESSION_PRESETS {
+        return Err(format!(
+            "You have {MAX_SESSION_PRESETS} saved presets — delete one before saving another."
+        ));
+    }
+    let now = Utc::now();
+    let preset = SessionPreset {
+        id: Uuid::new_v4().to_string(),
+        name,
+        description: input
+            .description
+            .map(|d| d.trim().to_string())
+            .filter(|d| !d.is_empty()),
+        model_id: input.model_id,
+        effort: input.effort,
+        mode: input.mode,
+        permission_policy: input.permission_policy,
+        created_at: now,
+        updated_at: now,
+    };
+    list.insert(0, preset.clone());
+    save_presets(&list)?;
+    Ok(preset)
+}
+
+pub fn update_preset(id: &str, input: SessionPresetInput) -> Result<SessionPreset, String> {
+    let mut list = load_presets();
+    let preset = list
+        .iter_mut()
+        .find(|p| p.id == id)
+        .ok_or_else(|| "preset not found".to_string())?;
+    let name = input.name.trim();
+    if name.is_empty() {
+        return Err("name empty".into());
+    }
+    preset.name = name.to_string();
+    preset.description = input
+        .description
+        .map(|d| d.trim().to_string())
+        .filter(|d| !d.is_empty());
+    preset.model_id = input.model_id;
+    preset.effort = input.effort;
+    preset.mode = input.mode;
+    preset.permission_policy = input.permission_policy;
+    preset.updated_at = Utc::now();
+    let clone = preset.clone();
+    save_presets(&list)?;
+    Ok(clone)
+}
+
+pub fn delete_preset(id: &str) -> Result<(), String> {
+    let mut list = load_presets();
+    let before = list.len();
+    list.retain(|p| p.id != id);
+    if list.len() == before {
+        return Err("preset not found".into());
+    }
+    save_presets(&list)
 }
 
 /// Load app secrets (API keys). Backend-agnostic: OS keychain preferred, file fallback.

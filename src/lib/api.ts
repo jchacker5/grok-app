@@ -2272,6 +2272,127 @@ export async function automationDelete(id: string): Promise<void> {
   return invoke<void>("automation_delete", { id });
 }
 
+// ─── Session presets (saved model / effort / mode / permission bundles) ───
+// Power-user workflow templates: config only, never message history. Saved
+// via the composer's preset dropdown; applying one only affects future turns.
+
+export interface SessionPresetDto {
+  id: string;
+  name: string;
+  description?: string | null;
+  modelId: string;
+  effort: string;
+  mode: string;
+  permissionPolicy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SessionPresetInputDto {
+  name: string;
+  description?: string | null;
+  modelId: string;
+  effort: string;
+  mode: string;
+  permissionPolicy: string;
+}
+
+/** Hard cap surfaced as a friendly error before the 51st save. */
+export const MAX_SESSION_PRESETS = 50;
+
+const PRESETS_LS_KEY = "grok-app.presets";
+
+function loadPresetsLocal(): SessionPresetDto[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_LS_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as SessionPresetDto[];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePresetsLocal(list: SessionPresetDto[]): void {
+  localStorage.setItem(PRESETS_LS_KEY, JSON.stringify(list));
+}
+
+export async function presetsList(): Promise<SessionPresetDto[]> {
+  if (!isTauri()) {
+    return loadPresetsLocal().sort((a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt),
+    );
+  }
+  return invoke<SessionPresetDto[]>("presets_list");
+}
+
+export async function presetCreate(
+  input: SessionPresetInputDto,
+): Promise<SessionPresetDto> {
+  if (!isTauri()) {
+    const list = loadPresetsLocal();
+    const name = input.name.trim();
+    if (!name) throw new Error("name empty");
+    if (list.length >= MAX_SESSION_PRESETS) {
+      throw new Error(
+        `You have ${MAX_SESSION_PRESETS} saved presets — delete one before saving another.`,
+      );
+    }
+    const now = new Date().toISOString();
+    const preset: SessionPresetDto = {
+      id: crypto.randomUUID(),
+      name,
+      description: input.description?.trim() || null,
+      modelId: input.modelId,
+      effort: input.effort,
+      mode: input.mode,
+      permissionPolicy: input.permissionPolicy,
+      createdAt: now,
+      updatedAt: now,
+    };
+    list.unshift(preset);
+    savePresetsLocal(list);
+    return preset;
+  }
+  return invoke<SessionPresetDto>("preset_create", { input });
+}
+
+export async function presetUpdate(
+  id: string,
+  input: SessionPresetInputDto,
+): Promise<SessionPresetDto> {
+  if (!isTauri()) {
+    const list = loadPresetsLocal();
+    const idx = list.findIndex((p) => p.id === id);
+    if (idx < 0) throw new Error("preset not found");
+    const name = input.name.trim();
+    if (!name) throw new Error("name empty");
+    const next: SessionPresetDto = {
+      ...list[idx]!,
+      name,
+      description: input.description?.trim() || null,
+      modelId: input.modelId,
+      effort: input.effort,
+      mode: input.mode,
+      permissionPolicy: input.permissionPolicy,
+      updatedAt: new Date().toISOString(),
+    };
+    list[idx] = next;
+    savePresetsLocal(list);
+    return next;
+  }
+  return invoke<SessionPresetDto>("preset_update", { id, input });
+}
+
+export async function presetDelete(id: string): Promise<void> {
+  if (!isTauri()) {
+    const list = loadPresetsLocal().filter((p) => p.id !== id);
+    savePresetsLocal(list);
+    return;
+  }
+  return invoke<void>("preset_delete", { id });
+}
+
 // ─── Spaces ────────────────────────────────────────────────────────────────
 
 export interface SpaceDto {

@@ -1767,6 +1767,33 @@ pub async fn automation_delete(id: String) -> Result<(), String> {
     store::delete_automation(&id)
 }
 
+// ─── Session presets (saved model / effort / mode / permission bundles) ────
+
+#[tauri::command]
+pub async fn presets_list() -> Result<Vec<store::SessionPreset>, String> {
+    Ok(store::load_presets())
+}
+
+#[tauri::command]
+pub async fn preset_create(
+    input: store::SessionPresetInput,
+) -> Result<store::SessionPreset, String> {
+    store::create_preset(input)
+}
+
+#[tauri::command]
+pub async fn preset_update(
+    id: String,
+    input: store::SessionPresetInput,
+) -> Result<store::SessionPreset, String> {
+    store::update_preset(&id, input)
+}
+
+#[tauri::command]
+pub async fn preset_delete(id: String) -> Result<(), String> {
+    store::delete_preset(&id)
+}
+
 // ─── Spaces ────────────────────────────────────────────────────────────────
 
 #[tauri::command]
