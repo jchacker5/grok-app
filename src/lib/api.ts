@@ -291,6 +291,24 @@ export async function toggleResourceDevtools() {
   return invoke<boolean>("resource_webview_toggle_devtools");
 }
 
+/**
+ * Navigate the resource-pane embedded browser's child webview to `url` in
+ * place (no close/recreate) — backs the address bar and back/forward
+ * controls.
+ */
+export async function navigateResourceWebview(url: string) {
+  return invoke<void>("resource_webview_navigate", { url });
+}
+
+/**
+ * Current URL of the resource-pane embedded browser's child webview. Polled
+ * to detect in-page navigation (clicked links, auth redirect chains) so the
+ * address bar stays accurate.
+ */
+export async function getResourceWebviewUrl() {
+  return invoke<string>("resource_webview_current_url");
+}
+
 /** Rect of an element picked in the resource-pane embedded browser. */
 export interface PickedElementRect {
   x: number;

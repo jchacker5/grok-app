@@ -10481,17 +10481,50 @@ textarea::-webkit-scrollbar-thumb:active,
   background: var(--bg-elevated);
 }
 
-.embedded-browser__url {
+.embedded-browser__url-input {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--text-secondary);
-  user-select: text;
-  -webkit-user-select: text;
+  color: var(--text-primary);
+  background: var(--bg-main);
+}
+
+.embedded-browser__url-input:focus {
+  outline: none;
+  border-color: var(--accent, var(--text-accent));
+}
+
+.embedded-browser__progress {
+  position: relative;
+  flex-shrink: 0;
+  height: 2px;
+  overflow: hidden;
+  background: transparent;
+}
+
+.embedded-browser__progress::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -35%;
+  height: 100%;
+  width: 35%;
+  background: var(--accent, var(--text-accent));
+  animation: embedded-browser-progress 1.1s ease-in-out infinite;
+}
+
+@keyframes embedded-browser-progress {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
+  }
 }
 
 .embedded-browser__host {

@@ -518,6 +518,32 @@ pub async fn resource_webview_toggle_devtools(app: tauri::AppHandle) -> Result<b
     Ok(!is_open)
 }
 
+/// Navigate the resource-pane embedded browser's child webview to `url` in
+/// place — no close/recreate, so it's cheap enough to call from the address
+/// bar, back/forward buttons, or a clicked link's redirect chain.
+#[tauri::command]
+pub async fn resource_webview_navigate(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri::Manager;
+    let parsed = url::Url::parse(&url).map_err(|e| format!("invalid URL: {e}"))?;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    webview.navigate(parsed).map_err(|e| e.to_string())
+}
+
+/// Current URL of the resource-pane embedded browser's child webview. Used to
+/// detect navigation that happens *inside* the page (a clicked link, an OAuth
+/// redirect chain) so the address bar and back/forward history stay accurate
+/// instead of only reflecting URLs the user typed.
+#[tauri::command]
+pub async fn resource_webview_current_url(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    webview.url().map(|u| u.to_string()).map_err(|e| e.to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Resource-pane element picker (Live Preview Panel v2, Stage 2).
 //

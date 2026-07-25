@@ -31,6 +31,8 @@ import {
   IconClose,
   IconRecord,
   IconStop,
+  IconChevronLeft,
+  IconChevronRight,
 } from "@/components/icons";
 
 const WEBVIEW_LABEL = "resource-browser";
@@ -96,6 +98,103 @@ export function EmbeddedBrowser({
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
   const [devtoolsBusy, setDevtoolsBusy] = useState(false);
   const tr = createT(locale);
+
+  // Internal navigation — lets the user browse away from the tab's initial
+  // URL (auth redirects, following a link) without the resource-pane tab
+  // itself tracking every hop. `url` (the prop) only changes on a real tab
+  // switch; `navUrl` is what actually drives the webview/iframe.
+  const [navUrl, setNavUrl] = useState(url);
+  const [urlInput, setUrlInput] = useState(url);
+  const historyRef = useRef<string[]>([url]);
+  const historyIndexRef = useRef(0);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
+
+  useEffect(() => {
+    historyRef.current = [url];
+    historyIndexRef.current = 0;
+    setNavUrl(url);
+    setUrlInput(url);
+    setCanGoBack(false);
+    setCanGoForward(false);
+  }, [url]);
+
+  // Drives the child webview in place via `resource_webview_navigate`
+  // (no close/recreate — see boot effect below, which only (re)creates the
+  // webview when the *tab* changes). Non-Tauri iframe fallback just re-renders
+  // with the new `src`.
+  const goTo = (target: string) => {
+    setNavUrl(target);
+    setUrlInput(target);
+    if (isTauri() && ready) {
+      void api.navigateResourceWebview(target).catch((e) => {
+        console.error("[EmbeddedBrowser] navigate", e);
+        setError(String(e));
+      });
+    }
+  };
+
+  const navigateTo = (raw: string) => {
+    let target = raw.trim();
+    if (!target || target === navUrl) return;
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(target) && !target.startsWith("data:")) {
+      target = "https://" + target;
+    }
+    const idx = historyIndexRef.current;
+    historyRef.current = [...historyRef.current.slice(0, idx + 1), target];
+    historyIndexRef.current = historyRef.current.length - 1;
+    setCanGoBack(true);
+    setCanGoForward(false);
+    goTo(target);
+  };
+
+  const goBack = () => {
+    const idx = historyIndexRef.current;
+    if (idx <= 0) return;
+    historyIndexRef.current = idx - 1;
+    setCanGoBack(idx - 1 > 0);
+    setCanGoForward(true);
+    goTo(historyRef.current[idx - 1]);
+  };
+
+  const goForward = () => {
+    const idx = historyIndexRef.current;
+    if (idx >= historyRef.current.length - 1) return;
+    historyIndexRef.current = idx + 1;
+    setCanGoBack(true);
+    setCanGoForward(idx + 1 < historyRef.current.length - 1);
+    goTo(historyRef.current[idx + 1]);
+  };
+
+  // Poll the webview's *actual* current URL so the address bar and
+  // back/forward history stay accurate through navigation we didn't
+  // initiate ourselves — a clicked link, a JS redirect, an OAuth callback
+  // chain. Mirrors the element-picker's poll pattern (no push channel for
+  // navigation events from a dynamically created child webview).
+  const navUrlRef = useRef(navUrl);
+  useEffect(() => {
+    navUrlRef.current = navUrl;
+  }, [navUrl]);
+
+  useEffect(() => {
+    if (!isTauri() || !active || !ready) return;
+    const t = window.setInterval(() => {
+      void api
+        .getResourceWebviewUrl()
+        .then((current) => {
+          if (!current || current === navUrlRef.current) return;
+          const idx = historyIndexRef.current;
+          historyRef.current = [...historyRef.current.slice(0, idx + 1), current];
+          historyIndexRef.current = historyRef.current.length - 1;
+          setNavUrl(current);
+          setUrlInput(current);
+          setCanGoBack(true);
+          setCanGoForward(false);
+        })
+        .catch(() => undefined);
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [active, ready]);
 
   // Re-apply zoom to a freshly (re)created webview so it survives reload/URL changes.
   const applyZoom = async (factor: number) => {
@@ -209,7 +308,7 @@ export function EmbeddedBrowser({
   useEffect(() => {
     if (picking) stopPicking();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, active]);
+  }, [navUrl, active]);
 
   // Screenshot: capture the resource-browser webview's own on-screen bounds
   // (Rust resolves these live from the webview/window, no bounds need to be
@@ -434,7 +533,7 @@ export function EmbeddedBrowser({
     const id = activeRecordingIdRef.current;
     if (id) void api.stopResourceRecording(id).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, active]);
+  }, [navUrl, active]);
 
   // Layout → native webview bounds
   const syncBounds = async () => {
@@ -461,7 +560,10 @@ export function EmbeddedBrowser({
     }
   };
 
-  // Create / recreate native webview when URL changes (Tauri only)
+  // Create / recreate the native webview when the *tab* changes (Tauri
+  // only). Navigating within the browser (URL bar, back/forward, a clicked
+  // link) does not land here — `resource_webview_navigate` drives that in
+  // place on the existing webview instance instead.
   useEffect(() => {
     if (!isTauri() || !active) return;
     const target = url.trim();
@@ -620,14 +722,14 @@ export function EmbeddedBrowser({
   }, [active]);
 
   const openExternal = () => {
-    void openExternalUrl(url);
+    void openExternalUrl(navUrl);
   };
 
   const reload = () => {
     // Force recreate by remounting effect: clear then set same url via key is parent job.
     // Local: close + recreate
     if (!isTauri()) return;
-    const u = url;
+    const u = navUrl;
     void (async () => {
       try {
         const { Webview } = await import("@tauri-apps/api/webview");
@@ -684,9 +786,41 @@ export function EmbeddedBrowser({
     return (
       <div className={"embedded-browser " + className}>
         <div className="embedded-browser__bar">
-          <span className="embedded-browser__url" title={url}>
-            {url}
-          </span>
+          <button
+            type="button"
+            className="chrome-btn"
+            onClick={goBack}
+            disabled={!canGoBack}
+            title={tr("resources.browserBack")}
+          >
+            <IconChevronLeft size={14} />
+          </button>
+          <button
+            type="button"
+            className="chrome-btn"
+            onClick={goForward}
+            disabled={!canGoForward}
+            title={tr("resources.browserForward")}
+          >
+            <IconChevronRight size={14} />
+          </button>
+          <input
+            type="text"
+            className="embedded-browser__url-input"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+                navigateTo(urlInput);
+              } else if (e.key === "Escape") {
+                setUrlInput(navUrl);
+              }
+            }}
+            placeholder={tr("resources.urlPlaceholder")}
+            aria-label={tr("resources.urlPlaceholder")}
+            spellCheck={false}
+          />
           <button
             type="button"
             className="chrome-btn"
@@ -698,8 +832,8 @@ export function EmbeddedBrowser({
         </div>
         <iframe
           className="rp-preview__frame rp-preview__frame--browser"
-          title={title || url}
-          src={url}
+          title={title || navUrl}
+          src={navUrl}
           referrerPolicy="no-referrer"
           allow="fullscreen"
         />
@@ -713,9 +847,41 @@ export function EmbeddedBrowser({
   return (
     <div className={"embedded-browser embedded-browser--native " + className}>
       <div className="embedded-browser__bar">
-        <span className="embedded-browser__url" title={url}>
-          {url}
-        </span>
+        <button
+          type="button"
+          className="chrome-btn"
+          onClick={goBack}
+          disabled={!canGoBack}
+          title={tr("resources.browserBack")}
+        >
+          <IconChevronLeft size={14} />
+        </button>
+        <button
+          type="button"
+          className="chrome-btn"
+          onClick={goForward}
+          disabled={!canGoForward}
+          title={tr("resources.browserForward")}
+        >
+          <IconChevronRight size={14} />
+        </button>
+        <input
+          type="text"
+          className="embedded-browser__url-input"
+          value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.currentTarget.blur();
+              navigateTo(urlInput);
+            } else if (e.key === "Escape") {
+              setUrlInput(navUrl);
+            }
+          }}
+          placeholder={tr("resources.urlPlaceholder")}
+          aria-label={tr("resources.urlPlaceholder")}
+          spellCheck={false}
+        />
         <button
           type="button"
           className="chrome-btn"
@@ -816,6 +982,9 @@ export function EmbeddedBrowser({
           </button>
         )}
       </div>
+      {!ready && !error ? (
+        <div className="embedded-browser__progress" aria-hidden />
+      ) : null}
       <canvas ref={recordingCanvasRef} className="embedded-browser__rec-canvas" aria-hidden />
       {recording.phase === "ready" ? (
         <div className="embedded-browser__notice" role="status">
@@ -872,7 +1041,7 @@ export function EmbeddedBrowser({
         ref={hostRef}
         className="embedded-browser__host"
         data-ready={ready ? "1" : "0"}
-        aria-label={title || url}
+        aria-label={title || navUrl}
       >
         {error ? (
           <div className="rp-preview__msg" role="alert">

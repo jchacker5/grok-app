@@ -163,6 +163,8 @@ pub fn run() {
             commands::pick_cli_binary,
             commands::open_external_url,
             commands::resource_webview_toggle_devtools,
+            commands::resource_webview_navigate,
+            commands::resource_webview_current_url,
             commands::resource_webview_start_picker,
             commands::resource_webview_stop_picker,
             commands::resource_webview_poll_pick,
