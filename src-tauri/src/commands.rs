@@ -6894,6 +6894,43 @@ pub async fn providers_list_models(
     crate::providers::list_remote_models(base_url, api_key, provider_id).await
 }
 
+// ── Agent memory viewer (read-only; Clear resets MEMORY.md text only) ──────
+
+/// Snapshot of Grok Build's on-disk memory (`{GROK_HOME}/memory/`) for the
+/// current project. Returns an "unavailable" snapshot (not an error) when no
+/// memory has been written yet.
+#[tauri::command]
+pub async fn agent_memory_read(
+    cwd: Option<String>,
+) -> Result<crate::agent_memory::AgentMemorySnapshot, String> {
+    let settings = store::load_settings();
+    Ok(crate::agent_memory::read_snapshot(
+        &settings.session_data_mode,
+        cwd.as_deref(),
+    ))
+}
+
+/// Reset the `global`, `project`, or `all` MEMORY.md text back to an empty
+/// template. Never touches the semantic index or session interval notes.
+#[tauri::command]
+pub async fn agent_memory_clear(
+    cwd: Option<String>,
+    scope: String,
+) -> Result<crate::agent_memory::AgentMemorySnapshot, String> {
+    let settings = store::load_settings();
+    crate::agent_memory::clear_scope(&settings.session_data_mode, cwd.as_deref(), &scope)
+}
+
+/// Read one interval note under the matched project's `memory/*/sessions/`.
+#[tauri::command]
+pub async fn agent_memory_read_session_file(
+    cwd: String,
+    name: String,
+) -> Result<String, String> {
+    let settings = store::load_settings();
+    crate::agent_memory::read_session_file(&settings.session_data_mode, &cwd, &name)
+}
+
 // ── Editors ─────────────────────────────────────────────────────────────────
 
 #[tauri::command]

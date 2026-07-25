@@ -23,6 +23,7 @@ import { FileMediaPlayer } from "@/components/FileMediaPlayer";
 import { ImageUi } from "@/components/ImageUi";
 import {
   IconActivity,
+  IconBrain,
   IconCheckSquare,
   IconChevronDown,
   IconChevronRight,
@@ -43,6 +44,7 @@ import {
 import { CommitDialog } from "@/components/CommitDialog";
 import { DEFAULT_MODEL_ID, type ModelOption } from "@/lib/grokCatalog";
 import { PlanReviewPanel } from "@/components/PlanReviewPanel";
+import { AgentMemoryViewer } from "@/components/AgentMemoryViewer";
 import type { PlanReviewState } from "@/lib/planBody";
 import { OfficeDocumentPreview } from "@/components/OfficeDocumentPreview";
 import { CodePreview } from "@/components/CodePreview";
@@ -165,7 +167,7 @@ export interface ResourceViewerProps {
   onRemoveReviewComment?: (id: string) => void;
 }
 
-type SideMode = "files" | "changes" | "plan" | "tasks";
+type SideMode = "files" | "changes" | "plan" | "tasks" | "memory";
 
 type DiffViewState = {
   path: string;
@@ -1029,9 +1031,9 @@ export function ResourceViewer({
   }, [tr, workspaceReason]);
 
   const showSidePanel = (mode: SideMode) => {
-    // Plan mode uses full-width review (no side tree).
-    if (mode === "plan") {
-      setSideMode("plan");
+    // Plan / Agent Memory use full-width review (no side tree).
+    if (mode === "plan" || mode === "memory") {
+      setSideMode(mode);
       setTreeVisible(false);
       return;
     }
@@ -2285,6 +2287,23 @@ export function ResourceViewer({
           ) : null}
           <Tip
             label={
+              sideMode === "memory" ? tr("memory.hidePanel") : tr("memory.showPanel")
+            }
+          >
+            <button
+              type="button"
+              className={
+                "chrome-btn main__pane-toggle rp-chrome__memory-btn" +
+                (sideMode === "memory" ? " is-on" : "")
+              }
+              onClick={() => showSidePanel("memory")}
+              aria-label={tr("memory.title")}
+            >
+              <IconBrain size={16} />
+            </button>
+          </Tip>
+          <Tip
+            label={
               treeVisible && sideMode === "tasks"
                 ? tr("tasks.hidePanel")
                 : tr("tasks.showPanel")
@@ -2393,7 +2412,9 @@ export function ResourceViewer({
         }
       >
         <div className="rp-split__preview">
-          {sideMode === "plan" && plan?.visible ? (
+          {sideMode === "memory" ? (
+            <AgentMemoryViewer locale={locale} projectPath={projectPath} />
+          ) : sideMode === "plan" && plan?.visible ? (
             <PlanReviewPanel
               plan={plan}
               forceExpandKey={planFocusKey}

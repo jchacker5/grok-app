@@ -1592,6 +1592,31 @@ const en = {
   "promptLibrary.field.content": "Prompt content",
   "promptLibrary.field.contentPh": "The instructions to send…",
   "promptLibrary.field.category": "Category",
+
+  "memory.title": "Agent Memory",
+  "memory.showPanel": "Show agent memory",
+  "memory.hidePanel": "Hide agent memory",
+  "memory.scopeGlobal": "Global",
+  "memory.scopeProject": "Project",
+  "memory.scopeSessions": "Session notes",
+  "memory.search": "Search memory…",
+  "memory.all": "All",
+  "memory.refresh": "Refresh",
+  "memory.clear": "Clear",
+  "memory.clearConfirmTitle": "Clear memory?",
+  "memory.clearConfirmGlobal":
+    "This resets the global MEMORY.md notes. Session notes and the semantic index are not affected.",
+  "memory.clearConfirmProject":
+    "This resets the project MEMORY.md notes. Session notes and the semantic index are not affected.",
+  "memory.notFound":
+    "No memory store found yet. Grok Build creates one under GROK_HOME the first time it saves a memory.",
+  "memory.empty": "No memories stored yet.",
+  "memory.emptyHint": "The agent builds memory as you interact.",
+  "memory.noMatch": "No entries matched your search.",
+  "memory.loading": "Loading memory…",
+  "memory.loadError": "Unable to read",
+  "memory.error": "Unable to read agent memory",
+  "memory.updated": "Updated {time}",
 } as const;
 
 const zh: Record<MessageKey, string> = {
@@ -3110,6 +3135,29 @@ const zh: Record<MessageKey, string> = {
   "settings.keybindings": "键盘快捷键",
   "settings.keybindingsDesc": "自定义键盘快捷键。JSON 文件位于 ~/.grok-app/keybindings.json",
   "settings.keybindingsOpen": "编辑 keybindings.json",
+
+  "memory.title": "Agent 记忆",
+  "memory.showPanel": "显示 Agent 记忆",
+  "memory.hidePanel": "隐藏 Agent 记忆",
+  "memory.scopeGlobal": "全局",
+  "memory.scopeProject": "项目",
+  "memory.scopeSessions": "会话记录",
+  "memory.search": "搜索记忆…",
+  "memory.all": "全部",
+  "memory.refresh": "刷新",
+  "memory.clear": "清除",
+  "memory.clearConfirmTitle": "清除记忆？",
+  "memory.clearConfirmGlobal": "这将重置全局 MEMORY.md 笔记。会话记录和语义索引不受影响。",
+  "memory.clearConfirmProject": "这将重置项目 MEMORY.md 笔记。会话记录和语义索引不受影响。",
+  "memory.notFound":
+    "尚未找到记忆存储。Grok Build 会在首次保存记忆时于 GROK_HOME 下创建。",
+  "memory.empty": "尚无存储的记忆。",
+  "memory.emptyHint": "Agent 会在您使用过程中逐步建立记忆。",
+  "memory.noMatch": "没有匹配的条目。",
+  "memory.loading": "正在加载记忆…",
+  "memory.loadError": "无法读取",
+  "memory.error": "无法读取 Agent 记忆",
+  "memory.updated": "更新于 {time}",
 };
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {

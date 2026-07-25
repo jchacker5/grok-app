@@ -3,6 +3,7 @@
 mod account;
 mod account_profiles;
 mod acp_client;
+mod agent_memory;
 mod agent_prefs;
 mod app_update;
 mod extensions;
@@ -308,6 +309,9 @@ pub fn run() {
             commands::providers_activate,
             commands::providers_ping,
             commands::providers_list_models,
+            commands::agent_memory_read,
+            commands::agent_memory_clear,
+            commands::agent_memory_read_session_file,
             commands::editors_list,
             commands::open_in_editor,
             voice_host::voice_state,

@@ -16,6 +16,7 @@ import {
   IconBook as TbBook,
   IconGitBranch as TbGitBranch,
   IconBox as TbBox,
+  IconBrain as TbBrain,
   IconBrandWindows as TbBrandWindows,
   IconBrush as TbBrush,
   IconCalendarTime as TbCalendarTime,
@@ -318,6 +319,8 @@ export const IconGitBranch = wrap(TbGitBranch);
 export const IconGitCommit = wrap(TbGitCommit);
 export const IconGitPullRequest = wrap(TbGitPullRequest);
 export const IconCheckSquare = wrap(TbSquareCheck);
+/** Agent Memory viewer (resource pane side panel). */
+export const IconBrain = wrap(TbBrain);
 
 // Live Preview Panel v2 (resource pane embedded browser toolbar)
 export const IconZoomIn = wrap(TbZoomIn);

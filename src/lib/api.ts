@@ -2080,6 +2080,59 @@ export async function providersListModels(opts: {
   });
 }
 
+// ── Agent memory viewer (read-only; `agentMemoryClear` resets MEMORY.md text) ─
+
+export interface AgentMemoryDoc {
+  path: string;
+  content: string;
+  modifiedAt: number;
+}
+
+export interface AgentMemorySessionFile {
+  name: string;
+  modifiedAt: number;
+  size: number;
+}
+
+export interface AgentMemorySnapshot {
+  home: string;
+  available: boolean;
+  global: AgentMemoryDoc | null;
+  project: AgentMemoryDoc | null;
+  projectSlug: string | null;
+  sessions: AgentMemorySessionFile[];
+  otherProjects: string[];
+}
+
+const EMPTY_MEMORY_SNAPSHOT: AgentMemorySnapshot = {
+  home: "",
+  available: false,
+  global: null,
+  project: null,
+  projectSlug: null,
+  sessions: [],
+  otherProjects: [],
+};
+
+export async function agentMemoryRead(cwd?: string | null) {
+  if (!isTauri()) return EMPTY_MEMORY_SNAPSHOT;
+  return invoke<AgentMemorySnapshot>("agent_memory_read", { cwd: cwd ?? null });
+}
+
+export async function agentMemoryClear(
+  scope: "global" | "project" | "all",
+  cwd?: string | null,
+) {
+  return invoke<AgentMemorySnapshot>("agent_memory_clear", {
+    cwd: cwd ?? null,
+    scope,
+  });
+}
+
+export async function agentMemoryReadSessionFile(cwd: string, name: string) {
+  return invoke<string>("agent_memory_read_session_file", { cwd, name });
+}
+
 // ── Editors ─────────────────────────────────────────────────────────────────
 
 export interface DetectedEditor {
