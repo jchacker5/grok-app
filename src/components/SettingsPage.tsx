@@ -171,6 +171,24 @@ export interface SettingsPageProps {
   /** Keep delegated agents running when live voice ends. */
   voiceKeepAgentsOnEnd?: boolean;
   onVoiceKeepAgentsOnEnd?: (v: boolean) => void;
+  /** Playback rate for voice AI output (0.5-2.0). */
+  voicePlaybackRate?: number;
+  onVoicePlaybackRate?: (v: number) => void;
+  /** Dictation language code. */
+  voiceDictationLanguage?: string;
+  onVoiceDictationLanguage?: (v: string) => void;
+  /** Enable noise suppression on mic input. */
+  voiceNoiseSuppression?: boolean;
+  onVoiceNoiseSuppression?: (v: boolean) => void;
+  /** Mic activation sensitivity (0-100). */
+  voiceSensitivity?: number;
+  onVoiceSensitivity?: (v: number) => void;
+  /** Preferred microphone device ID. */
+  voiceMicDeviceId?: string;
+  onVoiceMicDeviceId?: (v: string) => void;
+  /** Play chime on voice start/stop. */
+  voiceFeedbackChime?: boolean;
+  onVoiceFeedbackChime?: (v: boolean) => void;
   /** Timestamp display format. */
   timestampFormat?: string;
   onTimestampFormat?: (v: string) => void;
@@ -513,6 +531,18 @@ export function SettingsPage({
   onVoiceDictationAutoSend,
   voiceKeepAgentsOnEnd = true,
   onVoiceKeepAgentsOnEnd,
+  voicePlaybackRate = 1.0,
+  onVoicePlaybackRate,
+  voiceDictationLanguage = "auto",
+  onVoiceDictationLanguage,
+  voiceNoiseSuppression = true,
+  onVoiceNoiseSuppression,
+  voiceSensitivity = 50,
+  onVoiceSensitivity,
+  voiceMicDeviceId = "",
+  onVoiceMicDeviceId,
+  voiceFeedbackChime = false,
+  onVoiceFeedbackChime,
   timestampFormat = "locale",
   onTimestampFormat,
   sidebarSortOrder = "updated_at",
@@ -554,6 +584,16 @@ export function SettingsPage({
     return () => {
       cancelled = true;
     };
+  }, []);
+  const [micDevices, setMicDevices] = useState<{ deviceId: string; label: string }[]>([]);
+  useEffect(() => {
+    if (typeof navigator?.mediaDevices?.enumerateDevices !== "function") return;
+    navigator.mediaDevices.enumerateDevices().then((devices) => {
+      const mics = devices
+        .filter((d) => d.kind === "audioinput")
+        .map((d) => ({ deviceId: d.deviceId, label: d.label || `Mic ${d.deviceId.slice(0, 8)}` }));
+      setMicDevices(mics);
+    }).catch(() => {});
   }, []);
   const [accountTab, setAccountTab] = useState<"official" | "providers">(
     "official",
@@ -1391,6 +1431,7 @@ export function SettingsPage({
         )}
 
         {section === "voice" && (
+          <>
           <div className="settings-card">
             <div className="settings-row">
               <div className="settings-row__text">
@@ -1434,6 +1475,132 @@ export function SettingsPage({
               />
             </div>
           </div>
+
+          <h2 className="settings-page__h2">{t("voice.settingsAudio")}</h2>
+          <div className="settings-card">
+            {onVoicePlaybackRate ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("voice.playbackRate")}</div>
+                  <div className="settings-row__desc">{t("voice.playbackRateDesc")}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="range"
+                    min={50}
+                    max={200}
+                    value={Math.round(voicePlaybackRate * 100)}
+                    onChange={(e) => onVoicePlaybackRate(Number(e.target.value) / 100)}
+                    style={{ flex: 1, maxWidth: 200, accentColor: 'var(--accent)' }}
+                    aria-label={t("voice.playbackRate")}
+                  />
+                  <output style={{ minWidth: 36, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
+                    {voicePlaybackRate.toFixed(1)}x
+                  </output>
+                </div>
+              </div>
+            ) : null}
+
+            {onVoiceNoiseSuppression ? (
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("voice.noiseSuppression")}</div>
+                  <div className="settings-row__desc">{t("voice.noiseSuppressionDesc")}</div>
+                </div>
+                <UiCheck
+                  checked={voiceNoiseSuppression}
+                  onChange={() => onVoiceNoiseSuppression(!voiceNoiseSuppression)}
+                  ariaLabel={t("voice.noiseSuppression")}
+                />
+              </div>
+            ) : null}
+
+            {onVoiceSensitivity ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("voice.sensitivity")}</div>
+                  <div className="settings-row__desc">{t("voice.sensitivityDesc")}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="range"
+                    min={1}
+                    max={100}
+                    value={voiceSensitivity}
+                    onChange={(e) => onVoiceSensitivity(Number(e.target.value))}
+                    style={{ flex: 1, maxWidth: 200, accentColor: 'var(--accent)' }}
+                    aria-label={t("voice.sensitivity")}
+                  />
+                  <output style={{ minWidth: 28, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
+                    {voiceSensitivity}%
+                  </output>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <h2 className="settings-page__h2">{t("voice.settingsDictation")}</h2>
+          <div className="settings-card">
+            {onVoiceDictationLanguage ? (
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("voice.dictationLanguage")}</div>
+                  <div className="settings-row__desc">{t("voice.dictationLanguageDesc")}</div>
+                </div>
+                <Select
+                  value={voiceDictationLanguage}
+                  onChange={(v) => onVoiceDictationLanguage(v)}
+                  options={[
+                    { value: "auto", label: t("voice.langAuto") },
+                    { value: "en", label: "English" },
+                    { value: "zh", label: "中文" },
+                    { value: "ja", label: "日本語" },
+                    { value: "ko", label: "한국어" },
+                    { value: "es", label: "Español" },
+                    { value: "fr", label: "Français" },
+                    { value: "de", label: "Deutsch" },
+                  ]}
+                  aria-label={t("voice.dictationLanguage")}
+                />
+              </div>
+            ) : null}
+
+            {onVoiceMicDeviceId && micDevices.length > 0 ? (
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("voice.micDevice")}</div>
+                  <div className="settings-row__desc">{t("voice.micDeviceDesc")}</div>
+                </div>
+                <Select
+                  value={voiceMicDeviceId || ""}
+                  onChange={(v) => onVoiceMicDeviceId(v)}
+                  options={[
+                    { value: "", label: t("voice.micDefault") },
+                    ...micDevices.map((d) => ({
+                      value: d.deviceId,
+                      label: d.label,
+                    })),
+                  ]}
+                  aria-label={t("voice.micDevice")}
+                />
+              </div>
+            ) : null}
+
+            {onVoiceFeedbackChime ? (
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("voice.feedbackChime")}</div>
+                  <div className="settings-row__desc">{t("voice.feedbackChimeDesc")}</div>
+                </div>
+                <UiCheck
+                  checked={voiceFeedbackChime}
+                  onChange={() => onVoiceFeedbackChime(!voiceFeedbackChime)}
+                  ariaLabel={t("voice.feedbackChime")}
+                />
+              </div>
+            ) : null}
+          </div>
+          </>
         )}
 
         {section === "account" && (

@@ -11,6 +11,13 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-07-25
+
+### Added
+
+- **Voice audio quality**: mic capture now prefers an `AudioWorklet` processor (falls back to `ScriptProcessor`), with noise-gate sensitivity, peak normalization, and playback rate control.
+- **Voice settings expansion**: Settings → Voice gains mic device picker, noise suppression toggle, sensitivity slider, dictation language (auto or manual), and an end-of-turn feedback chime toggle.
+
 ## [0.1.8] - 2026-07-25
 
 ### Added

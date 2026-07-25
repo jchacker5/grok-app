@@ -195,6 +195,24 @@ pub struct AppSettings {
     /// Keep delegated agent sessions running after ending a live voice chat.
     #[serde(default = "default_true")]
     pub voice_keep_agents_on_end: bool,
+    /// Playback rate for voice AI output (0.5-2.0).
+    #[serde(default = "default_voice_playback_rate")]
+    pub voice_playback_rate: f64,
+    /// Dictation language code (e.g. "en", "zh", "auto").
+    #[serde(default = "default_voice_dictation_language")]
+    pub voice_dictation_language: String,
+    /// Enable noise suppression on mic input.
+    #[serde(default = "default_voice_noise_suppression")]
+    pub voice_noise_suppression: bool,
+    /// Mic activation sensitivity 0..1 (higher = more sensitive).
+    #[serde(default = "default_voice_sensitivity")]
+    pub voice_sensitivity: f64,
+    /// Preferred microphone device ID (empty = system default).
+    #[serde(default)]
+    pub voice_mic_device_id: String,
+    /// Play a brief chime when voice listening starts/stops.
+    #[serde(default = "default_voice_feedback_chime")]
+    pub voice_feedback_chime: bool,
     /// Timestamp display format: locale | 12-hour | 24-hour.
     #[serde(default = "default_timestamp_format")]
     pub timestamp_format: String,
@@ -261,6 +279,12 @@ fn default_voice_id() -> String {
     "eve".into()
 }
 
+fn default_voice_playback_rate() -> f64 { 1.0 }
+fn default_voice_dictation_language() -> String { "auto".to_string() }
+fn default_voice_noise_suppression() -> bool { true }
+fn default_voice_sensitivity() -> f64 { 0.5 }
+fn default_voice_feedback_chime() -> bool { false }
+
 fn default_timestamp_format() -> String {
     "locale".into()
 }
@@ -304,6 +328,12 @@ impl Default for AppSettings {
             voice_id: default_voice_id(),
             voice_dictation_auto_send: false,
             voice_keep_agents_on_end: true,
+            voice_playback_rate: default_voice_playback_rate(),
+            voice_dictation_language: default_voice_dictation_language(),
+            voice_noise_suppression: default_voice_noise_suppression(),
+            voice_sensitivity: default_voice_sensitivity(),
+            voice_mic_device_id: String::new(),
+            voice_feedback_chime: default_voice_feedback_chime(),
             timestamp_format: default_timestamp_format(),
             sidebar_sort_order: default_sidebar_sort_order(),
             word_wrap: true,

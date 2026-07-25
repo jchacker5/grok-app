@@ -159,7 +159,7 @@ import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
 import { ComposerEditor } from "@/components/ComposerEditor";
 import { VoiceOverlay } from "@/components/VoiceOverlay";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
-import { blobToBase64 } from "@/lib/voiceAudio";
+import { blobToBase64, startPcmCapture } from "@/lib/voiceAudio";
 import { pathsEqual } from "@/lib/gitWorktree";
 import { isProjectPathMissing } from "@/lib/projectPath";
 import {
@@ -363,6 +363,8 @@ export default function App() {
   /** Live voice overlay (GPT-Live-style delegate mode). */
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voiceDictating, setVoiceDictating] = useState(false);
+  const [dictationLevel, setDictationLevel] = useState(0);
+  const dictationLevelIntervalRef = useRef<number | null>(null);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
   const [goalMode, setGoalMode] = useState(false);
@@ -772,6 +774,14 @@ export default function App() {
   const [voiceId, setVoiceId] = useState("eve");
   const [voiceDictationAutoSend, setVoiceDictationAutoSend] = useState(false);
   const [voiceKeepAgentsOnEnd, setVoiceKeepAgentsOnEnd] = useState(true);
+  const [voicePlaybackRate, setVoicePlaybackRate] = useState(1.0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void voicePlaybackRate;
+  const [voiceDictationLanguage, setVoiceDictationLanguage] = useState("auto");
+  const [voiceNoiseSuppression, setVoiceNoiseSuppression] = useState(true);
+  const [voiceSensitivity, setVoiceSensitivity] = useState(0.5);
+  const [voiceMicDeviceId, setVoiceMicDeviceId] = useState("");
+  const [voiceFeedbackChime, setVoiceFeedbackChime] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -1014,6 +1024,12 @@ export default function App() {
       setVoiceId((settings.voiceId || "eve").trim() || "eve");
       setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
       setVoiceKeepAgentsOnEnd(settings.voiceKeepAgentsOnEnd !== false);
+      setVoicePlaybackRate(typeof settings.voicePlaybackRate === "number" ? settings.voicePlaybackRate : 1.0);
+      setVoiceDictationLanguage(settings.voiceDictationLanguage || "auto");
+      setVoiceNoiseSuppression(settings.voiceNoiseSuppression !== false);
+      setVoiceSensitivity(typeof settings.voiceSensitivity === "number" ? settings.voiceSensitivity : 0.5);
+      setVoiceMicDeviceId(settings.voiceMicDeviceId || "");
+      setVoiceFeedbackChime(!!settings.voiceFeedbackChime);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -6135,6 +6151,14 @@ export default function App() {
           setShowingJumpHints(false);
         }
       }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "D") {
+        e.preventDefault();
+        const micBtn = document.querySelector(".icon-btn--mic") as HTMLButtonElement;
+        if (micBtn && !micBtn.disabled) {
+          micBtn.click();
+        }
+        return;
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === "Meta" || e.key === "Control") {
@@ -6537,6 +6561,48 @@ export default function App() {
             setVoiceKeepAgentsOnEnd(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, voiceKeepAgentsOnEnd: v }),
+            );
+          }}
+          voicePlaybackRate={voicePlaybackRate}
+          onVoicePlaybackRate={(v) => {
+            setVoicePlaybackRate(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voicePlaybackRate: v }),
+            );
+          }}
+          voiceDictationLanguage={voiceDictationLanguage}
+          onVoiceDictationLanguage={(v) => {
+            setVoiceDictationLanguage(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceDictationLanguage: v }),
+            );
+          }}
+          voiceNoiseSuppression={voiceNoiseSuppression}
+          onVoiceNoiseSuppression={(v) => {
+            setVoiceNoiseSuppression(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceNoiseSuppression: v }),
+            );
+          }}
+          voiceSensitivity={voiceSensitivity}
+          onVoiceSensitivity={(v) => {
+            setVoiceSensitivity(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceSensitivity: v }),
+            );
+          }}
+          voiceMicDeviceId={voiceMicDeviceId}
+          onVoiceMicDeviceId={(v) => {
+            setVoiceMicDeviceId(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceMicDeviceId: v }),
+            );
+          }}
+          voiceFeedbackChime={voiceFeedbackChime}
+          onVoiceFeedbackChime={(v) => {
+            setVoiceFeedbackChime(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceFeedbackChime: v }),
             );
           }}
           cliInfo={cliInfo}
@@ -8359,11 +8425,23 @@ export default function App() {
                 }}
               />
               {voiceDictating && (
-                <div className="composer__waveform" aria-hidden>
-                  <span className="composer__waveform-bar" />
-                  <span className="composer__waveform-bar" />
-                  <span className="composer__waveform-bar" />
-                  <span className="composer__waveform-bar" />
+                <div className="composer__waveform" role="status" aria-label={tr("voice.dictation")} aria-live="polite">
+                  <span
+                    className="composer__waveform-bar"
+                    style={{ height: `${6 + dictationLevel * 18}px`, opacity: 0.4 + dictationLevel * 0.6 }}
+                  />
+                  <span
+                    className="composer__waveform-bar"
+                    style={{ height: `${6 + dictationLevel * 18}px`, opacity: 0.4 + dictationLevel * 0.6 }}
+                  />
+                  <span
+                    className="composer__waveform-bar"
+                    style={{ height: `${6 + dictationLevel * 18}px`, opacity: 0.4 + dictationLevel * 0.6 }}
+                  />
+                  <span
+                    className="composer__waveform-bar"
+                    style={{ height: `${6 + dictationLevel * 18}px`, opacity: 0.4 + dictationLevel * 0.6 }}
+                  />
                 </div>
               )}
               <div className="composer__row">
@@ -8589,6 +8667,10 @@ export default function App() {
                       className="icon-btn icon-btn--trailing icon-btn--stop is-dictating"
                       aria-label={tr("voice.dictationStop")}
                       onClick={() => {
+                        if (dictationLevelIntervalRef.current) {
+                          clearInterval(dictationLevelIntervalRef.current);
+                          dictationLevelIntervalRef.current = null;
+                        }
                         const rec = voiceRecorderRef.current;
                         if (rec && rec.state !== "inactive") rec.stop();
                       }}
@@ -8617,14 +8699,26 @@ export default function App() {
                       type="button"
                       className="icon-btn icon-btn--trailing icon-btn--mic"
                       disabled={!canType(session.state)}
+                      aria-expanded={voiceDictating}
                       aria-label={tr("voice.dictation")}
                       onClick={() => {
                         void (async () => {
                           try {
-                            const stream =
-                              await navigator.mediaDevices.getUserMedia({
-                                audio: true,
-                              });
+                            const capture = await startPcmCapture(
+                              (_pcmBase64) => {
+                                /* chunks collected via MediaRecorder */
+                              },
+                              16000,
+                              (level) => {
+                                setDictationLevel(level);
+                              },
+                              {
+                                noiseSuppression: voiceNoiseSuppression,
+                                sensitivity: voiceSensitivity,
+                                deviceId: voiceMicDeviceId || undefined,
+                              },
+                            );
+                            const stream = capture.stream;
                             const mime = MediaRecorder.isTypeSupported(
                               "audio/webm;codecs=opus",
                             )
@@ -8640,6 +8734,7 @@ export default function App() {
                             rec.onstop = () => {
                               stream.getTracks().forEach((t) => t.stop());
                               setVoiceDictating(false);
+                              setDictationLevel(0);
                               void (async () => {
                                 try {
                                   const blob = new Blob(voiceChunksRef.current, {
@@ -8647,19 +8742,34 @@ export default function App() {
                                   });
                                   if (blob.size < 32) return;
                                   const b64 = await blobToBase64(blob);
+                                  const lang = voiceDictationLanguage === "auto"
+                                    ? (locale === "zh" || locale === "zh-TW" ? "zh" : "en")
+                                    : voiceDictationLanguage;
                                   const result =
                                     await api.voiceDictationTranscribe(
                                       b64,
                                       mime,
-                                      locale === "zh" || locale === "zh-TW"
-                                        ? "zh"
-                                        : "en",
+                                      lang,
                                     );
                                   if (result.text?.trim()) {
+                                    let text = result.text.trim();
+                                    text = text
+                                      .replace(/\bperiod\b/gi, ".")
+                                      .replace(/\bcomma\b/gi, ",")
+                                      .replace(/\bquestion mark\b/gi, "?")
+                                      .replace(/\bexclamation mark\b/gi, "!")
+                                      .replace(/\bnew line\b/gi, "\n")
+                                      .replace(/\bnew paragraph\b/gi, "\n\n")
+                                      .replace(/\bslash\b/gi, "/")
+                                      .replace(/\bdash\b/gi, "\u2014")
+                                      .replace(/\bhyphen\b/gi, "-")
+                                      .replace(/\bopen quote\b/gi, "\u201c")
+                                      .replace(/\bclose quote\b/gi, "\u201d");
+                                    text = text.replace(/(\.\s+)([a-z])/g, (_, p, l) => p + (l as string).toUpperCase());
                                     setDraft((d) =>
                                       d.trim()
-                                        ? `${d.trim()} ${result.text.trim()}`
-                                        : result.text.trim(),
+                                        ? `${d.trim()} ${text}`
+                                        : text.charAt(0).toUpperCase() + text.slice(1),
                                     );
                                   }
                                 } catch (e) {
@@ -8670,6 +8780,25 @@ export default function App() {
                             voiceRecorderRef.current = rec;
                             rec.start();
                             setVoiceDictating(true);
+
+                            dictationLevelIntervalRef.current = window.setInterval(() => {
+                              setDictationLevel((prev) => Math.max(0, prev - 0.05));
+                            }, 100);
+
+                            if (voiceFeedbackChime) {
+                              try {
+                                const chimeCtx = new AudioContext();
+                                const osc = chimeCtx.createOscillator();
+                                const gain = chimeCtx.createGain();
+                                osc.frequency.value = 880;
+                                gain.gain.setValueAtTime(0.08, chimeCtx.currentTime);
+                                gain.gain.exponentialRampToValueAtTime(0.001, chimeCtx.currentTime + 0.15);
+                                osc.connect(gain);
+                                gain.connect(chimeCtx.destination);
+                                osc.start();
+                                osc.stop(chimeCtx.currentTime + 0.15);
+                              } catch { /* ignore */ }
+                            }
                           } catch {
                             /* mic denied */
                           }

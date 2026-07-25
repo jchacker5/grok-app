@@ -17,12 +17,14 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::session_manager::SessionManager;
 use crate::store;
 use crate::voice_auth;
 use crate::voice_tools;
+
+const MAX_RECONNECT_DELAY_MS: u64 = 30_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -395,6 +397,11 @@ async fn execute_tool(
     Ok(out)
 }
 
+fn reconnect_delay(attempt: u32) -> u64 {
+    let delay = 1000u64 * 2u64.pow(attempt.min(5));
+    delay.min(MAX_RECONNECT_DELAY_MS)
+}
+
 async fn run_realtime_loop(
     host: Arc<VoiceHost>,
     app: AppHandle,
@@ -409,101 +416,131 @@ async fn run_realtime_loop(
     _project_id: Option<String>,
 ) -> Result<(), String> {
     let url = "wss://api.x.ai/v1/realtime?model=grok-voice-latest";
-    let mut req = url
-        .into_client_request()
-        .map_err(|e| format!("ws request: {e}"))?;
-    req.headers_mut().insert(
-        "Authorization",
-        HeaderValue::from_str(&format!("Bearer {token}"))
-            .map_err(|e| format!("auth header: {e}"))?,
-    );
 
-    let (ws, _) = tokio_tungstenite::connect_async(req)
-        .await
-        .map_err(|e| format!("voice websocket connect failed: {e}"))?;
-    info!(target: "voice", "realtime connected");
+    let mut reconnect_attempt = 0u32;
 
-    let (mut write, mut read) = ws.split();
-
-    // Configure session
-    let update = json!({
-        "type": "session.update",
-        "session": {
-            "voice": voice_id,
-            "instructions": instructions,
-            "turn_detection": { "type": "server_vad" },
-            "tools": tools,
-            "modalities": ["text", "audio"]
+    loop {
+        if stop.load(Ordering::SeqCst) {
+            break;
         }
-    });
-    write
-        .send(Message::Text(update.to_string().into()))
-        .await
-        .map_err(|e| format!("session.update send: {e}"))?;
 
-    let _ = app.emit(
-        "voice://transcript",
-        json!({
-            "role": "system",
-            "text": "Live voice connected.",
-            "final": true
-        }),
-    );
+        let mut req = url
+            .into_client_request()
+            .map_err(|e| format!("ws request: {e}"))?;
+        req.headers_mut().insert(
+            "Authorization",
+            HeaderValue::from_str(&format!("Bearer {token}"))
+                .map_err(|e| format!("auth header: {e}"))?,
+        );
 
-    // Writer task: forward mic PCM as binary (or base64 events depending on API).
-    let stop_w = stop.clone();
-    let write_task = tokio::spawn(async move {
-        while !stop_w.load(Ordering::SeqCst) {
+        let (ws, _) = match tokio_tungstenite::connect_async(req).await {
+            Ok(r) => {
+                reconnect_attempt = 0;
+                r
+            }
+            Err(e) => {
+                error!("Voice WS connect failed: {e}");
+                let delay = reconnect_delay(reconnect_attempt);
+                reconnect_attempt += 1;
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+                continue;
+            }
+        };
+        info!(target: "voice", "realtime connected");
+
+        let (mut write, mut read) = ws.split();
+
+        // Configure session
+        let update = json!({
+            "type": "session.update",
+            "session": {
+                "voice": voice_id.clone(),
+                "instructions": instructions.clone(),
+                "turn_detection": { "type": "server_vad" },
+                "tools": tools.clone(),
+                "modalities": ["text", "audio"]
+            }
+        });
+        if write
+            .send(Message::Text(update.to_string().into()))
+            .await
+            .is_err()
+        {
+            warn!("Failed to send session.update, reconnecting...");
+            let delay = reconnect_delay(reconnect_attempt);
+            reconnect_attempt += 1;
+            tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+            continue;
+        }
+
+        let _ = app.emit(
+            "voice://transcript",
+            json!({
+                "role": "system",
+                "text": "Live voice connected.",
+                "final": true
+            }),
+        );
+
+        // Combined reader/writer loop
+        let mut ws_alive = true;
+        while !stop.load(Ordering::SeqCst) && ws_alive {
             tokio::select! {
                 chunk = audio_rx.recv() => {
                     match chunk {
                         Some(pcm) if !pcm.is_empty() => {
-                            // Send raw PCM binary frames (xAI STT style) and also
-                            // an input_audio_buffer append for OpenAI-compatible realtime.
                             let b64 = B64.encode(&pcm);
                             let msg = json!({
                                 "type": "input_audio_buffer.append",
                                 "audio": b64
                             });
                             if write.send(Message::Text(msg.to_string().into())).await.is_err() {
-                                break;
+                                ws_alive = false;
                             }
                         }
                         Some(_) => {}
-                        None => break,
+                        None => {
+                            ws_alive = false;
+                        }
                     }
                 }
-                _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+                msg = read.next() => {
+                    match msg {
+                        Some(Ok(Message::Text(t))) => {
+                            handle_server_event(&host, &app, &mgr, &t).await;
+                        }
+                        Some(Ok(Message::Binary(bin))) => {
+                            let b64 = B64.encode(&bin);
+                            let _ = app.emit("voice://audio", json!({ "delta": b64 }));
+                        }
+                        Some(Ok(Message::Close(_))) => {
+                            ws_alive = false;
+                        }
+                        Some(Err(e)) => {
+                            warn!("Voice WS read error: {e}");
+                            ws_alive = false;
+                        }
+                        None => {
+                            ws_alive = false;
+                        }
+                        _ => {}
+                    }
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {}
             }
         }
-        let _ = write.send(Message::Close(None)).await;
-    });
 
-    // Reader loop
-    while !stop.load(Ordering::SeqCst) {
-        let next = tokio::time::timeout(std::time::Duration::from_millis(200), read.next()).await;
-        let msg = match next {
-            Ok(Some(Ok(m))) => m,
-            Ok(Some(Err(e))) => return Err(format!("ws read: {e}")),
-            Ok(None) => break,
-            Err(_) => continue,
-        };
-        match msg {
-            Message::Text(t) => {
-                handle_server_event(&host, &app, &mgr, &t).await;
-            }
-            Message::Binary(bin) => {
-                // Some servers stream raw audio frames.
-                let b64 = B64.encode(&bin);
-                let _ = app.emit("voice://audio", json!({ "delta": b64 }));
-            }
-            Message::Close(_) => break,
-            _ => {}
+        if stop.load(Ordering::SeqCst) {
+            break;
         }
+
+        warn!("Voice WS disconnected. Reconnecting...");
+        let delay = reconnect_delay(reconnect_attempt);
+        reconnect_attempt += 1;
+        tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
     }
 
     stop.store(true, Ordering::SeqCst);
-    let _ = write_task.await;
     let mut st = host.snapshot();
     st.active = false;
     st.mode = "idle".into();

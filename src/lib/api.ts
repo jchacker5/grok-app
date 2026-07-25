@@ -827,6 +827,18 @@ export interface AppSettings {
   voiceDictationAutoSend?: boolean;
   /** Keep delegated agents running when live voice ends. */
   voiceKeepAgentsOnEnd?: boolean;
+  /** Dictation speech-to-text playback rate. */
+  voicePlaybackRate?: number;
+  /** Language for dictation transcription ("auto" or BCP-47). */
+  voiceDictationLanguage?: string;
+  /** Enable noise suppression during dictation. */
+  voiceNoiseSuppression?: boolean;
+  /** Mic sensitivity for dictation (0..1). */
+  voiceSensitivity?: number;
+  /** Preferred mic device ID for dictation. */
+  voiceMicDeviceId?: string;
+  /** Play audible chime on dictation start/stop. */
+  voiceFeedbackChime?: boolean;
   /** Timestamp display format. */
   timestampFormat?: string;
   /** Sidebar sort order. */
