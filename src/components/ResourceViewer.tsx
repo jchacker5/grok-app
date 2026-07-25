@@ -145,6 +145,14 @@ export interface ResourceViewerProps {
   onApprovePlan?: () => void;
   onRequestPlanChanges?: () => void;
   onDismissPlan?: () => void;
+  /**
+   * Fired when the user picks an element in an embedded-browser "url" tab
+   * via the resource pane's crosshair toolbar toggle. `sourceUrl` is the
+   * page the pick happened on (the active tab's URL).
+   */
+  onElementPicked?: (info: api.PickedElementInfo, sourceUrl: string) => void;
+  /** Fired with base64 PNG bytes after a resource-pane screenshot capture. */
+  onScreenshot?: (pngBase64: string, sourceUrl: string) => void;
 }
 
 type SideMode = "files" | "changes" | "plan" | "tasks";
@@ -263,6 +271,8 @@ export function ResourceViewer({
   onApprovePlan,
   onRequestPlanChanges,
   onDismissPlan,
+  onElementPicked,
+  onScreenshot,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [root, setRoot] = useState<TreeNode[]>([]);
@@ -2347,6 +2357,16 @@ export function ResourceViewer({
                 title={activeTab.name}
                 locale={locale}
                 active
+                onElementPicked={
+                  onElementPicked
+                    ? (info) => onElementPicked(info, activeTab.url ?? "")
+                    : undefined
+                }
+                onScreenshot={
+                  onScreenshot
+                    ? (png) => onScreenshot(png, activeTab.url ?? "")
+                    : undefined
+                }
               />
             </div>
           ) : activeTab.preview?.kind === "html" ? (

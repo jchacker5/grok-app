@@ -18,7 +18,7 @@ tauri-build = { version = "2", features = [] }
 #   (transparent titlebar + window-vibrancy). Keep the feature on all targets so
 #   cargo-xwin Windows cross-builds pass tauri-build feature allowlist checks;
 #   runtime effect is macOS-only.
-tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon", "image-png", "unstable"] }
+tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon", "image-png", "unstable", "devtools"] }
 tauri-plugin-store = "2"
 # Second launch focuses existing window (Dock multi-open reports).
 tauri-plugin-single-instance = "2"
@@ -51,11 +51,15 @@ keyring = { version = "3.6", features = [
     "crypto-rust",
 ] }
 arboard = "3"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 fs2 = "0.4"
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 url = "2"
 tauri-plugin-notification = "2"
+# Cross-platform screen capture (resource-pane webview screenshot / recording).
+# macOS: requires Screen Recording TCC permission — first capture after grant
+# may be black; commands.rs surfaces an explicit permission-needed error.
+xcap = "0.9"
 
 [profile.release]
 codegen-units = 1

@@ -70,6 +70,7 @@ pub fn run() {
     let session_mgr = Arc::new(SessionManager::new());
     let voice_host = Arc::new(voice_host::VoiceHost::new());
     let ssh_tunnel_mgr = ssh_tunnel::SshTunnelManager::new();
+    let recording_registry = Arc::new(commands::RecordingRegistry::new());
 
     tauri::Builder::default()
         // Must be registered first so a second process exits and focuses the primary window.
@@ -86,6 +87,7 @@ pub fn run() {
         .manage(session_mgr)
         .manage(voice_host)
         .manage(ssh_tunnel_mgr)
+        .manage(recording_registry)
         // Range-capable media streaming (video/audio/pdf) — never loads multi‑GB into RAM.
         .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
             std::thread::spawn(move || {
@@ -160,6 +162,14 @@ pub fn run() {
             commands::cli_install_commands,
             commands::pick_cli_binary,
             commands::open_external_url,
+            commands::resource_webview_toggle_devtools,
+            commands::resource_webview_start_picker,
+            commands::resource_webview_stop_picker,
+            commands::resource_webview_poll_pick,
+            commands::capture_resource_webview,
+            commands::start_resource_recording,
+            commands::stop_resource_recording,
+            commands::save_recording,
             commands::app_check_update,
             commands::cli_check_update,
             commands::projects_list,

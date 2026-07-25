@@ -496,6 +496,880 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
     }
 }
 
+/// Label of the child native `Webview` created by `EmbeddedBrowser.tsx` for the
+/// resource pane's "url" tabs. Kept in one place so Rust and TS agree.
+const RESOURCE_WEBVIEW_LABEL: &str = "resource-browser";
+
+/// Toggle devtools on the resource-pane embedded browser's child webview.
+/// Returns the new open/closed state. No-op (returns `false`) if the webview
+/// doesn't currently exist (tab closed / not a "url" tab).
+#[tauri::command]
+pub async fn resource_webview_toggle_devtools(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    let is_open = webview.is_devtools_open();
+    if is_open {
+        webview.close_devtools();
+    } else {
+        webview.open_devtools();
+    }
+    Ok(!is_open)
+}
+
+// ---------------------------------------------------------------------------
+// Resource-pane element picker (Live Preview Panel v2, Stage 2).
+//
+// SPIKE FINDING (see plan): the "resource-browser" child webview renders
+// arbitrary *remote* content chosen by the user (any URL — GitHub, a local
+// dev server, etc). Tauri's capability/ACL system only grants a capability's
+// permissions to "local" app-origin content by default; a capability needs an
+// explicit `remote.urls` allowlist to extend IPC access to non-local origins,
+// which is impossible here since the whole point of this pane is to browse
+// arbitrary URLs. So even though the `__TAURI__` bridge script is present in
+// every webview's page context, an untrusted remote page invoking
+// `window.__TAURI__.event.emit(...)` would be rejected by the ACL (and it
+// would be a serious security hole to allowlist it — any site opened in the
+// preview pane could then call whatever commands the `default` capability
+// exposes). Granting IPC to arbitrary browsed pages was therefore ruled out.
+//
+// Instead this uses `Webview::eval_with_callback` (Rust-only API, not exposed
+// on the JS `Webview` object) as a one-shot "evaluate an expression, get its
+// JSON-serialized result back" channel: the injected script stores pick
+// results in a page-local `window.__grokPicker` object, and the host polls it
+// every ~200ms while picker mode is active. No bridge/ACL grant needed for
+// the browsed page at all — it never touches Tauri APIs.
+// ---------------------------------------------------------------------------
+
+/// Installs mouseover-highlight + capture-phase click/Escape listeners in the
+/// resource-browser webview. Idempotent: re-running while already active is a
+/// no-op (checked via `window.__grokPicker.active`).
+const PICKER_INSTALL_JS: &str = r#"(function(){
+  if (window.__grokPicker && window.__grokPicker.active) return true;
+  var state = window.__grokPicker || (window.__grokPicker = {});
+  state.active = true;
+  state.result = null;
+  state.cancelled = false;
+
+  var overlay = document.getElementById('__grok_pick_overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = '__grok_pick_overlay';
+    overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;' +
+      'background:rgba(99,140,255,0.25);border:2px solid rgba(66,133,244,0.9);' +
+      'border-radius:2px;display:none;box-sizing:border-box;';
+    (document.body || document.documentElement).appendChild(overlay);
+  }
+
+  function cssEscape(s) {
+    return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\\\$&');
+  }
+
+  function selectorFor(el) {
+    if (!el || el.nodeType !== 1) return '';
+    var parts = [];
+    var node = el;
+    var depth = 0;
+    while (node && node.nodeType === 1 && depth < 6) {
+      if (node.id) {
+        parts.unshift(node.tagName.toLowerCase() + '#' + cssEscape(node.id));
+        break;
+      }
+      var part = node.tagName.toLowerCase();
+      if (node.classList && node.classList.length) {
+        var cls = Array.prototype.slice.call(node.classList).slice(0, 2).map(cssEscape).join('.');
+        if (cls) part += '.' + cls;
+      }
+      var parent = node.parentElement;
+      if (parent) {
+        var siblings = Array.prototype.filter.call(parent.children, function (c) {
+          return c.tagName === node.tagName;
+        });
+        if (siblings.length > 1) part += ':nth-of-type(' + (siblings.indexOf(node) + 1) + ')';
+      }
+      parts.unshift(part);
+      node = parent;
+      depth++;
+    }
+    return parts.join(' > ');
+  }
+
+  function onOver(e) {
+    var r = e.target.getBoundingClientRect();
+    overlay.style.left = r.left + 'px';
+    overlay.style.top = r.top + 'px';
+    overlay.style.width = r.width + 'px';
+    overlay.style.height = r.height + 'px';
+    overlay.style.display = 'block';
+  }
+  function onOut() {
+    overlay.style.display = 'none';
+  }
+  function onClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var el = e.target;
+    var r = el.getBoundingClientRect();
+    var html = el.outerHTML || '';
+    if (html.length > 2000) html = html.slice(0, 2000) + '…';
+    state.result = {
+      selector: selectorFor(el),
+      outerHtmlSnippet: html,
+      rect: { x: r.left, y: r.top, width: r.width, height: r.height }
+    };
+    teardown();
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      state.cancelled = true;
+      teardown();
+    }
+  }
+  function teardown() {
+    state.active = false;
+    overlay.style.display = 'none';
+    document.removeEventListener('mouseover', onOver, true);
+    document.removeEventListener('mouseout', onOut, true);
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keydown', onKey, true);
+  }
+  state.teardown = teardown;
+  document.addEventListener('mouseover', onOver, true);
+  document.addEventListener('mouseout', onOut, true);
+  document.addEventListener('click', onClick, true);
+  document.addEventListener('keydown', onKey, true);
+  return true;
+})()"#;
+
+/// Removes the picker's listeners/overlay (host-initiated cancel, e.g. the
+/// toolbar toggle turned off before any click happened).
+const PICKER_STOP_JS: &str = r#"(function(){
+  if (window.__grokPicker && typeof window.__grokPicker.teardown === 'function') {
+    window.__grokPicker.teardown();
+  }
+  return true;
+})()"#;
+
+/// Reads and clears any pending pick result / cancellation flag.
+const PICKER_POLL_JS: &str = r#"(function(){
+  var s = window.__grokPicker;
+  if (!s) return { picked: null, cancelled: false };
+  var picked = s.result || null;
+  var cancelled = !!s.cancelled;
+  s.result = null;
+  s.cancelled = false;
+  return { picked: picked, cancelled: cancelled };
+})()"#;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedElementRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedElementInfo {
+    pub selector: String,
+    pub outer_html_snippet: String,
+    pub rect: PickedElementRect,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickPollResult {
+    pub picked: Option<PickedElementInfo>,
+    pub cancelled: bool,
+}
+
+/// Evaluate `script` in the resource-browser webview and await its
+/// JSON-serialized result via `eval_with_callback` (fire-and-forget `eval`
+/// can't return a value; this is the request/response variant).
+async fn eval_resource_webview_json(
+    app: &tauri::AppHandle,
+    script: &'static str,
+) -> Result<String, String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+    let tx = std::sync::Mutex::new(Some(tx));
+    webview
+        .eval_with_callback(script, move |result_json: String| {
+            if let Some(tx) = tx.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                let _ = tx.send(result_json);
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    rx.await
+        .map_err(|_| "resource browser: no eval response".to_string())
+}
+
+/// Start (or no-op if already active) the hover-highlight + click-capture
+/// element picker in the resource-browser webview.
+#[tauri::command]
+pub async fn resource_webview_start_picker(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    webview.eval(PICKER_INSTALL_JS).map_err(|e| e.to_string())
+}
+
+/// Stop the element picker (host-initiated cancel).
+#[tauri::command]
+pub async fn resource_webview_stop_picker(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    webview.eval(PICKER_STOP_JS).map_err(|e| e.to_string())
+}
+
+/// Poll for a pending pick result. Frontend calls this on an interval while
+/// picker mode is active; stops polling once `picked` or `cancelled` is set.
+#[tauri::command]
+pub async fn resource_webview_poll_pick(app: tauri::AppHandle) -> Result<PickPollResult, String> {
+    let raw = eval_resource_webview_json(&app, PICKER_POLL_JS).await?;
+    serde_json::from_str(&raw).map_err(|e| format!("picker poll decode: {e}"))
+}
+
+#[cfg(test)]
+mod picker_tests {
+    use super::PickPollResult;
+
+    /// Exact shape `PICKER_POLL_JS` produces when nothing has happened yet.
+    #[test]
+    fn decodes_empty_poll() {
+        let r: PickPollResult =
+            serde_json::from_str(r#"{"picked":null,"cancelled":false}"#).unwrap();
+        assert!(r.picked.is_none());
+        assert!(!r.cancelled);
+    }
+
+    /// Exact shape produced after a click — field names must match the JS
+    /// object literal in PICKER_INSTALL_JS's `onClick` handler exactly
+    /// (camelCase), or this silently fails to decode at runtime.
+    #[test]
+    fn decodes_picked_result() {
+        let json = r#"{
+            "picked": {
+                "selector": "div#app > button.btn:nth-of-type(2)",
+                "outerHtmlSnippet": "<button class=\"btn\">Go</button>",
+                "rect": { "x": 10.5, "y": 20.0, "width": 100.0, "height": 32.0 }
+            },
+            "cancelled": false
+        }"#;
+        let r: PickPollResult = serde_json::from_str(json).unwrap();
+        let picked = r.picked.expect("picked");
+        assert_eq!(picked.selector, "div#app > button.btn:nth-of-type(2)");
+        assert_eq!(picked.outer_html_snippet, "<button class=\"btn\">Go</button>");
+        assert_eq!(picked.rect.width, 100.0);
+        assert!(!r.cancelled);
+    }
+
+    #[test]
+    fn decodes_cancelled_poll() {
+        let r: PickPollResult =
+            serde_json::from_str(r#"{"picked":null,"cancelled":true}"#).unwrap();
+        assert!(r.picked.is_none());
+        assert!(r.cancelled);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Resource-pane screenshot capture (Live Preview Panel v2, Stage 3).
+//
+// Crate choice: `xcap` (0.9) — verified it actually builds and links on this
+// machine (aarch64-apple-darwin) before committing to it; no alternative was
+// needed. It exposes `Monitor::capture_region(x, y, width, height)` in
+// monitor-relative *logical* points (matching `CGDisplayBounds`, i.e. the
+// same units as Tauri's `LogicalPosition`/`LogicalSize`), which is exactly
+// what's needed to crop out just the resource-browser webview instead of
+// grabbing the whole screen.
+//
+// Coordinates: `Webview::position()` for a *child* webview returns a
+// position relative to its **parent window**, not the desktop (unlike the
+// JS-facing doc comment, which describes top-level webview windows) — so
+// this adds the window's own `outer_position()` to get an absolute physical
+// position, converts to logical points via the window's `scale_factor()`,
+// finds which `Monitor` contains that point, and captures relative to that
+// monitor's own origin. `compute_capture_region` isolates this arithmetic as
+// a pure function so it's unit-testable without a live window/monitor.
+//
+// macOS TCC: without Screen Recording permission granted to the app, capture
+// APIs on macOS have historically returned a black frame instead of an
+// error. `is_blank_capture` detects that case and surfaces
+// `SCREEN_RECORDING_PERMISSION_ERROR` instead of silently handing back a
+// black PNG, so the frontend can show a clear "grant permission" state
+// (mirrored in `resources.screenshotPermission` i18n copy) instead of a
+// generic failure.
+// ---------------------------------------------------------------------------
+
+/// Distinct, frontend-detectable error string for the macOS TCC
+/// Screen-Recording-not-granted case (see module doc above). The frontend
+/// matches on this exact prefix to show a permission-specific UI state
+/// rather than a generic capture-failed toast.
+const SCREEN_RECORDING_PERMISSION_ERROR: &str = "screen-recording-permission-needed";
+
+/// Pure arithmetic: convert a child webview's physical, window-relative
+/// position/size (as reported by `Webview::position()`/`size()`) plus its
+/// window's physical outer position and scale factor into a monitor-relative
+/// logical-point region for `xcap::Monitor::capture_region`. Clamped to fit
+/// within the monitor's own bounds (a webview can't be captured past the
+/// edge of the screen it's on).
+fn compute_capture_region(
+    window_outer_x: i32,
+    window_outer_y: i32,
+    webview_x: i32,
+    webview_y: i32,
+    webview_width: u32,
+    webview_height: u32,
+    window_scale_factor: f64,
+    monitor_x: i32,
+    monitor_y: i32,
+    monitor_width: u32,
+    monitor_height: u32,
+) -> Result<(u32, u32, u32, u32), String> {
+    if !(window_scale_factor.is_finite()) || window_scale_factor <= 0.0 {
+        return Err("invalid window scale factor".into());
+    }
+    let abs_x = window_outer_x as f64 + webview_x as f64;
+    let abs_y = window_outer_y as f64 + webview_y as f64;
+    let logical_x = (abs_x / window_scale_factor).round() as i32;
+    let logical_y = (abs_y / window_scale_factor).round() as i32;
+    let logical_w = ((webview_width as f64 / window_scale_factor).round() as i64).max(1) as u32;
+    let logical_h = ((webview_height as f64 / window_scale_factor).round() as i64).max(1) as u32;
+
+    let region_x = (logical_x - monitor_x).max(0) as u32;
+    let region_y = (logical_y - monitor_y).max(0) as u32;
+    if region_x >= monitor_width || region_y >= monitor_height {
+        return Err("resource browser is off-screen".into());
+    }
+    let region_w = logical_w.min(monitor_width - region_x);
+    let region_h = logical_h.min(monitor_height - region_y);
+    if region_w == 0 || region_h == 0 {
+        return Err("resource browser has zero-size capture region".into());
+    }
+    Ok((region_x, region_y, region_w, region_h))
+}
+
+/// Heuristic: treat a capture as a TCC-permission-missing placeholder when
+/// it's (near enough) a single uniform color, sampling a stride of pixels
+/// rather than the whole buffer for speed on large displays.
+fn is_blank_capture(width: u32, height: u32, rgba: &[u8]) -> bool {
+    if width == 0 || height == 0 || rgba.len() < 4 {
+        return true;
+    }
+    let pixel_count = (rgba.len() / 4).max(1);
+    let stride = (pixel_count / 2048).max(1);
+    let mut sum: u64 = 0;
+    let mut sampled: u64 = 0;
+    let mut first = [rgba[0], rgba[1], rgba[2]];
+    let mut uniform = true;
+    let mut i = 0usize;
+    while i < pixel_count {
+        let off = i * 4;
+        let px = [rgba[off], rgba[off + 1], rgba[off + 2]];
+        if i == 0 {
+            first = px;
+        } else if px != first {
+            uniform = false;
+        }
+        sum += px[0] as u64 + px[1] as u64 + px[2] as u64;
+        sampled += 1;
+        i += stride;
+    }
+    if sampled == 0 {
+        return true;
+    }
+    let avg = sum as f64 / (sampled as f64 * 3.0);
+    // Uniform-and-near-black is the documented TCC-not-granted symptom.
+    // (A legitimately all-black page is vanishingly unlikely to matter here —
+    // worst case the user retries and gets the same, correct, black PNG.)
+    uniform && avg < 4.0
+}
+
+/// Blocking: capture the resource-browser webview's current on-screen pixels
+/// as raw RGBA. Shared by the one-shot screenshot command and the recording
+/// loop (Stage 4) so both use the exact same geometry/monitor-resolution
+/// logic. Must run off the async runtime (called via `spawn_blocking`).
+fn capture_resource_webview_rgba(app: &tauri::AppHandle) -> Result<(u32, u32, Vec<u8>), String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    let window = webview.window();
+    let outer_pos = window.outer_position().map_err(|e| e.to_string())?;
+    let scale_factor = window.scale_factor().map_err(|e| e.to_string())?;
+    let wv_pos = webview.position().map_err(|e| e.to_string())?;
+    let wv_size = webview.size().map_err(|e| e.to_string())?;
+
+    let monitors = xcap::Monitor::all().map_err(|e| format!("list monitors: {e}"))?;
+    let abs_cx = outer_pos.x as f64 + wv_pos.x as f64 + wv_size.width as f64 / 2.0;
+    let abs_cy = outer_pos.y as f64 + wv_pos.y as f64 + wv_size.height as f64 / 2.0;
+    let logical_cx = (abs_cx / scale_factor).round() as i32;
+    let logical_cy = (abs_cy / scale_factor).round() as i32;
+
+    let monitor = monitors
+        .into_iter()
+        .find(|m| {
+            let (mx, my, mw, mh) = match (m.x(), m.y(), m.width(), m.height()) {
+                (Ok(x), Ok(y), Ok(w), Ok(h)) => (x, y, w as i32, h as i32),
+                _ => return false,
+            };
+            logical_cx >= mx && logical_cx < mx + mw && logical_cy >= my && logical_cy < my + mh
+        })
+        .ok_or_else(|| "resource browser is off-screen".to_string())?;
+
+    let monitor_x = monitor.x().map_err(|e| e.to_string())?;
+    let monitor_y = monitor.y().map_err(|e| e.to_string())?;
+    let monitor_w = monitor.width().map_err(|e| e.to_string())?;
+    let monitor_h = monitor.height().map_err(|e| e.to_string())?;
+
+    let (rx, ry, rw, rh) = compute_capture_region(
+        outer_pos.x,
+        outer_pos.y,
+        wv_pos.x,
+        wv_pos.y,
+        wv_size.width,
+        wv_size.height,
+        scale_factor,
+        monitor_x,
+        monitor_y,
+        monitor_w,
+        monitor_h,
+    )?;
+
+    let image = monitor
+        .capture_region(rx, ry, rw, rh)
+        .map_err(|e| format!("capture: {e}"))?;
+    let (iw, ih) = (image.width(), image.height());
+    Ok((iw, ih, image.into_raw()))
+}
+
+/// Capture a PNG screenshot of the resource-pane embedded browser's native
+/// child webview (label `"resource-browser"`), base64-encoded. Errors with
+/// `SCREEN_RECORDING_PERMISSION_ERROR` when macOS Screen Recording
+/// permission hasn't been granted yet (detected via `is_blank_capture`).
+#[tauri::command]
+pub async fn capture_resource_webview(app: tauri::AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+        let (iw, ih, raw) = capture_resource_webview_rgba(&app)?;
+        if is_blank_capture(iw, ih, &raw) {
+            return Err(SCREEN_RECORDING_PERMISSION_ERROR.to_string());
+        }
+        let png = rgba_to_png_bytes(iw as usize, ih as usize, &raw)?;
+        use base64::Engine;
+        Ok(base64::engine::general_purpose::STANDARD.encode(png))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::{compute_capture_region, is_blank_capture};
+
+    #[test]
+    fn region_clamped_to_monitor_bounds_at_1x() {
+        // Window at (100,100), webview at (10,20) relative to it, 300x200 —
+        // absolute (110,120), monitor at origin, 1920x1080, scale 1.0.
+        let (x, y, w, h) =
+            compute_capture_region(100, 100, 10, 20, 300, 200, 1.0, 0, 0, 1920, 1080).unwrap();
+        assert_eq!((x, y, w, h), (110, 120, 300, 200));
+    }
+
+    #[test]
+    fn region_converts_physical_to_logical_at_2x_retina() {
+        // Physical webview position/size at 2x scale → half in logical points.
+        let (x, y, w, h) =
+            compute_capture_region(0, 0, 200, 400, 600, 800, 2.0, 0, 0, 1920, 1080).unwrap();
+        assert_eq!((x, y, w, h), (100, 200, 300, 400));
+    }
+
+    #[test]
+    fn region_clamps_when_it_would_overflow_monitor() {
+        // Logical region would be (1800,1000)+(300,200) = overflows a
+        // 1920x1080 monitor — width/height get clamped, not rejected.
+        let (x, y, w, h) =
+            compute_capture_region(1800, 1000, 0, 0, 300, 200, 1.0, 0, 0, 1920, 1080).unwrap();
+        assert_eq!((x, y), (1800, 1000));
+        assert_eq!((w, h), (120, 80));
+    }
+
+    #[test]
+    fn region_errors_when_fully_off_monitor() {
+        let err =
+            compute_capture_region(5000, 5000, 0, 0, 100, 100, 1.0, 0, 0, 1920, 1080).unwrap_err();
+        assert!(err.contains("off-screen"));
+    }
+
+    #[test]
+    fn region_rejects_invalid_scale_factor() {
+        assert!(compute_capture_region(0, 0, 0, 0, 100, 100, 0.0, 0, 0, 1920, 1080).is_err());
+        assert!(compute_capture_region(0, 0, 0, 0, 100, 100, -1.0, 0, 0, 1920, 1080).is_err());
+    }
+
+    fn solid_rgba(width: u32, height: u32, rgb: [u8; 3]) -> Vec<u8> {
+        let mut v = Vec::with_capacity((width * height * 4) as usize);
+        for _ in 0..(width * height) {
+            v.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
+        }
+        v
+    }
+
+    #[test]
+    fn detects_uniform_black_as_blank() {
+        let rgba = solid_rgba(64, 64, [0, 0, 0]);
+        assert!(is_blank_capture(64, 64, &rgba));
+    }
+
+    #[test]
+    fn does_not_flag_uniform_white_as_blank() {
+        // Only near-black uniform frames are treated as the TCC symptom —
+        // a legitimately blank white page must not trigger a false positive.
+        let rgba = solid_rgba(64, 64, [255, 255, 255]);
+        assert!(!is_blank_capture(64, 64, &rgba));
+    }
+
+    #[test]
+    fn does_not_flag_varied_content_as_blank() {
+        let mut rgba = Vec::with_capacity(64 * 64 * 4);
+        for i in 0..(64 * 64) {
+            let v = (i % 256) as u8;
+            rgba.extend_from_slice(&[v, 255 - v, v / 2, 255]);
+        }
+        assert!(!is_blank_capture(64, 64, &rgba));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Resource-pane recording (Live Preview Panel v2, Stage 4).
+//
+// Reuses `capture_resource_webview_rgba` (Stage 3) in a `tokio::time::interval`
+// loop, JPEG-encoding (not PNG — much smaller over IPC) and emitting each
+// frame as a `preview:recording-frame` event. The frontend draws frames onto
+// an offscreen <canvas> and records `canvas.captureStream(fps)` with
+// MediaRecorder to produce a WebM file.
+//
+// Safeguards live in the loop itself, not just the frontend:
+//   - hard auto-stop at RECORDING_MAX_FRAMES or RECORDING_MAX_SECS, whichever
+//     first;
+//   - `MissedTickBehavior::Skip` on the interval means a slow capture+encode
+//     tick (backpressure) coalesces the missed ticks instead of bursting a
+//     queue of catch-up frames — frames are dropped, never queued
+//     unboundedly.
+// ---------------------------------------------------------------------------
+
+const RECORDING_MIN_FPS: u32 = 1;
+const RECORDING_MAX_FPS: u32 = 12;
+const RECORDING_DEFAULT_FPS: u32 = 7;
+const RECORDING_MAX_FRAMES: u32 = 500;
+const RECORDING_MAX_SECS: u64 = 180;
+const RECORDING_JPEG_QUALITY: u8 = 70;
+
+/// Clamp a requested recording frame rate to the supported/safe range.
+fn clamp_recording_fps(fps: u32) -> u32 {
+    fps.clamp(RECORDING_MIN_FPS, RECORDING_MAX_FPS)
+}
+
+/// JPEG-encode raw RGBA8 pixels (dropping alpha — JPEG has none) as base64.
+/// Used per-frame in the recording loop; much smaller than PNG for the
+/// IPC-event payload at the cost of (tunable, currently fixed) lossy quality.
+fn rgba_to_jpeg_base64(width: u32, height: u32, rgba: &[u8], quality: u8) -> Result<String, String> {
+    use base64::Engine;
+    use image::codecs::jpeg::JpegEncoder;
+    use image::ImageEncoder;
+
+    let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
+    if width == 0 || height == 0 || rgba.len() < expected {
+        return Err("rgba buffer too short".into());
+    }
+    let mut rgb = Vec::with_capacity((width as usize) * (height as usize) * 3);
+    for px in rgba[..expected].chunks_exact(4) {
+        rgb.extend_from_slice(&px[..3]);
+    }
+    let mut jpeg = Vec::new();
+    JpegEncoder::new_with_quality(&mut jpeg, quality)
+        .write_image(&rgb, width, height, image::ExtendedColorType::Rgb8)
+        .map_err(|e| format!("jpeg encode: {e}"))?;
+    if jpeg.is_empty() {
+        return Err("jpeg encode produced empty buffer".into());
+    }
+    Ok(base64::engine::general_purpose::STANDARD.encode(jpeg))
+}
+
+/// Tracks in-flight recordings so `stop_resource_recording` can signal the
+/// matching loop task to stop. Managed Tauri state (`app.manage(...)`).
+pub struct RecordingRegistry {
+    active: std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::atomic::AtomicBool>>>,
+}
+
+impl RecordingRegistry {
+    pub fn new() -> Self {
+        Self {
+            active: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+}
+
+impl Default for RecordingRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordingFramePayload {
+    recording_id: String,
+    frame_index: u32,
+    width: u32,
+    height: u32,
+    jpeg_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordingStoppedPayload {
+    recording_id: String,
+    /// One of `"stopped"` (host-requested), `"max_frames"`, `"max_duration"`,
+    /// or `"capture_failed"` (e.g. the resource browser tab closed mid-recording).
+    reason: String,
+    frame_count: u32,
+}
+
+/// Start recording the resource-browser webview at `fps` (clamped to
+/// [1, 12], default 7). Spawns a background loop and returns immediately
+/// with a `recording_id`; frames arrive as `preview:recording-frame` events
+/// and a terminal `preview:recording-stopped` event marks the end (whether
+/// stopped by the host, a safeguard, or a capture failure).
+#[tauri::command]
+pub async fn start_resource_recording(
+    app: tauri::AppHandle,
+    registry: State<'_, Arc<RecordingRegistry>>,
+    fps: Option<u32>,
+) -> Result<String, String> {
+    use tauri::Manager;
+    if app.get_webview(RESOURCE_WEBVIEW_LABEL).is_none() {
+        return Err("resource browser is not open".to_string());
+    }
+    let fps = clamp_recording_fps(fps.unwrap_or(RECORDING_DEFAULT_FPS));
+    let recording_id = uuid::Uuid::new_v4().to_string();
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let mut guard = registry
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        guard.insert(recording_id.clone(), cancel.clone());
+    }
+
+    let app_task = app.clone();
+    let registry_task = registry.inner().clone();
+    let id_task = recording_id.clone();
+    tauri::async_runtime::spawn(async move {
+        run_resource_recording_loop(app_task, registry_task, id_task, cancel, fps).await;
+    });
+
+    Ok(recording_id)
+}
+
+/// Signal a running recording to stop after its current tick. The loop
+/// itself removes the registry entry and emits the terminal
+/// `preview:recording-stopped` event — this just flips the cancel flag.
+#[tauri::command]
+pub async fn stop_resource_recording(
+    registry: State<'_, Arc<RecordingRegistry>>,
+    recording_id: String,
+) -> Result<(), String> {
+    let guard = registry
+        .active
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    match guard.get(&recording_id) {
+        Some(flag) => {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }
+        None => Err("recording not found".to_string()),
+    }
+}
+
+async fn run_resource_recording_loop(
+    app: tauri::AppHandle,
+    registry: Arc<RecordingRegistry>,
+    recording_id: String,
+    cancel: Arc<std::sync::atomic::AtomicBool>,
+    fps: u32,
+) {
+    use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+
+    let period_ms = (1000 / fps.max(1)).max(1) as u64;
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(period_ms));
+    // Backpressure safeguard: if a capture+encode takes longer than one
+    // period (slow machine / large display), coalesce the missed ticks
+    // instead of bursting a queue of catch-up frames once capture catches up.
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    let started = std::time::Instant::now();
+    let mut frame_index: u32 = 0;
+    let mut reason = "stopped".to_string();
+
+    loop {
+        interval.tick().await;
+
+        if cancel.load(Ordering::Relaxed) {
+            reason = "stopped".to_string();
+            break;
+        }
+        if frame_index >= RECORDING_MAX_FRAMES {
+            reason = "max_frames".to_string();
+            break;
+        }
+        if started.elapsed().as_secs() >= RECORDING_MAX_SECS {
+            reason = "max_duration".to_string();
+            break;
+        }
+
+        let app_capture = app.clone();
+        let captured =
+            tauri::async_runtime::spawn_blocking(move || capture_resource_webview_rgba(&app_capture))
+                .await;
+        let (iw, ih, raw) = match captured {
+            Ok(Ok(v)) => v,
+            Ok(Err(_)) | Err(_) => {
+                // Resource browser closed mid-recording, or a capture
+                // failed — stop cleanly instead of spamming error events.
+                reason = "capture_failed".to_string();
+                break;
+            }
+        };
+
+        let jpeg_b64 = match rgba_to_jpeg_base64(iw, ih, &raw, RECORDING_JPEG_QUALITY) {
+            Ok(v) => v,
+            Err(_) => continue, // drop this single frame, keep recording
+        };
+
+        let payload = RecordingFramePayload {
+            recording_id: recording_id.clone(),
+            frame_index,
+            width: iw,
+            height: ih,
+            jpeg_base64: jpeg_b64,
+        };
+        let _ = app.emit("preview:recording-frame", payload);
+        frame_index += 1;
+    }
+
+    {
+        let mut guard = registry
+            .active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        guard.remove(&recording_id);
+    }
+    let _ = app.emit(
+        "preview:recording-stopped",
+        RecordingStoppedPayload {
+            recording_id,
+            reason,
+            frame_count: frame_index,
+        },
+    );
+}
+
+/// Save a finished WebM recording (base64-encoded blob from the frontend's
+/// MediaRecorder) via a native save dialog. Returns `None` if the user
+/// cancels. Deliberately does **not** reuse `save_temp_attachment` — that
+/// command caps payloads at 40 MiB, too small for a multi-minute recording,
+/// and this goes straight to a user-chosen destination file rather than the
+/// attachments dir (mirrors the `rfd::FileDialog` save pattern already used
+/// by `export_support_bundle`/`export_session_bundle` above).
+#[tauri::command]
+pub async fn save_recording(
+    bytes_base64: String,
+    suggested_name: Option<String>,
+) -> Result<Option<String>, String> {
+    use base64::Engine;
+    let raw = bytes_base64.trim();
+    let b64 = raw.split(',').last().unwrap_or(raw).trim();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("empty recording payload".into());
+    }
+
+    let name = suggested_name
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "recording.webm".to_string());
+
+    let dest = tauri::async_runtime::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_title("Save recording")
+            .set_file_name(&name)
+            .add_filter("WebM video", &["webm"])
+            .save_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let Some(dest) = dest else {
+        return Ok(None);
+    };
+    std::fs::write(&dest, &bytes).map_err(|e| format!("write recording: {e}"))?;
+    Ok(Some(dest.display().to_string()))
+}
+
+#[cfg(test)]
+mod recording_tests {
+    use super::{clamp_recording_fps, rgba_to_jpeg_base64, RECORDING_MAX_FPS, RECORDING_MIN_FPS};
+
+    #[test]
+    fn clamps_fps_within_min_max() {
+        assert_eq!(clamp_recording_fps(0), RECORDING_MIN_FPS);
+        assert_eq!(clamp_recording_fps(1), 1);
+        assert_eq!(clamp_recording_fps(7), 7);
+        assert_eq!(clamp_recording_fps(12), RECORDING_MAX_FPS);
+        assert_eq!(clamp_recording_fps(999), RECORDING_MAX_FPS);
+    }
+
+    #[test]
+    fn jpeg_encode_roundtrips_valid_image() {
+        let width = 16u32;
+        let height = 8u32;
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        for i in 0..(width * height) {
+            let v = (i % 256) as u8;
+            rgba.extend_from_slice(&[v, 255 - v, v / 2, 255]);
+        }
+        let b64 = rgba_to_jpeg_base64(width, height, &rgba, 70).expect("encode ok");
+        use base64::Engine;
+        let jpeg_bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .expect("valid base64");
+        // JPEG magic bytes (SOI marker).
+        assert_eq!(&jpeg_bytes[0..2], &[0xFF, 0xD8]);
+        let decoded = image::load_from_memory(&jpeg_bytes).expect("valid jpeg");
+        assert_eq!(decoded.width(), width);
+        assert_eq!(decoded.height(), height);
+    }
+
+    #[test]
+    fn jpeg_encode_rejects_short_buffer() {
+        let rgba = vec![0u8; 10]; // way too short for 16x8x4
+        assert!(rgba_to_jpeg_base64(16, 8, &rgba, 70).is_err());
+    }
+}
+
 #[tauri::command]
 pub async fn projects_list() -> Result<Vec<Project>, String> {
     Ok(store::load_projects())
