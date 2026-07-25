@@ -5963,6 +5963,128 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   border-color: var(--border-strong);
 }
 
+/* Commit dialog (Feature 2 — Git commit & PR workflow, GlassModal body) */
+.commit-dialog__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.commit-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.commit-dialog__files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.commit-dialog__files-title {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+
+.commit-dialog__files-empty {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.commit-dialog__files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 7.5em;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.commit-dialog__files-list li {
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.commit-dialog__field--row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.commit-dialog__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 500;
+}
+
+.commit-dialog__draft-btn {
+  width: auto;
+  height: auto;
+  padding: 3px 8px;
+  gap: 5px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 550;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+}
+
+.commit-dialog__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 7em;
+  max-height: 16em;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 8px 10px;
+}
+
+.commit-dialog__textarea:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.commit-dialog__hint {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.commit-dialog__hint--warn {
+  color: var(--warning, #c9a227);
+}
+
+.commit-dialog__hint--error {
+  color: var(--danger, #d45454);
+}
+
 /* In-thread turn failure (retries exhausted / provider error) */
 .chat-turn-error {
   width: 100%;
@@ -10773,6 +10895,76 @@ textarea::-webkit-scrollbar-thumb:active,
 .rp-changes-row:hover .rp-changes-row__actions,
 .rp-changes-row.is-active .rp-changes-row__actions {
   opacity: 1;
+}
+
+.rp-changes-row__stage {
+  display: flex;
+  align-items: center;
+  padding: 0 0 0 8px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.rp-changes-row__stage input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* Stage/commit/PR toolbar above the Workspace changes list. */
+.rp-changes-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 8px;
+}
+
+.rp-changes-toolbar__bulk,
+.rp-changes-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rp-changes-toolbar__actions {
+  margin-left: auto;
+}
+
+.rp-changes-toolbar__hint {
+  flex-basis: 100%;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.rp-changes-toolbar__hint--error {
+  color: var(--danger, #d45454);
+}
+
+.rp-changes-toolbar__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input, transparent);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rp-changes-toolbar__btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.rp-changes-toolbar__btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .rp-changes-empty {

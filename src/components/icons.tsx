@@ -33,6 +33,9 @@ import {
   IconFirstAidKit as TbFirstAidKit,
   IconFolder as TbFolder,
   IconFolderPlus as TbFolderPlus,
+  IconGitCommit as TbGitCommit,
+  IconGitPullRequest as TbGitPullRequest,
+  IconSquareCheck as TbSquareCheck,
   IconHandStop as TbHandStop,
   IconHeadset as TbHeadset,
   IconInfoCircle as TbInfoCircle,
@@ -279,3 +282,7 @@ export const IconActivity = wrap(TbActivity);
 export const IconSparkles = wrap(TbSparkles);
 export const IconBox = wrap(TbBox);
 export const IconPuzzle = wrap(TbPuzzle);
+export const IconGitBranch = wrap(TbGitBranch);
+export const IconGitCommit = wrap(TbGitCommit);
+export const IconGitPullRequest = wrap(TbGitPullRequest);
+export const IconCheckSquare = wrap(TbSquareCheck);

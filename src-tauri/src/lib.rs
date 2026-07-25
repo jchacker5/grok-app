@@ -11,6 +11,7 @@ mod cli_probe;
 mod cli_install;
 mod commands;
 mod support_bundle;
+mod ephemeral_acp;
 #[cfg(test)]
 mod test_env_lock;
 mod editors;
@@ -229,6 +230,14 @@ pub fn run() {
             commands::git_status,
             commands::git_worktrees_list,
             commands::git_show_file,
+            commands::git_staged_diff,
+            commands::git_stage_paths,
+            commands::git_unstage_paths,
+            commands::git_commit,
+            commands::git_push,
+            commands::git_gh_cli_available,
+            commands::git_pr_open,
+            commands::acp_ephemeral_prompt,
             commands::fs_list_dir,
             commands::fs_read_file,
             commands::fs_write_file,
