@@ -11,6 +11,8 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-07-25
+
 ### Added
 
 - **Settings expansion**: 16 new settings in Settings → General:
@@ -45,7 +47,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Fixed
 
-- **N/A**
+- **Build break**: new `SessionMeta` fields (`branch`/`prRef`/`prState`/`settledAt`/`snoozedUntil`) left the `store.rs` test fixture non-exhaustive; fixed.
+- **Flaky test suite**: `store.rs` and `support_bundle.rs` tests each mutated the process-global `GROK_APP_HOME` env var behind their own private lock, so they raced each other under parallel `cargo test`. Consolidated into one shared lock.
+- **i18n gap**: sidebar multi-select bulk-action bar ("selected" / Settle / Archive / Delete / Cancel) had hardcoded English strings bypassing the locale system.
 
 ## [0.1.7] - 2026-07-24
 
