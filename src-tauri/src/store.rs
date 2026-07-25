@@ -228,6 +228,25 @@ pub struct AppSettings {
     /// by `tauri-plugin-notification` / the browser `Notification` API fallback.
     #[serde(default = "default_true")]
     pub notifications_enabled: bool,
+    /// Play a short beep alongside desktop notifications.
+    #[serde(default = "default_true")]
+    pub notify_sound_enabled: bool,
+    /// Suppress desktop notifications during a daily Do Not Disturb window.
+    /// Evaluated client-side against the system's local time/timezone.
+    #[serde(default)]
+    pub notify_quiet_hours_enabled: bool,
+    /// Quiet hours start, `"HH:MM"` 24-hour local time.
+    #[serde(default = "default_quiet_hours_start")]
+    pub notify_quiet_hours_start: String,
+    /// Quiet hours end, `"HH:MM"` 24-hour local time.
+    #[serde(default = "default_quiet_hours_end")]
+    pub notify_quiet_hours_end: String,
+    /// Notify when a turn finishes and the session is ready again.
+    #[serde(default = "default_true")]
+    pub notify_on_completion: bool,
+    /// Notify when a turn errors out.
+    #[serde(default = "default_true")]
+    pub notify_on_error: bool,
     /// Playback rate for voice AI output (0.5-2.0).
     #[serde(default = "default_voice_playback_rate")]
     pub voice_playback_rate: f64,
@@ -317,6 +336,8 @@ fn default_voice_dictation_language() -> String { "auto".to_string() }
 fn default_voice_noise_suppression() -> bool { true }
 fn default_voice_sensitivity() -> f64 { 0.5 }
 fn default_voice_feedback_chime() -> bool { false }
+fn default_quiet_hours_start() -> String { "22:00".into() }
+fn default_quiet_hours_end() -> String { "08:00".into() }
 
 fn default_timestamp_format() -> String {
     "locale".into()
@@ -368,6 +389,12 @@ impl Default for AppSettings {
             voice_dictation_auto_send: false,
             voice_keep_agents_on_end: true,
             notifications_enabled: true,
+            notify_sound_enabled: true,
+            notify_quiet_hours_enabled: false,
+            notify_quiet_hours_start: default_quiet_hours_start(),
+            notify_quiet_hours_end: default_quiet_hours_end(),
+            notify_on_completion: true,
+            notify_on_error: true,
             voice_playback_rate: default_voice_playback_rate(),
             voice_dictation_language: default_voice_dictation_language(),
             voice_noise_suppression: default_voice_noise_suppression(),
@@ -1848,6 +1875,60 @@ mod tests {
         }"#;
         let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
         assert!(!s.notifications_enabled);
+    }
+
+    #[test]
+    fn notification_prefs_default_when_missing_from_json() {
+        // Old settings files without the new fields must deserialize to the
+        // documented defaults (sound/completion/error on, quiet hours off).
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "en",
+            "sessionDataMode": "independent",
+            "manualCliPath": null,
+            "permissionPolicy": "ask",
+            "modelId": null,
+            "effort": "medium",
+            "mode": "agent",
+            "onboardingDone": true,
+            "setupSkipped": false
+        }"#;
+        let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
+        assert!(s.notify_sound_enabled);
+        assert!(!s.notify_quiet_hours_enabled);
+        assert_eq!(s.notify_quiet_hours_start, "22:00");
+        assert_eq!(s.notify_quiet_hours_end, "08:00");
+        assert!(s.notify_on_completion);
+        assert!(s.notify_on_error);
+    }
+
+    #[test]
+    fn notification_prefs_roundtrip() {
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "en",
+            "sessionDataMode": "independent",
+            "manualCliPath": null,
+            "permissionPolicy": "ask",
+            "modelId": null,
+            "effort": "medium",
+            "mode": "agent",
+            "onboardingDone": true,
+            "setupSkipped": false,
+            "notifySoundEnabled": false,
+            "notifyQuietHoursEnabled": true,
+            "notifyQuietHoursStart": "23:30",
+            "notifyQuietHoursEnd": "07:15",
+            "notifyOnCompletion": false,
+            "notifyOnError": false
+        }"#;
+        let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
+        assert!(!s.notify_sound_enabled);
+        assert!(s.notify_quiet_hours_enabled);
+        assert_eq!(s.notify_quiet_hours_start, "23:30");
+        assert_eq!(s.notify_quiet_hours_end, "07:15");
+        assert!(!s.notify_on_completion);
+        assert!(!s.notify_on_error);
     }
 
     fn sample_session(id: &str, pinned: bool, updated: DateTime<Utc>) -> SessionMeta {

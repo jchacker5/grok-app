@@ -785,6 +785,23 @@ const en = {
   "settings.notificationsDenied":
     "OS permission denied — enable notifications for Grok in system settings",
   "settings.notificationsRequest": "Request permission",
+  "settings.notifySound": "Notification sound",
+  "settings.notifySoundDesc":
+    "Play a short chime alongside desktop notifications",
+  "settings.notifyQuietHours": "Do Not Disturb",
+  "settings.notifyQuietHoursDesc":
+    "Silence desktop notifications during a daily window (local time)",
+  "settings.notifyQuietHoursStart": "Starts",
+  "settings.notifyQuietHoursEnd": "Ends",
+  "settings.notifyOnCompletion": "Notify when a turn finishes",
+  "settings.notifyOnCompletionDesc":
+    "Alert when the session is ready for your next message",
+  "settings.notifyOnError": "Notify on errors",
+  "settings.notifyOnErrorDesc": "Alert when a turn fails",
+  "settings.testNotification": "Send test notification",
+  "settings.testNotificationSent": "Test notification sent",
+  "settings.testNotificationBlocked":
+    "No notification shown — check OS permission or Do Not Disturb",
 
   "settings.addProjectBaseDir": "Add project starts in",
   "settings.addProjectBaseDirDesc":
@@ -1146,6 +1163,10 @@ const en = {
   "notify.turnDoneBody": "Session is ready for the next message.",
   "notify.permissionTitle": "Permission needed",
   "notify.permissionBody": "The agent is waiting for your approval.",
+  "notify.turnErrorTitle": "Turn failed",
+  "notify.turnErrorBody": "The last turn hit an error.",
+  "notify.testTitle": "Test notification",
+  "notify.testBody": "This is what your Grok alerts look like.",
 
   // Slash palette
   "slash.section.commands": "Commands",
@@ -2247,6 +2268,19 @@ const zh: Record<MessageKey, string> = {
   "settings.notificationsGranted": "已获得系统通知权限",
   "settings.notificationsDenied": "系统通知权限被拒绝 — 请在系统设置中为 Grok 开启通知",
   "settings.notificationsRequest": "请求权限",
+  "settings.notifySound": "通知提示音",
+  "settings.notifySoundDesc": "桌面通知同时播放简短提示音",
+  "settings.notifyQuietHours": "免打扰",
+  "settings.notifyQuietHoursDesc": "在每日指定时段内静音桌面通知（本地时间）",
+  "settings.notifyQuietHoursStart": "开始时间",
+  "settings.notifyQuietHoursEnd": "结束时间",
+  "settings.notifyOnCompletion": "回合完成时通知",
+  "settings.notifyOnCompletionDesc": "会话就绪、可继续输入时提醒",
+  "settings.notifyOnError": "出错时通知",
+  "settings.notifyOnErrorDesc": "回合出错时提醒",
+  "settings.testNotification": "发送测试通知",
+  "settings.testNotificationSent": "测试通知已发送",
+  "settings.testNotificationBlocked": "未显示通知 — 请检查系统权限或免打扰设置",
 
   "prov.emptyTitle": "暂无提供商",
   "prov.detailEmpty": "选择左侧提供商，或添加新的。",
@@ -2533,6 +2567,10 @@ const zh: Record<MessageKey, string> = {
   "notify.turnDoneBody": "会话已就绪，可继续输入。",
   "notify.permissionTitle": "需要授权",
   "notify.permissionBody": "Agent 正在等待你的批准。",
+  "notify.turnErrorTitle": "回合失败",
+  "notify.turnErrorBody": "上一轮出现了错误。",
+  "notify.testTitle": "测试通知",
+  "notify.testBody": "这是 Grok 提醒的示例效果。",
 
   "slash.section.commands": "命令",
   "slash.section.skills": "技能",

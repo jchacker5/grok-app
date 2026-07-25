@@ -1122,6 +1122,18 @@ export interface AppSettings {
    * Default true. Separate from the OS-level notification permission grant.
    */
   notificationsEnabled?: boolean;
+  /** Play a short beep alongside desktop notifications. Default true. */
+  notifySoundEnabled?: boolean;
+  /** Suppress desktop notifications during a daily Do Not Disturb window. */
+  notifyQuietHoursEnabled?: boolean;
+  /** Quiet hours start, "HH:MM" 24-hour, local system time. Default "22:00". */
+  notifyQuietHoursStart?: string;
+  /** Quiet hours end, "HH:MM" 24-hour, local system time. Default "08:00". */
+  notifyQuietHoursEnd?: string;
+  /** Notify when a turn finishes and the session is ready again. Default true. */
+  notifyOnCompletion?: boolean;
+  /** Notify when a turn errors out. Default true. */
+  notifyOnError?: boolean;
   /** Dictation speech-to-text playback rate. */
   voicePlaybackRate?: number;
   /** Language for dictation transcription ("auto" or BCP-47). */

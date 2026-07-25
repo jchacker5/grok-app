@@ -4143,6 +4143,26 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   font-family: var(--font-mono);
 }
 
+.settings-quiet-hours {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: inherit;
+}
+
+.settings-quiet-hours__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.settings-quiet-hours__field .settings-input {
+  width: auto;
+  height: 32px;
+}
+
 .settings-row__action {
   height: 32px;
   flex-shrink: 0;

@@ -112,6 +112,9 @@ import { connPillForState } from "@/lib/connStatus";
 import { shortcutsForPlatform } from "@/lib/shortcuts";
 import {
   ensureNotifyPermission,
+  isWithinQuietHours,
+  notifyDesktop,
+  playNotifySound,
   showDesktopNotification,
 } from "@/lib/desktopNotify";
 import { GlassModal } from "@/components/GlassModal";
@@ -837,6 +840,49 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const notificationsEnabledRef = useRef(notificationsEnabled);
   notificationsEnabledRef.current = notificationsEnabled;
+  const [notifySoundEnabled, setNotifySoundEnabled] = useState(true);
+  const notifySoundEnabledRef = useRef(notifySoundEnabled);
+  notifySoundEnabledRef.current = notifySoundEnabled;
+  const [notifyQuietHoursEnabled, setNotifyQuietHoursEnabled] = useState(false);
+  const notifyQuietHoursEnabledRef = useRef(notifyQuietHoursEnabled);
+  notifyQuietHoursEnabledRef.current = notifyQuietHoursEnabled;
+  const [notifyQuietHoursStart, setNotifyQuietHoursStart] = useState("22:00");
+  const notifyQuietHoursStartRef = useRef(notifyQuietHoursStart);
+  notifyQuietHoursStartRef.current = notifyQuietHoursStart;
+  const [notifyQuietHoursEnd, setNotifyQuietHoursEnd] = useState("08:00");
+  const notifyQuietHoursEndRef = useRef(notifyQuietHoursEnd);
+  notifyQuietHoursEndRef.current = notifyQuietHoursEnd;
+  const [notifyOnCompletion, setNotifyOnCompletion] = useState(true);
+  const notifyOnCompletionRef = useRef(notifyOnCompletion);
+  notifyOnCompletionRef.current = notifyOnCompletion;
+  const [notifyOnError, setNotifyOnError] = useState(true);
+  const notifyOnErrorRef = useRef(notifyOnError);
+  notifyOnErrorRef.current = notifyOnError;
+  /**
+   * Gate for the desktop-notification call sites below: master toggle, per-
+   * event opt-out, and Do Not Disturb window all apply before an OS
+   * notification (and optional chime) is dispatched.
+   */
+  const notifyGated = useCallback(
+    (opts: Parameters<typeof showDesktopNotification>[0], channel: "completion" | "error" | "permission") => {
+      if (!notificationsEnabledRef.current) return;
+      if (channel === "completion" && !notifyOnCompletionRef.current) return;
+      if (channel === "error" && !notifyOnErrorRef.current) return;
+      if (
+        notifyQuietHoursEnabledRef.current &&
+        isWithinQuietHours(
+          notifyQuietHoursStartRef.current,
+          notifyQuietHoursEndRef.current,
+        )
+      ) {
+        return;
+      }
+      void showDesktopNotification(opts).then((shown) => {
+        if (shown && notifySoundEnabledRef.current) playNotifySound();
+      });
+    },
+    [],
+  );
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -1103,6 +1149,12 @@ export default function App() {
       setVoiceMicDeviceId(settings.voiceMicDeviceId || "");
       setVoiceFeedbackChime(!!settings.voiceFeedbackChime);
       setNotificationsEnabled(settings.notificationsEnabled !== false);
+      setNotifySoundEnabled(settings.notifySoundEnabled !== false);
+      setNotifyQuietHoursEnabled(!!settings.notifyQuietHoursEnabled);
+      setNotifyQuietHoursStart(settings.notifyQuietHoursStart || "22:00");
+      setNotifyQuietHoursEnd(settings.notifyQuietHoursEnd || "08:00");
+      setNotifyOnCompletion(settings.notifyOnCompletion !== false);
+      setNotifyOnError(settings.notifyOnError !== false);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -1378,12 +1430,15 @@ export default function App() {
                   }
                   return next;
                 });
-                if (s.state === "ready" && notificationsEnabledRef.current) {
-                  void showDesktopNotification({
-                    title: trRef.current("notify.turnDoneTitle"),
-                    body: trRef.current("notify.turnDoneBody"),
-                    tag: `turn-${s.sessionId || "x"}`,
-                  });
+                if (s.state === "ready") {
+                  notifyGated(
+                    {
+                      title: trRef.current("notify.turnDoneTitle"),
+                      body: trRef.current("notify.turnDoneBody"),
+                      tag: `turn-${s.sessionId || "x"}`,
+                    },
+                    "completion",
+                  );
                 }
               } else if (
                 (s.state === "streaming" || s.state === "awaiting_permission") &&
@@ -1719,6 +1774,14 @@ export default function App() {
             patchSessionMessages(p.sessionId, (prev) =>
               applyTurnError(prev, p, localeRef.current),
             );
+            notifyGated(
+              {
+                title: trRef.current("notify.turnErrorTitle"),
+                body: trRef.current("notify.turnErrorBody"),
+                tag: `turn-error-${p.sessionId || "x"}`,
+              },
+              "error",
+            );
           }),
         );
         await track(
@@ -1732,25 +1795,27 @@ export default function App() {
               // Multi-session stream: another chat needs approval — nudge user.
               setToast(trRef.current("session.backgroundPermission"));
               window.setTimeout(() => setToast(null), 4200);
-              if (notificationsEnabledRef.current) {
-                void showDesktopNotification({
+              notifyGated(
+                {
                   title: trRef.current("notify.permissionTitle"),
                   body: trRef.current("session.backgroundPermission"),
                   tag: `perm-bg-${p.rpcId}`,
                   force: true,
-                });
-              }
+                },
+                "permission",
+              );
               return;
             }
             setPerm(p);
-            if (notificationsEnabledRef.current) {
-              void showDesktopNotification({
+            notifyGated(
+              {
                 title: trRef.current("notify.permissionTitle"),
                 body: trRef.current("notify.permissionBody"),
                 tag: `perm-${p.rpcId}`,
                 force: true,
-              });
-            }
+              },
+              "permission",
+            );
           }),
         );
         await track(
@@ -6979,6 +7044,56 @@ export default function App() {
               api.settingsSet({ ...s, notificationsEnabled: v }),
             );
           }}
+          notifySoundEnabled={notifySoundEnabled}
+          onNotifySoundEnabled={(v) => {
+            setNotifySoundEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, notifySoundEnabled: v }),
+            );
+          }}
+          notifyQuietHoursEnabled={notifyQuietHoursEnabled}
+          onNotifyQuietHoursEnabled={(v) => {
+            setNotifyQuietHoursEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, notifyQuietHoursEnabled: v }),
+            );
+          }}
+          notifyQuietHoursStart={notifyQuietHoursStart}
+          onNotifyQuietHoursStart={(v) => {
+            setNotifyQuietHoursStart(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, notifyQuietHoursStart: v }),
+            );
+          }}
+          notifyQuietHoursEnd={notifyQuietHoursEnd}
+          onNotifyQuietHoursEnd={(v) => {
+            setNotifyQuietHoursEnd(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, notifyQuietHoursEnd: v }),
+            );
+          }}
+          notifyOnCompletion={notifyOnCompletion}
+          onNotifyOnCompletion={(v) => {
+            setNotifyOnCompletion(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, notifyOnCompletion: v }),
+            );
+          }}
+          notifyOnError={notifyOnError}
+          onNotifyOnError={(v) => {
+            setNotifyOnError(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, notifyOnError: v }),
+            );
+          }}
+          onTestNotification={() =>
+            notifyDesktop({
+              title: tr("notify.testTitle"),
+              body: tr("notify.testBody"),
+              tag: "notify-test",
+              force: true,
+            })
+          }
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           versionFooter={tr("app.versionFooter")}

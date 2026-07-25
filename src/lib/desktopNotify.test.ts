@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ensureNotifyPermission,
   getNotifyPermission,
+  isWithinQuietHours,
   notificationSupport,
   showDesktopNotification,
 } from "./desktopNotify";
@@ -228,5 +229,38 @@ describe("desktopNotify (Tauri native bridge)", () => {
     }));
 
     expect(await getNotifyPermission()).toBe("default");
+  });
+});
+
+describe("isWithinQuietHours", () => {
+  it("matches inside a same-day window", () => {
+    expect(
+      isWithinQuietHours("09:00", "17:00", new Date(2026, 0, 1, 12, 0)),
+    ).toBe(true);
+    expect(
+      isWithinQuietHours("09:00", "17:00", new Date(2026, 0, 1, 8, 59)),
+    ).toBe(false);
+    expect(
+      isWithinQuietHours("09:00", "17:00", new Date(2026, 0, 1, 17, 0)),
+    ).toBe(false);
+  });
+
+  it("handles a window that wraps past midnight", () => {
+    expect(
+      isWithinQuietHours("22:00", "08:00", new Date(2026, 0, 1, 23, 30)),
+    ).toBe(true);
+    expect(
+      isWithinQuietHours("22:00", "08:00", new Date(2026, 0, 1, 5, 0)),
+    ).toBe(true);
+    expect(
+      isWithinQuietHours("22:00", "08:00", new Date(2026, 0, 1, 12, 0)),
+    ).toBe(false);
+  });
+
+  it("fails open (never quiet) on malformed input", () => {
+    expect(isWithinQuietHours("", "08:00")).toBe(false);
+    expect(isWithinQuietHours("bad", "08:00")).toBe(false);
+    expect(isWithinQuietHours("25:00", "08:00")).toBe(false);
+    expect(isWithinQuietHours("10:00", "10:00")).toBe(false);
   });
 });

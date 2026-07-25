@@ -264,6 +264,23 @@ export interface SettingsPageProps {
   /** Native OS notifications (turn done, background permission requests). */
   notificationsEnabled?: boolean;
   onNotificationsEnabled?: (v: boolean) => void;
+  /** Play a short chime alongside desktop notifications. */
+  notifySoundEnabled?: boolean;
+  onNotifySoundEnabled?: (v: boolean) => void;
+  /** Do Not Disturb: suppress desktop notifications during a daily window. */
+  notifyQuietHoursEnabled?: boolean;
+  onNotifyQuietHoursEnabled?: (v: boolean) => void;
+  notifyQuietHoursStart?: string;
+  onNotifyQuietHoursStart?: (v: string) => void;
+  notifyQuietHoursEnd?: string;
+  onNotifyQuietHoursEnd?: (v: string) => void;
+  /** Per-event notification toggles. */
+  notifyOnCompletion?: boolean;
+  onNotifyOnCompletion?: (v: boolean) => void;
+  notifyOnError?: boolean;
+  onNotifyOnError?: (v: boolean) => void;
+  /** Fire a one-off test notification; resolves true if it was shown. */
+  onTestNotification?: () => Promise<boolean>;
 }
 
 const NAV: {
@@ -730,6 +747,170 @@ function NotificationsField({
   );
 }
 
+/**
+ * Sound / Do Not Disturb / per-event toggles + a test-notification button.
+ * Sits below `NotificationsField`; disabled visually has no effect here since
+ * these only matter once the master toggle above is on, but they still save
+ * independently so turning notifications back on immediately respects them.
+ */
+function NotificationPreferencesFields({
+  soundEnabled,
+  onSoundEnabled,
+  quietHoursEnabled,
+  onQuietHoursEnabled,
+  quietHoursStart,
+  onQuietHoursStart,
+  quietHoursEnd,
+  onQuietHoursEnd,
+  onCompletion,
+  onOnCompletion,
+  onError,
+  onOnError,
+  onTest,
+  t,
+}: {
+  soundEnabled: boolean;
+  onSoundEnabled: (v: boolean) => void;
+  quietHoursEnabled: boolean;
+  onQuietHoursEnabled: (v: boolean) => void;
+  quietHoursStart: string;
+  onQuietHoursStart: (v: string) => void;
+  quietHoursEnd: string;
+  onQuietHoursEnd: (v: string) => void;
+  onCompletion: boolean;
+  onOnCompletion: (v: boolean) => void;
+  onError: boolean;
+  onOnError: (v: boolean) => void;
+  onTest?: () => Promise<boolean>;
+  t: (k: string, vars?: Vars) => string;
+}) {
+  const [testState, setTestState] = useState<"idle" | "sent" | "blocked">(
+    "idle",
+  );
+  const [testing, setTesting] = useState(false);
+
+  const runTest = async () => {
+    if (!onTest || testing) return;
+    setTesting(true);
+    try {
+      const ok = await onTest();
+      setTestState(ok ? "sent" : "blocked");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="settings-row">
+        <div className="settings-row__text">
+          <div className="settings-row__label">{t("settings.notifySound")}</div>
+          <div className="settings-row__desc">{t("settings.notifySoundDesc")}</div>
+        </div>
+        <UiCheck
+          checked={soundEnabled}
+          onChange={() => onSoundEnabled(!soundEnabled)}
+          ariaLabel={t("settings.notifySound")}
+        />
+      </div>
+
+      <div className="settings-row">
+        <div className="settings-row__text">
+          <div className="settings-row__label">{t("settings.notifyOnCompletion")}</div>
+          <div className="settings-row__desc">
+            {t("settings.notifyOnCompletionDesc")}
+          </div>
+        </div>
+        <UiCheck
+          checked={onCompletion}
+          onChange={() => onOnCompletion(!onCompletion)}
+          ariaLabel={t("settings.notifyOnCompletion")}
+        />
+      </div>
+
+      <div className="settings-row">
+        <div className="settings-row__text">
+          <div className="settings-row__label">{t("settings.notifyOnError")}</div>
+          <div className="settings-row__desc">{t("settings.notifyOnErrorDesc")}</div>
+        </div>
+        <UiCheck
+          checked={onError}
+          onChange={() => onOnError(!onError)}
+          ariaLabel={t("settings.notifyOnError")}
+        />
+      </div>
+
+      <div className="settings-row settings-row--stack">
+        <div className="settings-row__text">
+          <div className="settings-row__label">{t("settings.notifyQuietHours")}</div>
+          <div className="settings-row__desc">
+            {t("settings.notifyQuietHoursDesc")}
+          </div>
+        </div>
+        <UiCheck
+          checked={quietHoursEnabled}
+          onChange={() => onQuietHoursEnabled(!quietHoursEnabled)}
+          ariaLabel={t("settings.notifyQuietHours")}
+        />
+        {quietHoursEnabled ? (
+          <div className="settings-row__hint settings-quiet-hours">
+            <label className="settings-quiet-hours__field">
+              {t("settings.notifyQuietHoursStart")}
+              <input
+                type="time"
+                className="settings-input"
+                value={quietHoursStart}
+                onChange={(e) => onQuietHoursStart(e.target.value)}
+                aria-label={t("settings.notifyQuietHoursStart")}
+              />
+            </label>
+            <label className="settings-quiet-hours__field">
+              {t("settings.notifyQuietHoursEnd")}
+              <input
+                type="time"
+                className="settings-input"
+                value={quietHoursEnd}
+                onChange={(e) => onQuietHoursEnd(e.target.value)}
+                aria-label={t("settings.notifyQuietHoursEnd")}
+              />
+            </label>
+          </div>
+        ) : null}
+      </div>
+
+      {onTest ? (
+        <div className="settings-row">
+          <div className="settings-row__text">
+            <div className="settings-row__label">
+              {t("settings.testNotification")}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            disabled={testing}
+            onClick={() => void runTest()}
+          >
+            {t("settings.testNotification")}
+          </button>
+          {testState !== "idle" && (
+            <div
+              className={
+                "settings-row__hint" +
+                (testState === "blocked" ? " is-danger" : "")
+              }
+            >
+              {testState === "sent"
+                ? t("settings.testNotificationSent")
+                : t("settings.testNotificationBlocked")}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 /** App-styled checkbox (no native OS control). */
 function UiCheck({
   checked,
@@ -922,6 +1103,19 @@ export function SettingsPage({
   onCustomModels,
   notificationsEnabled = true,
   onNotificationsEnabled,
+  notifySoundEnabled = true,
+  onNotifySoundEnabled,
+  notifyQuietHoursEnabled = false,
+  onNotifyQuietHoursEnabled,
+  notifyQuietHoursStart = "22:00",
+  onNotifyQuietHoursStart,
+  notifyQuietHoursEnd = "08:00",
+  onNotifyQuietHoursEnd,
+  notifyOnCompletion = true,
+  onNotifyOnCompletion,
+  notifyOnError = true,
+  onNotifyOnError,
+  onTestNotification,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [voiceOptions, setVoiceOptions] = useState<api.VoiceOption[]>([]);
@@ -1675,6 +1869,22 @@ export function SettingsPage({
               <NotificationsField
                 enabled={notificationsEnabled}
                 onChange={(v) => onNotificationsEnabled?.(v)}
+                t={t}
+              />
+              <NotificationPreferencesFields
+                soundEnabled={notifySoundEnabled}
+                onSoundEnabled={(v) => onNotifySoundEnabled?.(v)}
+                quietHoursEnabled={notifyQuietHoursEnabled}
+                onQuietHoursEnabled={(v) => onNotifyQuietHoursEnabled?.(v)}
+                quietHoursStart={notifyQuietHoursStart}
+                onQuietHoursStart={(v) => onNotifyQuietHoursStart?.(v)}
+                quietHoursEnd={notifyQuietHoursEnd}
+                onQuietHoursEnd={(v) => onNotifyQuietHoursEnd?.(v)}
+                onCompletion={notifyOnCompletion}
+                onOnCompletion={(v) => onNotifyOnCompletion?.(v)}
+                onError={notifyOnError}
+                onOnError={(v) => onNotifyOnError?.(v)}
+                onTest={onTestNotification}
                 t={t}
               />
             </div>

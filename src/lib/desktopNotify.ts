@@ -144,3 +144,65 @@ export async function notifyDesktop(
   await ensureNotifyPermission();
   return showDesktopNotification(opts);
 }
+
+/**
+ * Whether `now` falls inside the `[start, end)` Do Not Disturb window.
+ * Times are "HH:MM" 24-hour, compared against local wall-clock time —
+ * quiet hours are evaluated client-side against the system timezone, not
+ * synced across machines. Handles windows that wrap past midnight
+ * (e.g. 22:00–08:00). Malformed times fail open (never quiet).
+ */
+export function isWithinQuietHours(
+  start: string,
+  end: string,
+  now: Date = new Date(),
+): boolean {
+  const toMinutes = (hhmm: string): number | null => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+    return h * 60 + min;
+  };
+  const s = toMinutes(start);
+  const e = toMinutes(end);
+  if (s == null || e == null || s === e) return false;
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  return s < e ? nowMin >= s && nowMin < e : nowMin >= s || nowMin < e;
+}
+
+let sharedAudioCtx: AudioContext | null = null;
+
+/**
+ * Play a brief synthesized chime (no audio asset — a short sine-wave beep
+ * via the Web Audio API) alongside a desktop notification. Best-effort:
+ * silently no-ops if Web Audio is unavailable or blocked.
+ */
+export function playNotifySound(): void {
+  try {
+    const Ctx = (
+      globalThis as unknown as {
+        AudioContext?: typeof AudioContext;
+        webkitAudioContext?: typeof AudioContext;
+      }
+    ).AudioContext ??
+      (globalThis as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return;
+    sharedAudioCtx ??= new Ctx();
+    const ctx = sharedAudioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.22);
+  } catch {
+    // Best-effort only — never let a chime failure surface to the caller.
+  }
+}
