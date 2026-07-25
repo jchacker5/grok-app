@@ -4,7 +4,7 @@ import type { MessageKey } from "./messages";
 export const zhTW: Record<MessageKey, string> = {
   "app.name": "Grok",
   "app.tagline": "MIT · 非 xAI 官方 · 姊妹專案 grok-go",
-  "app.versionFooter": "Grok v0.1.9 · MIT · 非 xAI 官方 · 姊妹專案 grok-go",
+  "app.versionFooter": "Grok v0.1.10 · MIT · 非 xAI 官方 · 姊妹專案 grok-go",
 
   "window.minimize": "最小化",
   "window.maximize": "最大化",
@@ -53,6 +53,7 @@ export const zhTW: Record<MessageKey, string> = {
   "project.relocateOk": "「{name}」已指向 {path}",
   "project.addToSpace": "加入空間",
   "project.noSpace": "無空間",
+  "project.configApplied": "已套用 grok.json 中的專案預設值",
   "project.archiveChats": "封存任務",
   "project.remove": "移除",
   "project.removeTitle": "移除專案",
@@ -87,6 +88,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.renamePrompt": "重新命名對話",
   "session.renamePlaceholder": "對話標題",
   "session.copyId": "複製對話 ID",
+  "session.copyBranch": "複製分支名稱",
   "session.archive": "封存",
   "session.unarchive": "取消封存",
   "session.settle": "標記完成",
@@ -1187,6 +1189,9 @@ export const zhTW: Record<MessageKey, string> = {
   "chat.scrollBottom": "回到最新",
   "chat.codeWrap": "啟用自動換行",
   "chat.codeUnwrap": "取消自動換行",
+  "chat.codeExpand": "展開",
+  "chat.codeCollapse": "收合",
+  "chat.codeLines": "行",
   "composer.effortPanelHint": "拖動設定思考深度",
   "automations.menu": "建立自動化",
   "automations.menuHint": "排程週期任務",
@@ -1311,6 +1316,9 @@ export const zhTW: Record<MessageKey, string> = {
 
   "cli.updateAvailable": "Grok Build v{v} 可用",
   "cli.updateNow": "立即更新",
+  "cli.winSmartScreenWarn":
+    "Windows SmartScreen 可能會攔截此更新。如出現提示，請選擇「其他資訊 → 仍要執行」。",
+  "cli.updateProceed": "繼續",
   "cli.installing": "正在安裝 Grok Build…",
   "cli.updateError": "更新失敗",
   "cli.retry": "重試",

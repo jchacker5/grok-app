@@ -312,6 +312,35 @@ export async function gitWorktreesList(projectPath: string) {
   return invoke<GitWorktreesResult>("git_worktrees_list", { projectPath });
 }
 
+/** Current branch + PR status for a checkout (via git + gh). Soft-fails. */
+export interface SessionBranchPr {
+  available: boolean;
+  branch?: string | null;
+  prRef?: string | null;
+  prState?: string | null;
+  reason?: string | null;
+}
+
+/** Detect branch + pull-request status for a project's working directory. */
+export async function sessionBranchPr(projectPath: string) {
+  return invoke<SessionBranchPr>("session_branch_pr", { projectPath });
+}
+
+/** Shared, checked-in per-project defaults from `grok.json`. */
+export interface ProjectConfig {
+  found: boolean;
+  source?: string | null;
+  defaultModel?: string | null;
+  effort?: string | null;
+  permissionPolicy?: string | null;
+  sandbox?: string | null;
+}
+
+/** Read a project's `grok.json` shared config. Soft-fails to found:false. */
+export async function projectConfigRead(projectPath: string) {
+  return invoke<ProjectConfig>("project_config_read", { projectPath });
+}
+
 /** Native folder dialog → add project. Returns null if user cancels. */
 export async function projectAddDialog(trust: boolean) {
   return invoke<{

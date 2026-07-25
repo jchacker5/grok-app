@@ -177,6 +177,8 @@ pub fn run() {
             commands::session_set_settled,
             commands::session_set_snoozed,
             commands::session_set_branch_pr,
+            commands::session_branch_pr,
+            commands::project_config_read,
             commands::session_set_project,
             commands::session_set_scheduled,
             commands::session_messages,

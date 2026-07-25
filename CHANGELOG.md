@@ -11,6 +11,18 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-07-25
+
+### Added
+
+- **Fold large diffs & code blocks by default**: git diffs (>14 lines) and any code block (>40 lines) in chat now collapse to a summary row showing the language and `+adds −dels` (diffs) or line count; click to expand. Keeps big patches from blowing out the thread. (`CodeBlock.tsx`)
+- **Copy branch name**: session right-click menu gains a "Copy branch name" item when the chat is on a git branch. (`App.tsx`)
+- **Automatic PR status**: the active session's branch and pull-request state are now detected via `git` + the GitHub CLI (`gh`) and persisted, so the sidebar PR badge (open / merged / closed) populates on its own instead of requiring manual entry. Soft-fails silently when `git`/`gh` are unavailable. (`session_branch_pr` command)
+- **Shared `grok.json` project config**: a checked-in `grok.json` (or `.grok/config.json`) at a project root can set `defaultModel`, `effort`, `permissionPolicy`, and `sandbox`. Values are validated against the live catalog and applied to the composer once when the project becomes active. (`project_config_read` command)
+- **Windows update warning**: on Windows, the update banner now shows a SmartScreen heads-up and a "Proceed" confirm before downloading and running the update.
+
+### Fixed
+
 ## [0.1.9] - 2026-07-25
 
 ### Added

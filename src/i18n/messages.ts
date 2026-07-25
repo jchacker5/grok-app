@@ -10,7 +10,7 @@ const en = {
   // App chrome
   "app.name": "Grok",
   "app.tagline": "MIT · Unofficial · Sister project grok-go",
-  "app.versionFooter": "Grok v0.1.9 · MIT · Unofficial · Sister project grok-go",
+  "app.versionFooter": "Grok v0.1.10 · MIT · Unofficial · Sister project grok-go",
 
   // Window chrome (Windows self-drawn controls)
   "window.minimize": "Minimize",
@@ -62,6 +62,7 @@ const en = {
   "project.relocateOk": '"{name}" now points to {path}',
   "project.addToSpace": "Add to space",
   "project.noSpace": "No space",
+  "project.configApplied": "Applied project defaults from grok.json",
   "project.archiveChats": "Archive chats",
   "project.remove": "Remove",
   "project.removeTitle": "Remove project",
@@ -96,6 +97,7 @@ const en = {
   "session.renamePrompt": "Rename chat",
   "session.renamePlaceholder": "Chat title",
   "session.copyId": "Copy session ID",
+  "session.copyBranch": "Copy branch name",
   "session.archive": "Archive",
   "session.unarchive": "Unarchive",
   "session.settle": "Mark done",
@@ -1251,6 +1253,9 @@ const en = {
   "chat.scrollBottom": "Scroll to latest",
   "chat.codeWrap": "Wrap lines",
   "chat.codeUnwrap": "No wrap",
+  "chat.codeExpand": "Expand",
+  "chat.codeCollapse": "Collapse",
+  "chat.codeLines": "lines",
   "composer.effortPanelHint": "Drag to set reasoning depth",
   "automations.menu": "Create automation",
   "automations.menuHint": "Schedule a recurring task",
@@ -1378,6 +1383,9 @@ const en = {
 
   "cli.updateAvailable": "Grok Build v{v} is available",
   "cli.updateNow": "Update",
+  "cli.winSmartScreenWarn":
+    "Windows SmartScreen may warn about the update. If prompted, choose “More info → Run anyway.”",
+  "cli.updateProceed": "Proceed",
   "cli.installing": "Installing Grok Build…",
   "cli.updateError": "Update failed",
   "cli.retry": "Retry",
@@ -1387,7 +1395,7 @@ const en = {
 const zh: Record<MessageKey, string> = {
   "app.name": "Grok",
   "app.tagline": "MIT · 非 xAI 官方 · 姐妹项目 grok-go",
-  "app.versionFooter": "Grok v0.1.9 · MIT · 非 xAI 官方 · 姐妹项目 grok-go",
+  "app.versionFooter": "Grok v0.1.10 · MIT · 非 xAI 官方 · 姐妹项目 grok-go",
 
   "window.minimize": "最小化",
   "window.maximize": "最大化",
@@ -1436,6 +1444,7 @@ const zh: Record<MessageKey, string> = {
   "project.relocateOk": "「{name}」已指向 {path}",
   "project.addToSpace": "添加到空间",
   "project.noSpace": "无空间",
+  "project.configApplied": "已应用 grok.json 中的项目默认设置",
   "project.archiveChats": "归档任务",
   "project.remove": "移除",
   "project.removeTitle": "移除项目",
@@ -1470,6 +1479,7 @@ const zh: Record<MessageKey, string> = {
   "session.renamePrompt": "重命名会话",
   "session.renamePlaceholder": "会话标题",
   "session.copyId": "复制会话 ID",
+  "session.copyBranch": "复制分支名",
    "session.archive": "归档",
    "session.unarchive": "取消归档",
    "session.settle": "标记完成",
@@ -2522,6 +2532,9 @@ const zh: Record<MessageKey, string> = {
   "chat.scrollBottom": "回到最新",
   "chat.codeWrap": "启用自动换行",
   "chat.codeUnwrap": "取消自动换行",
+  "chat.codeExpand": "展开",
+  "chat.codeCollapse": "折叠",
+  "chat.codeLines": "行",
   "composer.effortPanelHint": "拖动设置思考深度",
   "automations.menu": "创建自动化",
   "automations.menuHint": "安排周期任务",
@@ -2646,6 +2659,9 @@ const zh: Record<MessageKey, string> = {
 
   "cli.updateAvailable": "Grok Build v{v} 可用",
   "cli.updateNow": "立即更新",
+  "cli.winSmartScreenWarn":
+    "Windows SmartScreen 可能会拦截此更新。如出现提示，请选择“更多信息 → 仍要运行”。",
+  "cli.updateProceed": "继续",
   "cli.installing": "正在安装 Grok Build…",
   "cli.updateError": "更新失败",
   "cli.retry": "重试",
