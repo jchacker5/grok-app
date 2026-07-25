@@ -278,6 +278,9 @@ export const MarkdownChat = memo(function MarkdownChat({
                 wrapLabel={tr("chat.codeWrap")}
                 unwrapLabel={tr("chat.codeUnwrap")}
                 copyLabel={tr("message.copy")}
+                expandLabel={tr("chat.codeExpand")}
+                collapseLabel={tr("chat.codeCollapse")}
+                linesLabel={tr("chat.codeLines")}
               >
                 {c as ReactNode}
               </CodeBlock>

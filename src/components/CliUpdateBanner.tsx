@@ -15,9 +15,16 @@ type BannerState =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "available"; current: string | null; latest: string }
+  | { kind: "confirm-win"; latest: string }
   | { kind: "installing"; phase: string; percent: number }
   | { kind: "done" }
   | { kind: "error"; message: string };
+
+/** Windows SmartScreen may flag the freshly downloaded, unsigned binary. */
+const isWindows =
+  typeof navigator !== "undefined" &&
+  /win/i.test(navigator.userAgent) &&
+  !/mac/i.test(navigator.userAgent);
 
 type InstallProgress = {
   phase: string;
@@ -85,6 +92,19 @@ export function CliUpdateBanner({ locale, enabled, onDismiss }: CliUpdateBannerP
     return () => { unsub?.(); };
   }, []);
 
+  // On Windows, warn about SmartScreen before downloading + running the update.
+  const requestUpdate = () => {
+    if (isWindows) {
+      setState((s) =>
+        s.kind === "available"
+          ? { kind: "confirm-win", latest: s.latest }
+          : s,
+      );
+      return;
+    }
+    void handleUpdate();
+  };
+
   const handleUpdate = async () => {
     setState({ kind: "installing", phase: "starting", percent: 0 });
     try {
@@ -115,9 +135,23 @@ export function CliUpdateBanner({ locale, enabled, onDismiss }: CliUpdateBannerP
             <button
               type="button"
               className="cli-update-banner__action"
-              onClick={() => void handleUpdate()}
+              onClick={requestUpdate}
             >
               {tt("cli.updateNow")}
+            </button>
+          </>
+        )}
+        {state.kind === "confirm-win" && (
+          <>
+            <span className="cli-update-banner__text cli-update-banner__text--warn">
+              {tt("cli.winSmartScreenWarn")}
+            </span>
+            <button
+              type="button"
+              className="cli-update-banner__action"
+              onClick={() => void handleUpdate()}
+            >
+              {tt("cli.updateProceed")}
             </button>
           </>
         )}

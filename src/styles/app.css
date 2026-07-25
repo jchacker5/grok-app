@@ -5714,6 +5714,9 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 .cli-update-banner__text--error {
   color: var(--danger, #f87171);
 }
+.cli-update-banner__text--warn {
+  color: var(--warning, #d9a441);
+}
 .cli-update-banner__action,
 .cli-update-banner__retry {
   flex-shrink: 0;

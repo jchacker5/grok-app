@@ -1,8 +1,13 @@
 /**
- * Slash palette catalog: built-in commands + invocable skills.
+ * Slash palette catalog: built-in commands + CLI commands + invocable skills.
  * UI titles/descriptions use i18n keys (`titleKey` / `descriptionKey`)
  * or display strings for dynamic skills.
  */
+
+export type CliBuiltinCommandInfo = {
+  name: string;
+  description: string;
+};
 
 export type SlashKind = "mode" | "skill" | "action" | "prompt";
 
@@ -112,6 +117,29 @@ export function builtinSlashItems(): SlashItem[] {
   ];
 }
 
+/** Map CLI builtin commands to slash items. */
+export function cliCommandsToSlashItems(
+  commands: CliBuiltinCommandInfo[],
+): SlashItem[] {
+  const seen = new Set<string>();
+  const out: SlashItem[] = [];
+  for (const c of commands) {
+    const name = (c.name ?? "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push({
+      id: `cli:${name}`,
+      kind: "action" as const,
+      name,
+      displayTitle: `/${name}`,
+      displayDescription: c.description,
+      source: "cli",
+      action: `cli:${name}`,
+    });
+  }
+  return out;
+}
+
 /** Map skill metadata to slash items (skips `userInvocable: false`). */
 export function skillsToSlashItems(skills: SkillInfo[]): SlashItem[] {
   // Dedupe by name — duplicate ids (`skill:foo`) break React keys and leave
@@ -174,24 +202,39 @@ export function filterSlashItems(
   });
 }
 
-/** Full catalog split into built-in commands and skill items. */
-export function buildSlashCatalog(skills: SkillInfo[]): {
+/** Full catalog split into built-in commands, CLI commands, and skill items. */
+export function buildSlashCatalog(
+  skills: SkillInfo[],
+  cliCommands: CliBuiltinCommandInfo[] = [],
+): {
   commands: SlashItem[];
+  cli: SlashItem[];
   skills: SlashItem[];
 } {
   return {
     commands: builtinSlashItems(),
+    cli: cliCommandsToSlashItems(cliCommands),
     skills: skillsToSlashItems(skills),
   };
 }
 
-/** Flat list for keyboard nav: filtered commands then skills. */
+/** Flat list for keyboard nav: filtered commands, CLI commands, then skills. */
 export function flattenFilteredCatalog(
-  catalog: { commands: SlashItem[]; skills: SlashItem[] },
+  catalog: {
+    commands: SlashItem[];
+    cli: SlashItem[];
+    skills: SlashItem[];
+  },
   query: string,
   resolveSearchText?: (item: SlashItem) => SlashSearchText | null | undefined,
-): { commands: SlashItem[]; skills: SlashItem[]; flat: SlashItem[] } {
+): {
+  commands: SlashItem[];
+  cli: SlashItem[];
+  skills: SlashItem[];
+  flat: SlashItem[];
+} {
   const commands = filterSlashItems(catalog.commands, query, resolveSearchText);
+  const cli = filterSlashItems(catalog.cli, query, resolveSearchText);
   const skills = filterSlashItems(catalog.skills, query, resolveSearchText);
-  return { commands, skills, flat: [...commands, ...skills] };
+  return { commands, cli, skills, flat: [...commands, ...cli, ...skills] };
 }

@@ -2931,6 +2931,93 @@ pub async fn skills_list(project_path: Option<String>) -> Result<serde_json::Val
     Ok(out)
 }
 
+/// CLI-built-in slash commands extracted from `grok inspect --json` (future field)
+/// or `~/.grok/commands.json` manifest.
+/// Always returns Ok; on CLI missing / timeout, `commands` is empty and `error` is set.
+#[tauri::command]
+pub async fn cli_builtin_commands() -> Result<serde_json::Value, String> {
+    let mut commands: Vec<serde_json::Value> = Vec::new();
+    let mut error: Option<String> = None;
+
+    // 1. Try `grok inspect --json` for a future `commands` field.
+    let (parsed, inspect_err) = run_grok_inspect(None);
+    if let Some(ref v) = parsed {
+        if let Some(arr) = v.get("commands").and_then(|x| x.as_array()) {
+            for cmd in arr {
+                let name = cmd
+                    .get("name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if name.is_empty() {
+                    continue;
+                }
+                let description = cmd
+                    .get("description")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                commands.push(serde_json::json!({
+                    "name": name,
+                    "description": description,
+                }));
+            }
+        }
+    }
+    if let Some(e) = inspect_err {
+        error = Some(e);
+    }
+
+    // 2. Also try `~/.grok/commands.json` manifest (forward-compatible).
+    let home = std::env::var("HOME").unwrap_or_default();
+    let manifest_path = std::path::Path::new(&home).join(".grok/commands.json");
+    if let Ok(contents) = std::fs::read_to_string(&manifest_path) {
+        if let Ok(manifest) =
+            serde_json::from_str::<serde_json::Value>(&contents)
+        {
+            if let Some(arr) = manifest.get("commands").and_then(|x| x.as_array()) {
+                for cmd in arr {
+                    let name = cmd
+                        .get("name")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    // Dedupe by name — CLI manifest wins over inspect.
+                    let already = commands.iter().any(|c| {
+                        c.get("name")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            == name
+                    });
+                    if already {
+                        continue;
+                    }
+                    let description = cmd
+                        .get("description")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    commands.push(serde_json::json!({
+                        "name": name,
+                        "description": description,
+                    }));
+                }
+            }
+        }
+    }
+
+    let mut out = serde_json::json!({ "commands": commands });
+    if let Some(err) = error {
+        out["error"] = serde_json::Value::String(err);
+    }
+    Ok(out)
+}
+
 /// List MCP servers from `grok inspect --json`.
 /// Always returns Ok; on CLI missing / timeout, `servers` is empty and `error` is set.
 /// Each server includes `enabled` from App Extensions prefs (default true).
@@ -5592,6 +5679,107 @@ pub async fn git_worktrees_list(project_path: String) -> Result<GitWorktreesResu
     })
 }
 
+/// Branch + pull-request status for a project's current checkout.
+/// `pr_state` is normalized to open | merged | closed. Soft-fails when git or
+/// the GitHub CLI (`gh`) are unavailable — the UI simply shows no PR badge.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionBranchPr {
+    pub available: bool,
+    pub branch: Option<String>,
+    pub pr_ref: Option<String>,
+    pub pr_state: Option<String>,
+    pub reason: Option<String>,
+}
+
+/// Normalize a `gh` PR state (OPEN/CLOSED/MERGED) to our lowercase vocabulary.
+fn normalize_pr_state(raw: &str) -> Option<String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "open" => Some("open".into()),
+        "merged" => Some("merged".into()),
+        "closed" => Some("closed".into()),
+        _ => None,
+    }
+}
+
+/// Detect the current branch and (if `gh` is present) the pull request that
+/// tracks it. Used to auto-populate the sidebar branch/PR badge.
+#[tauri::command]
+pub async fn session_branch_pr(project_path: String) -> Result<SessionBranchPr, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Ok(SessionBranchPr {
+            available: false,
+            branch: None,
+            pr_ref: None,
+            pr_state: None,
+            reason: Some("empty path".into()),
+        });
+    }
+    if let Err(reason) = git_probe_work_tree(&project) {
+        return Ok(SessionBranchPr {
+            available: false,
+            branch: None,
+            pr_ref: None,
+            pr_state: None,
+            reason: Some(reason),
+        });
+    }
+
+    let branch = std::process::Command::new("git")
+        .args(["-C", &project, "rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                let b = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if b.is_empty() || b == "HEAD" {
+                    None
+                } else {
+                    Some(b)
+                }
+            } else {
+                None
+            }
+        });
+
+    // PR lookup is best-effort via the GitHub CLI; absence is not an error.
+    let mut pr_ref: Option<String> = None;
+    let mut pr_state: Option<String> = None;
+    if branch.is_some() {
+        if let Ok(out) = std::process::Command::new("gh")
+            .args([
+                "pr",
+                "view",
+                "--json",
+                "number,state",
+            ])
+            .current_dir(&project)
+            .output()
+        {
+            if out.status.success() {
+                let body = String::from_utf8_lossy(&out.stdout);
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                    if let Some(n) = v.get("number").and_then(|n| n.as_u64()) {
+                        pr_ref = Some(n.to_string());
+                    }
+                    if let Some(s) = v.get("state").and_then(|s| s.as_str()) {
+                        pr_state = normalize_pr_state(s);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(SessionBranchPr {
+        available: true,
+        branch,
+        pr_ref,
+        pr_state,
+        reason: None,
+    })
+}
+
 #[cfg(test)]
 mod git_worktree_parse_tests {
     use super::*;
@@ -6277,6 +6465,74 @@ mod git_mutation_tests {
         )
         .is_none());
     }
+}
+
+/// Shared, checked-in per-project defaults read from `grok.json` (or
+/// `.grok/config.json`) at the project root. All fields are optional; unknown
+/// keys are ignored. The frontend validates values against the live catalog
+/// before applying, so a stale file never breaks the composer.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectConfig {
+    /// True when a config file was found and parsed.
+    pub found: bool,
+    /// Absolute path of the file that was read (for diagnostics).
+    pub source: Option<String>,
+    /// Preferred default model id (e.g. "grok-4.5").
+    pub default_model: Option<String>,
+    /// Reasoning effort: low | medium | high.
+    pub effort: Option<String>,
+    /// Permission policy id: ask | accept_edits | allow_for_session | dont_ask | always_approve.
+    pub permission_policy: Option<String>,
+    /// Sandbox profile id (off | workspace | read-only | strict | devbox).
+    pub sandbox: Option<String>,
+}
+
+/// Extract a trimmed non-empty string field from a JSON object, tolerating
+/// a couple of common alias spellings.
+fn cfg_str(v: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    for k in keys {
+        if let Some(s) = v.get(*k).and_then(|x| x.as_str()) {
+            let s = s.trim();
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Read a project's shared `grok.json` config, if present. Soft-fails to
+/// `found: false` on any read/parse error so callers never have to try/catch.
+#[tauri::command]
+pub async fn project_config_read(project_path: String) -> Result<ProjectConfig, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Ok(ProjectConfig::default());
+    }
+    let root = std::path::PathBuf::from(&project);
+    // Precedence: grok.json, then .grok/config.json.
+    let candidates = [root.join("grok.json"), root.join(".grok").join("config.json")];
+    let path = candidates.into_iter().find(|p| p.is_file());
+    let Some(path) = path else {
+        return Ok(ProjectConfig::default());
+    };
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return Ok(ProjectConfig::default()),
+    };
+    let v: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return Ok(ProjectConfig::default()),
+    };
+    Ok(ProjectConfig {
+        found: true,
+        source: Some(path.to_string_lossy().to_string()),
+        default_model: cfg_str(&v, &["defaultModel", "model"]),
+        effort: cfg_str(&v, &["effort", "reasoningEffort"]),
+        permission_policy: cfg_str(&v, &["permissionPolicy", "policy", "permission"]),
+        sandbox: cfg_str(&v, &["sandbox", "sandboxProfile"]),
+    })
 }
 
 /// Reveal a path in the system file manager (Finder / Explorer).

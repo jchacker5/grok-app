@@ -143,6 +143,7 @@ import {
 import {
   buildSlashCatalog,
   flattenFilteredCatalog,
+  type CliBuiltinCommandInfo,
   type SlashItem,
   type SkillInfo,
 } from "@/lib/slashCatalog";
@@ -394,6 +395,9 @@ export default function App() {
     async () => false,
   );
   const [skillInfos, setSkillInfos] = useState<SkillInfo[]>([]);
+  const [cliCommandsState, setCliCommandsState] = useState<
+    CliBuiltinCommandInfo[]
+  >([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [slashQuery, setSlashQuery] = useState<{
     start: number;
@@ -3234,6 +3238,18 @@ export default function App() {
     }
   };
 
+  const copySessionBranch = async (s: SessionRow) => {
+    setCtxMenu(null);
+    const branch = s.branch?.trim();
+    if (!branch) return;
+    try {
+      await navigator.clipboard.writeText(branch);
+      showToast(branch, 1600);
+    } catch {
+      setLocalError(branch);
+    }
+  };
+
   const openSessionMenu = (e: ReactMouseEvent, s: SessionRow) => {
     e.preventDefault();
     e.stopPropagation();
@@ -4306,18 +4322,17 @@ export default function App() {
   /** Bumped when Extensions skill toggles change so slash palette refilters. */
   const [skillsReloadToken, setSkillsReloadToken] = useState(0);
 
-  // Load skills catalog for slash palette (Grok inspect).
+  // Load skills + CLI commands for slash palette.
   useEffect(() => {
     if (!api.isTauri()) return;
     let cancelled = false;
     setSkillsLoading(true);
-    void api
-      .skillsList(activeProject?.path ?? null)
-      .then((res) => {
+
+    const skillPromise = api.skillsList(activeProject?.path ?? null).then(
+      (res) => {
         if (cancelled) return;
         setSkillInfos(
           (res.skills ?? [])
-            // Extensions enable flag (default on); hide disabled from slash palette.
             .filter((s) => s.enabled !== false)
             .map((s) => ({
               name: s.name,
@@ -4326,21 +4341,34 @@ export default function App() {
               userInvocable: s.userInvocable,
             })),
         );
-      })
-      .catch(() => {
+      },
+      () => {
         if (!cancelled) setSkillInfos([]);
-      })
-      .finally(() => {
-        if (!cancelled) setSkillsLoading(false);
-      });
+      },
+    );
+
+    const cliPromise = api.cliBuiltinCommands().then(
+      (res) => {
+        if (cancelled) return;
+        setCliCommandsState(res.commands ?? []);
+      },
+      () => {
+        if (!cancelled) setCliCommandsState([]);
+      },
+    );
+
+    void Promise.all([skillPromise, cliPromise]).finally(() => {
+      if (!cancelled) setSkillsLoading(false);
+    });
+
     return () => {
       cancelled = true;
     };
   }, [activeProject?.path, skillsReloadToken]);
 
   const slashCatalog = useMemo(
-    () => buildSlashCatalog(skillInfos),
-    [skillInfos],
+    () => buildSlashCatalog(skillInfos, cliCommandsState),
+    [skillInfos, cliCommandsState],
   );
   const resolveSlashTitle = useCallback(
     (item: SlashItem) => {
@@ -4398,9 +4426,15 @@ export default function App() {
       buildComposerPlusEntries({
         showUpload: showUploadInMenu,
         commands: slashFiltered.commands,
+        cli: slashFiltered.cli,
         skills: slashFiltered.skills,
       }),
-    [showUploadInMenu, slashFiltered.commands, slashFiltered.skills],
+    [
+      showUploadInMenu,
+      slashFiltered.commands,
+      slashFiltered.cli,
+      slashFiltered.skills,
+    ],
   );
   const composerMenuEntriesRef = useRef(composerMenuEntries);
   composerMenuEntriesRef.current = composerMenuEntries;
@@ -5080,8 +5114,18 @@ export default function App() {
             applyPermissionPolicy(next, { toastYoloToggle: true });
             return;
           }
-          default:
+          default: {
+            // CLI-builtin commands — insert `/name` text into draft.
+            if (item.action?.startsWith("cli:")) {
+              const cmdName = item.name;
+              setDraft((d) => {
+                const needsSpace = d.length > 0 && !/\s$/.test(d);
+                return `${d}${needsSpace ? " " : ""}/${cmdName} `;
+              });
+              return;
+            }
             return;
+          }
         }
       }
     },
@@ -5304,6 +5348,8 @@ export default function App() {
 
   const gitWorktreesReqRef = useRef(0);
   const gitWorktreesPathRef = useRef<string | null>(null);
+  /** Project paths whose grok.json defaults have already been applied this run. */
+  const appliedProjectConfigRef = useRef<Set<string>>(new Set());
   const refreshGitWorktrees = useCallback(async () => {
     const path = activeProject?.path?.trim() || null;
     if (!path || !api.isTauri()) {
@@ -5352,6 +5398,108 @@ export default function App() {
   useEffect(() => {
     void refreshGitWorktrees();
   }, [refreshGitWorktrees]);
+
+  /**
+   * Auto-detect the active session's branch + pull-request status (via git and
+   * the GitHub CLI) and persist it so the sidebar PR badge stays current.
+   * Best-effort: soft-fails silently when git/gh are unavailable.
+   */
+  useEffect(() => {
+    const sid = session.sessionId;
+    const path = activeProject?.path;
+    if (!sid || !path) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await api.sessionBranchPr(path);
+        if (cancelled || !res.available) return;
+        const branch = res.branch?.trim() || null;
+        const prRef = res.prRef?.trim() || null;
+        const prState = res.prState?.trim() || null;
+        const cur = sessions.find((x) => x.id === sid);
+        if (
+          cur &&
+          (cur.branch ?? null) === branch &&
+          (cur.prRef ?? null) === prRef &&
+          (cur.prState ?? null) === prState
+        ) {
+          return;
+        }
+        await api.sessionSetBranchPr(sid, branch, prRef, prState);
+        if (cancelled) return;
+        setSessions((prev) =>
+          prev.map((x) =>
+            x.id === sid
+              ? {
+                  ...x,
+                  branch: branch ?? undefined,
+                  prRef: prRef ?? undefined,
+                  prState: prState ?? undefined,
+                }
+              : x,
+          ),
+        );
+      } catch {
+        /* ignore — no git / no gh / detached HEAD */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Re-run when switching sessions/projects or when the turn settles (a merge
+    // or new commit may have changed PR state). `sessions` is intentionally
+    // excluded to avoid a write→state→refetch loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.sessionId, activeProject?.path, session.state]);
+
+  /**
+   * Apply a project's shared `grok.json` defaults (model / effort / permission
+   * policy / sandbox) once per project when it becomes active. Values are
+   * validated against the live catalog; unknown keys are ignored. This only
+   * seeds the composer selection — it never persists over user choices.
+   */
+  useEffect(() => {
+    const path = activeProject?.path;
+    if (!path) return;
+    if (appliedProjectConfigRef.current.has(path)) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cfg = await api.projectConfigRead(path);
+        if (cancelled) return;
+        appliedProjectConfigRef.current.add(path);
+        if (!cfg.found) return;
+        let applied = false;
+        const model = cfg.defaultModel?.trim();
+        if (model && isValidModelId(model, availableModels)) {
+          setModelId(model);
+          applied = true;
+        }
+        const eff = cfg.effort?.trim();
+        if (eff && isValidEffort(eff)) {
+          setEffort(eff);
+          applied = true;
+        }
+        const pol = cfg.permissionPolicy?.trim();
+        if (pol && isValidPolicy(pol)) {
+          setPolicy(pol);
+          applied = true;
+        }
+        const sb = cfg.sandbox?.trim().toLowerCase();
+        if (sb && ["off", "workspace", "read-only", "strict", "devbox"].includes(sb)) {
+          setSandboxProfile(sb);
+          applied = true;
+        }
+        if (applied) showToast(tr("project.configApplied"), 2600);
+      } catch {
+        appliedProjectConfigRef.current.add(path);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProject?.path, availableModels]);
 
   /**
    * After a project is created/updated: refresh list, expand, optionally trust
@@ -9884,6 +10032,18 @@ export default function App() {
                   void copySessionId(s);
                 },
               },
+              ...(s.branch?.trim()
+                ? [
+                    {
+                      id: "copy-branch",
+                      label: tr("session.copyBranch"),
+                      icon: <IconCopy size={16} />,
+                      onClick: () => {
+                        void copySessionBranch(s);
+                      },
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
               {
                 id: "archive",
                 label: s.archived
