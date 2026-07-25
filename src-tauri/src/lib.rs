@@ -79,6 +79,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .manage(session_mgr)
         .manage(voice_host)
         // Range-capable media streaming (video/audio/pdf) — never loads multi‑GB into RAM.

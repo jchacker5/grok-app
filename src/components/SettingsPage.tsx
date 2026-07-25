@@ -17,6 +17,7 @@ import {
   IconArchive,
   IconAppearance,
   IconArrowLeft,
+  IconBell,
   IconCheck,
   IconDoctor,
   IconHeadset,
@@ -30,6 +31,11 @@ import {
   IconTrash,
   IconUser,
 } from "@/components/icons";
+import {
+  ensureNotifyPermission,
+  getNotifyPermission,
+  type NotifyPermission,
+} from "@/lib/desktopNotify";
 import type { Theme } from "@/lib/theme";
 import type {
   ComposerPrefsScope,
@@ -234,6 +240,9 @@ export interface SettingsPageProps {
   /** Additional model slugs to recognize, comma-separated. */
   customModels?: string;
   onCustomModels?: (v: string) => void;
+  /** Native OS notifications (turn done, background permission requests). */
+  notificationsEnabled?: boolean;
+  onNotificationsEnabled?: (v: boolean) => void;
 }
 
 const NAV: {
@@ -390,6 +399,83 @@ function AcpServerField({
           </button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Desktop notifications toggle + live OS-permission status, patterned after
+ * `AcpServerField`'s "control + inline live status" layout above.
+ */
+function NotificationsField({
+  enabled,
+  onChange,
+  t,
+}: {
+  enabled: boolean;
+  onChange: (v: boolean) => void;
+  t: (k: string, vars?: Vars) => string;
+}) {
+  const [permission, setPermission] = useState<NotifyPermission | null>(null);
+  const [requesting, setRequesting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getNotifyPermission().then((p) => {
+      if (!cancelled) setPermission(p);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
+
+  const requestOsPermission = async () => {
+    setRequesting(true);
+    try {
+      setPermission(await ensureNotifyPermission());
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">
+          <IconBell size={16} />
+          {t("settings.notifications")}
+        </div>
+        <div className="settings-row__desc">
+          {t("settings.notificationsDesc")}
+        </div>
+      </div>
+      <UiCheck
+        checked={enabled}
+        onChange={() => onChange(!enabled)}
+        ariaLabel={t("settings.notifications")}
+      />
+      {permission === "granted" && (
+        <div className="settings-row__hint">
+          {t("settings.notificationsGranted")}
+        </div>
+      )}
+      {permission === "denied" && (
+        <div className="settings-row__hint is-danger">
+          {t("settings.notificationsDenied")}
+        </div>
+      )}
+      {permission === "default" && (
+        <div className="settings-row__hint">
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            disabled={requesting}
+            onClick={() => void requestOsPermission()}
+          >
+            {t("settings.notificationsRequest")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -573,6 +659,8 @@ export function SettingsPage({
   onHomePath,
   customModels = "",
   onCustomModels,
+  notificationsEnabled = true,
+  onNotificationsEnabled,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [voiceOptions, setVoiceOptions] = useState<api.VoiceOption[]>([]);
@@ -1323,6 +1411,11 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              <NotificationsField
+                enabled={notificationsEnabled}
+                onChange={(v) => onNotificationsEnabled?.(v)}
+                t={t}
+              />
             </div>
           </>
         )}

@@ -682,6 +682,13 @@ const en = {
   "settings.openTargetDesc":
     "Default app when opening a path from the resource pane",
   "settings.openFinder": "Finder / Explorer",
+  "settings.notifications": "Desktop notifications",
+  "settings.notificationsDesc":
+    "Native OS alerts when a turn finishes or a background session needs approval",
+  "settings.notificationsGranted": "OS permission granted",
+  "settings.notificationsDenied":
+    "OS permission denied — enable notifications for Grok in system settings",
+  "settings.notificationsRequest": "Request permission",
 
   "settings.addProjectBaseDir": "Add project starts in",
   "settings.addProjectBaseDirDesc":
@@ -2035,6 +2042,12 @@ const zh: Record<MessageKey, string> = {
   "settings.openTarget": "打开文件方式",
   "settings.openTargetDesc": "资源面板中打开路径时的默认应用",
   "settings.openFinder": "访达 / 资源管理器",
+  "settings.notifications": "桌面通知",
+  "settings.notificationsDesc":
+    "回合完成或后台会话需要批准时显示系统级提醒",
+  "settings.notificationsGranted": "已获得系统通知权限",
+  "settings.notificationsDenied": "系统通知权限被拒绝 — 请在系统设置中为 Grok 开启通知",
+  "settings.notificationsRequest": "请求权限",
 
   "prov.emptyTitle": "暂无提供商",
   "prov.detailEmpty": "选择左侧提供商，或添加新的。",

@@ -652,6 +652,12 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.openTarget": "開啟檔案方式",
   "settings.openTargetDesc": "資源面板中開啟路徑時的預設應用程式",
   "settings.openFinder": "Finder / 檔案總管",
+  "settings.notifications": "桌面通知",
+  "settings.notificationsDesc":
+    "回合完成或背景工作階段需要核准時顯示系統層級提醒",
+  "settings.notificationsGranted": "已取得系統通知權限",
+  "settings.notificationsDenied": "系統通知權限遭拒 — 請在系統設定中為 Grok 開啟通知",
+  "settings.notificationsRequest": "要求權限",
 
   "settings.addProjectBaseDir": "新增專案起始目錄",
   "settings.addProjectBaseDirDesc": "新增專案瀏覽器開啟時的預設目錄",
