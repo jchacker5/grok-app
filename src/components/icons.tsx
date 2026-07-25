@@ -46,6 +46,7 @@ import {
   IconListTree as TbListTree,
   IconMarkdown as TbMarkdown,
   IconMessage as TbMessage,
+  IconMessagePlus as TbMessagePlus,
   IconMicrophone as TbMicrophone,
   IconMinus as TbMinus,
   IconMoon as TbMoon,
@@ -251,6 +252,10 @@ export const IconCopy = wrap(TbCopy);
 export const IconExportMd = wrap(TbMarkdown);
 export const IconArchive = wrap(TbArchive);
 export const IconChat = wrap(TbMessage);
+/** Inline diff review comment (Changes panel — existing comment marker). */
+export const IconMessageSquare = wrap(TbMessage);
+/** Inline diff review comment — add new (Changes panel gutter affordance). */
+export const IconMessageSquarePlus = wrap(TbMessagePlus);
 export const IconFileText = wrap(TbFileText);
 export const IconBolt = wrap(TbBolt);
 export const IconMinimize = wrap(TbMinus);

@@ -1,0 +1,253 @@
+/**
+ * Inline diff review panel (Changes tab) — per-line gutter/content rows +
+ * inline comment composer/cards. Token colors come from code-preview.css
+ * (`.rp-code--dark` / `.rp-code--light` scoped hljs-* rules); this file only
+ * adds diff-specific layout.
+ */
+
+.rp-diff-panel-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.rp-diff-panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 10px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
+}
+
+.rp-diff-panel-meta__pending {
+  color: var(--accent);
+}
+
+.diff-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  width: 100%;
+}
+
+.diff-panel--empty {
+  padding: 16px;
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm, 13px);
+}
+
+.diff-panel__hunk + .diff-panel__hunk {
+  margin-top: 10px;
+}
+
+.diff-panel__hunk-header {
+  padding: 3px 10px;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: pre;
+}
+
+.diff-panel__line-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-panel__row {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.diff-panel__row--add {
+  background: color-mix(in srgb, var(--success-muted, var(--accent-muted)) 35%, transparent);
+}
+
+.diff-panel__row--remove {
+  background: color-mix(in srgb, var(--danger-muted) 35%, transparent);
+}
+
+.diff-panel__gutter {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 0 6px;
+  min-width: 88px;
+  color: var(--text-tertiary);
+  border-right: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-code, var(--bg-hover)) 70%, transparent);
+  user-select: none;
+  position: relative;
+}
+
+.diff-panel__gutter:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.diff-panel__ln {
+  display: inline-block;
+  width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-panel__gutter-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.35;
+  color: var(--accent);
+  margin-left: 2px;
+}
+
+.diff-panel__gutter:hover .diff-panel__gutter-hint {
+  opacity: 1;
+}
+
+.diff-panel__pre {
+  margin: 0;
+  padding: 0 10px;
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: flex;
+}
+
+.diff-panel__marker {
+  display: inline-block;
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.diff-panel__row--add .diff-panel__marker {
+  color: var(--text-secondary);
+}
+
+.diff-panel__row--remove .diff-panel__marker {
+  color: var(--text-secondary);
+}
+
+.diff-panel__composer {
+  margin: 4px 10px 8px 96px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-elevated, var(--bg-card));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diff-panel__composer-input {
+  resize: vertical;
+  min-height: 52px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm, 13px);
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--fg);
+}
+
+.diff-panel__composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.diff-panel__btn {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.diff-panel__btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-inverse, #fff);
+}
+
+.diff-panel__btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.diff-panel__btn--ghost:hover {
+  background: var(--bg-hover);
+}
+
+.diff-panel__comment {
+  margin: 4px 10px 8px 96px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm, 13px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.diff-panel__comment-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg);
+}
+
+.diff-panel__comment-stale {
+  font-size: 11px;
+  color: var(--text-danger, var(--danger));
+}
+
+.diff-panel__comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.diff-panel__icon-btn {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+}
+
+.diff-panel__icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.diff-panel__icon-btn--danger:hover {
+  color: var(--danger);
+}
