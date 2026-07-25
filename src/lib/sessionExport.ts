@@ -72,8 +72,51 @@ export function sessionToMarkdown(input: SessionExportInput): string {
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
 
+/**
+ * Render a session as pretty-printed JSON for data portability.
+ * Only user-facing content \u2014 no system prompts or internal store fields.
+ * Applies the same skip rules as {@link sessionToMarkdown} (drops empty
+ * messages and empty tool shells).
+ */
+export function sessionToJson(input: SessionExportInput): string {
+  const messages = input.messages
+    .filter((m) => {
+      const body = (m.content || "").trim();
+      const thought = (m.thought || "").trim();
+      if (!body && !thought) return false;
+      if (m.role === "tool" && !body) return false;
+      return true;
+    })
+    .map((m) => {
+      const out: Record<string, string> = {
+        role: m.role,
+        content: (m.content || "").trim(),
+      };
+      const thought = (m.thought || "").trim();
+      if (thought) out.thought = thought;
+      if (m.createdAt) out.timestamp = m.createdAt;
+      return out;
+    });
+
+  const doc: Record<string, unknown> = {
+    title: (input.title || "Untitled").trim() || "Untitled",
+  };
+  if (input.projectName) doc.projectName = input.projectName;
+  if (input.projectPath) doc.projectPath = input.projectPath;
+  if (input.sessionId) doc.sessionId = input.sessionId;
+  doc.exportedAt = input.exportedAt || new Date().toISOString();
+  doc.messageCount = messages.length;
+  doc.messages = messages;
+
+  return JSON.stringify(doc, null, 2) + "\n";
+}
+
 /** Safe download filename from a session title. */
-export function sessionExportFilename(title: string, sessionId?: string | null): string {
+export function sessionExportFilename(
+  title: string,
+  sessionId?: string | null,
+  ext: "md" | "json" = "md",
+): string {
   const base = (title || "session")
     .trim()
     .toLowerCase()
@@ -82,5 +125,5 @@ export function sessionExportFilename(title: string, sessionId?: string | null):
     .slice(0, 48);
   const id = (sessionId || "").slice(0, 8);
   const name = base || "session";
-  return id ? `grok-${name}-${id}.md` : `grok-${name}.md`;
+  return id ? `grok-${name}-${id}.${ext}` : `grok-${name}.${ext}`;
 }

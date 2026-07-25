@@ -1120,11 +1120,13 @@ const en = {
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
+  "session.exportJson": "Export chat as JSON",
   "session.exportBundle": "Export diagnostic package…",
   "session.exportBundleDone": "Diagnostic package saved",
   "session.exportBundleFail": "Diagnostic export failed",
   "session.exportDone": "Chat exported",
   "session.exportFail": "Export failed",
+  "session.exportTooLarge": "Session too large to export (over 10 MB)",
   "session.emptyRunToast":
     "This turn ended without tool calls. Reply “continue” if the task is unfinished, or export a diagnostic package from the session menu.",
 
@@ -2504,11 +2506,13 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.spaceSwitch": "切换空间（需 Grok 窗口聚焦）",
 
   "session.exportMd": "导出会话为 Markdown",
+  "session.exportJson": "导出会话为 JSON",
   "session.exportBundle": "导出完整诊断包…",
   "session.exportBundleDone": "诊断包已保存",
   "session.exportBundleFail": "诊断包导出失败",
   "session.exportDone": "会话已导出",
   "session.exportFail": "导出失败",
+  "session.exportTooLarge": "会话过大，无法导出（超过 10 MB）",
   "session.emptyRunToast":
     "本轮未调用任何工具就结束了。若任务未完成可回复「继续」；也可从会话菜单导出诊断包反馈。",
 

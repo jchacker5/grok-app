@@ -105,6 +105,7 @@ import {
 } from "@/lib/sessionSearch";
 import {
   sessionExportFilename,
+  sessionToJson,
   sessionToMarkdown,
 } from "@/lib/sessionExport";
 import { connPillForState } from "@/lib/connStatus";
@@ -5945,12 +5946,15 @@ export default function App() {
   }, [activeProject?.id, projects, showToast, tr]);
 
   /** Export active (or given) session as Markdown (from PR #24). */
-  const exportActiveSessionMd = useCallback(
-    async (sessionMeta?: {
-      id: string;
-      title: string;
-      projectId?: string | null;
-    }) => {
+  const exportActiveSession = useCallback(
+    async (
+      format: "markdown" | "json",
+      sessionMeta?: {
+        id: string;
+        title: string;
+        projectId?: string | null;
+      },
+    ) => {
       try {
         const id = sessionMeta?.id ?? session.sessionId;
         if (!id) {
@@ -5972,7 +5976,7 @@ export default function App() {
         if (id !== session.sessionId) {
           msgs = (await api.sessionMessages(id)) as ChatMessage[];
         }
-        const md = sessionToMarkdown({
+        const input = {
           title,
           projectName: proj?.name,
           projectPath: proj?.path,
@@ -5983,12 +5987,30 @@ export default function App() {
             thought: m.thought,
             createdAt: m.createdAt,
           })),
+        };
+        const content =
+          format === "json"
+            ? sessionToJson(input)
+            : sessionToMarkdown(input);
+        // Guard against pathological exports (very large sessions).
+        if (content.length > 10 * 1024 * 1024) {
+          showToast(tr("session.exportTooLarge"), 5000);
+          return;
+        }
+        const blob = new Blob([content], {
+          type:
+            format === "json"
+              ? "application/json;charset=utf-8"
+              : "text/markdown;charset=utf-8",
         });
-        const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportFilename(title, id);
+        a.download = sessionExportFilename(
+          title,
+          id,
+          format === "json" ? "json" : "md",
+        );
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
@@ -10066,7 +10088,19 @@ export default function App() {
                 label: tr("session.exportMd"),
                 icon: <IconCopy size={16} />,
                 onClick: () => {
-                  void exportActiveSessionMd({
+                  void exportActiveSession("markdown", {
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
+              {
+                id: "export-json",
+                label: tr("session.exportJson"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportActiveSession("json", {
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,
