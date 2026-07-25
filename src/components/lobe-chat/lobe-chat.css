@@ -436,6 +436,49 @@
   gap: 2px;
 }
 
+/* Fold toggle (large blocks / diffs) — lang + counts, click to expand. */
+.chat-code__fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 6px 3px 4px;
+  margin: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--chat-text-3);
+  cursor: pointer;
+  font: inherit;
+}
+.chat-code__fold:hover {
+  background: var(--chat-card-hover);
+  color: var(--chat-text);
+}
+.chat-code__fold .chat-code__lang {
+  cursor: pointer;
+}
+.chat-code__count {
+  font-family: var(--chat-mono);
+  font-size: var(--chat-fs-xs);
+  color: var(--chat-text-3);
+  user-select: none;
+}
+.chat-code__diffstat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--chat-mono);
+  font-size: var(--chat-fs-xs);
+  user-select: none;
+}
+.chat-code__diffstat-add {
+  color: #3fb950;
+}
+.chat-code__diffstat-del {
+  color: #f85149;
+}
+
 .chat-code__btn {
   display: inline-flex;
   align-items: center;
