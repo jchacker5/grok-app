@@ -9715,6 +9715,30 @@ textarea::-webkit-scrollbar-thumb:active,
   overflow: hidden;
 }
 
+.embedded-browser__sep {
+  width: 1px;
+  height: 18px;
+  flex-shrink: 0;
+  background: var(--border-subtle);
+  margin: 0 2px;
+}
+
+.embedded-browser__zoom-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.embedded-browser__bar .chrome-btn.is-active {
+  color: var(--text-accent, var(--accent));
+  background: var(--bg-hover);
+}
+
 /* Side panel mode: Files | Changes */
 .rp-side-modes {
   display: flex;

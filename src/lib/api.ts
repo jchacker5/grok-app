@@ -244,6 +244,14 @@ export async function openExternalUrl(url: string) {
   return invoke<void>("open_external_url", { url });
 }
 
+/**
+ * Toggle devtools on the resource-pane embedded browser's native child
+ * webview (label `"resource-browser"`). Returns the new open/closed state.
+ */
+export async function toggleResourceDevtools() {
+  return invoke<boolean>("resource_webview_toggle_devtools");
+}
+
 /** GitHub Releases check (Settings → About). Does not auto-install. */
 export type AppUpdateCheck = {
   currentVersion: string;

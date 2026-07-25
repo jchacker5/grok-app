@@ -149,6 +149,7 @@ pub fn run() {
             commands::cli_install_commands,
             commands::pick_cli_binary,
             commands::open_external_url,
+            commands::resource_webview_toggle_devtools,
             commands::app_check_update,
             commands::projects_list,
             commands::project_add,

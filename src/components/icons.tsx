@@ -16,6 +16,7 @@ import {
   IconBox as TbBox,
   IconBrush as TbBrush,
   IconCalendarTime as TbCalendarTime,
+  IconCamera as TbCamera,
   IconCheck as TbCheck,
   IconClipboardList as TbClipboardList,
   IconClock as TbClock,
@@ -24,7 +25,9 @@ import {
   IconChevronRight as TbChevronRight,
   IconChevronsLeft as TbChevronsLeft,
   IconCircleDashed as TbCircleDashed,
+  IconCode as TbCode,
   IconCopy as TbCopy,
+  IconCrosshair as TbCrosshair,
   IconDots as TbDots,
   IconEdit as TbEdit,
   IconFileDiff as TbFileDiff,
@@ -54,6 +57,7 @@ import {
   IconPencil as TbPencil,
   IconPinned as TbPinned,
   IconPinnedOff as TbPinnedOff,
+  IconPlayerRecordFilled as TbPlayerRecordFilled,
   IconPlayerStop as TbPlayerStop,
   IconPlug as TbPlug,
   IconPlus as TbPlus,
@@ -76,8 +80,12 @@ import {
   IconTrash as TbTrash,
   IconUpload as TbUpload,
   IconUser as TbUser,
+  IconVideo as TbVideo,
   IconWand as TbWand,
   IconX as TbX,
+  IconZoomIn as TbZoomIn,
+  IconZoomOut as TbZoomOut,
+  IconZoomReset as TbZoomReset,
 } from "@tabler/icons-react";
 
 export type IconProps = {
@@ -279,3 +287,13 @@ export const IconActivity = wrap(TbActivity);
 export const IconSparkles = wrap(TbSparkles);
 export const IconBox = wrap(TbBox);
 export const IconPuzzle = wrap(TbPuzzle);
+
+// Live Preview Panel v2 (resource pane embedded browser toolbar)
+export const IconZoomIn = wrap(TbZoomIn);
+export const IconZoomOut = wrap(TbZoomOut);
+export const IconZoomReset = wrap(TbZoomReset);
+export const IconDevtools = wrap(TbCode);
+export const IconCrosshair = wrap(TbCrosshair);
+export const IconCamera = wrap(TbCamera);
+export const IconRecord = wrap(TbPlayerRecordFilled, { className: "g-icon--danger" });
+export const IconVideo = wrap(TbVideo);

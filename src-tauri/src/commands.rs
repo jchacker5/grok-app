@@ -255,6 +255,28 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
     }
 }
 
+/// Label of the child native `Webview` created by `EmbeddedBrowser.tsx` for the
+/// resource pane's "url" tabs. Kept in one place so Rust and TS agree.
+const RESOURCE_WEBVIEW_LABEL: &str = "resource-browser";
+
+/// Toggle devtools on the resource-pane embedded browser's child webview.
+/// Returns the new open/closed state. No-op (returns `false`) if the webview
+/// doesn't currently exist (tab closed / not a "url" tab).
+#[tauri::command]
+pub async fn resource_webview_toggle_devtools(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    let is_open = webview.is_devtools_open();
+    if is_open {
+        webview.close_devtools();
+    } else {
+        webview.open_devtools();
+    }
+    Ok(!is_open)
+}
+
 #[tauri::command]
 pub async fn projects_list() -> Result<Vec<Project>, String> {
     Ok(store::load_projects())

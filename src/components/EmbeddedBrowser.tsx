@@ -10,8 +10,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { isTauri } from "@/lib/api";
+import * as api from "@/lib/api";
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_DEFAULT, clampZoom } from "@/lib/embeddedBrowserZoom";
 import { createT, type Locale } from "@/i18n";
-import { IconExternalLink, IconRefresh } from "@/components/icons";
+import {
+  IconExternalLink,
+  IconRefresh,
+  IconZoomIn,
+  IconZoomOut,
+  IconZoomReset,
+  IconDevtools,
+} from "@/components/icons";
 
 const WEBVIEW_LABEL = "resource-browser";
 
@@ -55,7 +64,53 @@ export function EmbeddedBrowser({
   const currentUrlRef = useRef<string>("");
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  const zoomRef = useRef(ZOOM_DEFAULT);
+  const [devtoolsOpen, setDevtoolsOpen] = useState(false);
+  const [devtoolsBusy, setDevtoolsBusy] = useState(false);
   const tr = createT(locale);
+
+  // Re-apply zoom to a freshly (re)created webview so it survives reload/URL changes.
+  const applyZoom = async (factor: number) => {
+    const wv = webviewRef.current;
+    if (!wv || !isTauri()) return;
+    try {
+      await wv.setZoom(factor);
+    } catch (e) {
+      console.error("[EmbeddedBrowser] setZoom", e);
+    }
+  };
+
+  const zoomIn = () => {
+    const next = clampZoom(zoom + ZOOM_STEP);
+    setZoom(next);
+    zoomRef.current = next;
+    void applyZoom(next);
+  };
+  const zoomOut = () => {
+    const next = clampZoom(zoom - ZOOM_STEP);
+    setZoom(next);
+    zoomRef.current = next;
+    void applyZoom(next);
+  };
+  const zoomReset = () => {
+    setZoom(ZOOM_DEFAULT);
+    zoomRef.current = ZOOM_DEFAULT;
+    void applyZoom(ZOOM_DEFAULT);
+  };
+
+  const toggleDevtools = () => {
+    if (!isTauri() || devtoolsBusy) return;
+    setDevtoolsBusy(true);
+    void api
+      .toggleResourceDevtools()
+      .then((open) => setDevtoolsOpen(open))
+      .catch((e) => {
+        console.error("[EmbeddedBrowser] toggleDevtools", e);
+        setError(String(e));
+      })
+      .finally(() => setDevtoolsBusy(false));
+  };
 
   // Layout → native webview bounds
   const syncBounds = async () => {
@@ -163,6 +218,10 @@ export function EmbeddedBrowser({
         await webview.setSize(new LogicalSize(w, h));
         await webview.show();
         setReady(true);
+        setDevtoolsOpen(false);
+        if (zoomRef.current !== ZOOM_DEFAULT) {
+          void applyZoom(zoomRef.current);
+        }
 
         // Keep bounds aligned with the host pane; hide when host not visible
         // (aside collapsed, zero-size, covered).
@@ -286,6 +345,10 @@ export function EmbeddedBrowser({
         );
         await webview.show();
         setReady(true);
+        setDevtoolsOpen(false);
+        if (zoomRef.current !== ZOOM_DEFAULT) {
+          void applyZoom(zoomRef.current);
+        }
       } catch (e) {
         setError(String(e));
       }
@@ -344,6 +407,46 @@ export function EmbeddedBrowser({
           title={tr("resources.openExternal")}
         >
           <IconExternalLink size={14} />
+        </button>
+        <span className="embedded-browser__sep" aria-hidden />
+        <button
+          type="button"
+          className="chrome-btn"
+          onClick={zoomOut}
+          disabled={zoom <= ZOOM_MIN}
+          title={tr("resources.zoomOut")}
+        >
+          <IconZoomOut size={14} />
+        </button>
+        <span className="embedded-browser__zoom-label" aria-hidden>
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          type="button"
+          className="chrome-btn"
+          onClick={zoomIn}
+          disabled={zoom >= ZOOM_MAX}
+          title={tr("resources.zoomIn")}
+        >
+          <IconZoomIn size={14} />
+        </button>
+        <button
+          type="button"
+          className="chrome-btn"
+          onClick={zoomReset}
+          disabled={zoom === ZOOM_DEFAULT}
+          title={tr("resources.zoomReset")}
+        >
+          <IconZoomReset size={14} />
+        </button>
+        <button
+          type="button"
+          className={"chrome-btn" + (devtoolsOpen ? " is-active" : "")}
+          onClick={toggleDevtools}
+          disabled={devtoolsBusy}
+          title={devtoolsOpen ? tr("resources.devtoolsClose") : tr("resources.devtoolsOpen")}
+        >
+          <IconDevtools size={14} />
         </button>
       </div>
       {/* Host rectangle — native webview is painted on top of this area */}
