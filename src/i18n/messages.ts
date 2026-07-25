@@ -626,6 +626,7 @@ const en = {
   "settings.section.permissions": "Permissions",
   "settings.section.composer": "Composer prefs",
   "settings.section.general": "General",
+  "settings.section.backup": "Backup & restore",
   "settings.language": "Language",
   "settings.languageDesc": "App UI language",
   "settings.sessionDataMode": "Session data mode",
@@ -814,6 +815,19 @@ const en = {
   "settings.testNotificationSent": "Test notification sent",
   "settings.testNotificationBlocked":
     "No notification shown — check OS permission or Do Not Disturb",
+
+  "settings.backup.title": "Backup & restore",
+  "settings.backup.desc":
+    "Export settings, projects, sessions, spaces, and automations to a single file. Restore it on another machine to bring your data along — move the file yourself via your own cloud folder, USB stick, etc. No account or network sync involved.",
+  "settings.backup.export": "Export backup…",
+  "settings.backup.exporting": "Exporting…",
+  "settings.backup.import": "Restore backup…",
+  "settings.backup.importing": "Restoring…",
+  "settings.backup.exportDone": "Backup saved",
+  "settings.backup.exportFail": "Export failed",
+  "settings.backup.importDone":
+    "Restored — {sessions} session(s), {projects} project(s) merged",
+  "settings.backup.importFail": "Restore failed",
 
   "settings.addProjectBaseDir": "Add project starts in",
   "settings.addProjectBaseDirDesc":
@@ -2309,6 +2323,7 @@ const zh: Record<MessageKey, string> = {
   "settings.section.permissions": "权限",
   "settings.section.composer": "对话偏好",
   "settings.section.general": "常规",
+  "settings.section.backup": "备份与恢复",
   "settings.language": "语言",
   "settings.languageDesc": "应用界面语言",
   "settings.sessionDataMode": "会话数据模式",
@@ -2488,6 +2503,18 @@ const zh: Record<MessageKey, string> = {
   "settings.testNotification": "发送测试通知",
   "settings.testNotificationSent": "测试通知已发送",
   "settings.testNotificationBlocked": "未显示通知 — 请检查系统权限或免打扰设置",
+
+  "settings.backup.title": "备份与恢复",
+  "settings.backup.desc":
+    "将设置、项目、会话、空间和自动化任务导出为单个文件。在另一台设备上恢复即可带走你的数据——通过你自己的云盘文件夹、U 盘等方式自行转移文件，不涉及账号或网络同步。",
+  "settings.backup.export": "导出备份…",
+  "settings.backup.exporting": "正在导出…",
+  "settings.backup.import": "恢复备份…",
+  "settings.backup.importing": "正在恢复…",
+  "settings.backup.exportDone": "备份已保存",
+  "settings.backup.exportFail": "导出失败",
+  "settings.backup.importDone": "已恢复 — 合并了 {sessions} 个会话、{projects} 个项目",
+  "settings.backup.importFail": "恢复失败",
 
   "prov.emptyTitle": "暂无提供商",
   "prov.detailEmpty": "选择左侧提供商，或添加新的。",

@@ -1577,6 +1577,38 @@ export async function exportSessionBundle(sessionId: string) {
   });
 }
 
+/**
+ * Manual backup / restore (plans/020, smallest slice): bundle settings,
+ * projects, sessions (with messages), spaces, and automations into a single
+ * portable `.grokbackup` file. No network, no daemon — the user moves the
+ * file themselves (e.g. via their own iCloud/Dropbox folder) and imports it
+ * on another machine. Never includes API keys or tokens.
+ */
+export async function exportBackupBundle() {
+  return invoke<SupportBundleResult>("export_backup_bundle");
+}
+
+export interface BackupImportSummary {
+  sessionsAdded: number;
+  sessionsUpdated: number;
+  sessionsSkipped: number;
+  projectsAdded: number;
+  projectsUpdated: number;
+  projectsSkipped: number;
+  spacesAdded: number;
+  automationsAdded: number;
+  settingsRestored: boolean;
+}
+
+/**
+ * Native file picker → restore a `.grokbackup` bundle. Merges
+ * sessions/projects by id (newer wins), spaces/automations additively, and
+ * applies settings as-is. Returns `null` if the user cancels the picker.
+ */
+export async function importBackupBundle() {
+  return invoke<BackupImportSummary | null>("import_backup_bundle");
+}
+
 export interface ResetAppDataResult {
   ok: boolean;
   dataRoot: string;

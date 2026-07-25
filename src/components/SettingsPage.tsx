@@ -912,6 +912,84 @@ function NotificationPreferencesFields({
   );
 }
 
+/**
+ * Manual backup / restore (plans/020, smallest self-contained slice): export
+ * settings/projects/sessions/spaces/automations to a single portable file the
+ * user can move via their own cloud-synced folder, and restore it elsewhere.
+ * No daemon, no network sync — every action here is user-initiated.
+ */
+function BackupSection({ t }: { t: (k: string, vars?: Vars) => string }) {
+  const [busy, setBusy] = useState<"export" | "import" | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const onExport = async () => {
+    setBusy("export");
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await api.exportBackupBundle();
+      setMessage(`${t("settings.backup.exportDone")}: ${res.path}`);
+    } catch (e) {
+      setError(`${t("settings.backup.exportFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onImport = async () => {
+    setBusy("import");
+    setMessage(null);
+    setError(null);
+    try {
+      const summary = await api.importBackupBundle();
+      if (!summary) {
+        setBusy(null);
+        return;
+      }
+      setMessage(
+        t("settings.backup.importDone", {
+          sessions: String(summary.sessionsAdded + summary.sessionsUpdated),
+          projects: String(summary.projectsAdded + summary.projectsUpdated),
+        }),
+      );
+    } catch (e) {
+      setError(`${t("settings.backup.importFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">{t("settings.backup.title")}</div>
+        <div className="settings-row__desc">{t("settings.backup.desc")}</div>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={busy !== null}
+          onClick={() => void onExport()}
+        >
+          {busy === "export" ? t("settings.backup.exporting") : t("settings.backup.export")}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={busy !== null}
+          onClick={() => void onImport()}
+        >
+          {busy === "import" ? t("settings.backup.importing") : t("settings.backup.import")}
+        </button>
+      </div>
+      {message ? <div className="settings-row__hint">{message}</div> : null}
+      {error ? <div className="settings-row__hint is-danger">{error}</div> : null}
+    </div>
+  );
+}
+
 /** App-styled checkbox (no native OS control). */
 function UiCheck({
   checked,
@@ -1888,6 +1966,11 @@ export function SettingsPage({
                 onTest={onTestNotification}
                 t={t}
               />
+            </div>
+
+            <h2 className="settings-page__h2">{t("settings.section.backup")}</h2>
+            <div className="settings-card">
+              <BackupSection t={t} />
             </div>
           </>
         )}

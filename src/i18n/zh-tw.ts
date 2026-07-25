@@ -595,6 +595,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.section.permissions": "權限",
   "settings.section.composer": "對話偏好",
   "settings.section.general": "一般",
+  "settings.section.backup": "備份與還原",
   "settings.language": "語言",
   "settings.languageDesc": "應用程式介面語言",
   "settings.sessionDataMode": "對話資料模式",
@@ -774,6 +775,18 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.testNotification": "傳送測試通知",
   "settings.testNotificationSent": "測試通知已傳送",
   "settings.testNotificationBlocked": "未顯示通知 — 請檢查系統權限或免打擾設定",
+
+  "settings.backup.title": "備份與還原",
+  "settings.backup.desc":
+    "將設定、專案、工作階段、空間與自動化任務匯出為單一檔案。在另一台裝置上還原即可帶走你的資料——透過你自己的雲端資料夾、隨身碟等方式自行搬移檔案，不涉及帳號或網路同步。",
+  "settings.backup.export": "匯出備份…",
+  "settings.backup.exporting": "匯出中…",
+  "settings.backup.import": "還原備份…",
+  "settings.backup.importing": "還原中…",
+  "settings.backup.exportDone": "備份已儲存",
+  "settings.backup.exportFail": "匯出失敗",
+  "settings.backup.importDone": "已還原 — 合併了 {sessions} 個工作階段、{projects} 個專案",
+  "settings.backup.importFail": "還原失敗",
 
   "settings.addProjectBaseDir": "新增專案起始目錄",
   "settings.addProjectBaseDirDesc": "新增專案瀏覽器開啟時的預設目錄",

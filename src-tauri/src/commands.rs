@@ -2829,6 +2829,73 @@ fn save_and_reveal_zip(
     }))
 }
 
+/// Write a portable backup (settings, projects, sessions, spaces, automations)
+/// to a single `.grokbackup` zip and open a save dialog. No network, no
+/// background sync — the user moves this file themselves (e.g. via their own
+/// iCloud/Dropbox folder) and imports it on another machine.
+#[tauri::command]
+pub async fn export_backup_bundle() -> Result<serde_json::Value, String> {
+    let tmp = tauri::async_runtime::spawn_blocking(crate::backup::write_backup_bundle)
+        .await
+        .map_err(|e| e.to_string())??;
+
+    let suggested = tmp
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("grok-app-backup.grokbackup")
+        .to_string();
+    let dest = tauri::async_runtime::spawn_blocking({
+        let suggested = suggested.clone();
+        move || {
+            rfd::FileDialog::new()
+                .set_title("Save backup")
+                .set_file_name(&suggested)
+                .add_filter("Grok App backup", &["grokbackup"])
+                .save_file()
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let final_path = if let Some(dest) = dest {
+        std::fs::copy(&tmp, &dest).map_err(|e| format!("copy backup: {e}"))?;
+        let _ = std::fs::remove_file(&tmp);
+        dest
+    } else {
+        tmp
+    };
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "path": final_path.display().to_string(),
+    }))
+}
+
+/// Native file picker → restore a `.grokbackup` bundle written by
+/// `export_backup_bundle`. Merges sessions/projects by id (newer wins),
+/// spaces/automations additively, and applies `settings.json` as-is. Returns
+/// `None` if the user cancels the picker.
+#[tauri::command]
+pub async fn import_backup_bundle() -> Result<Option<crate::backup::BackupImportSummary>, String> {
+    let path = tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .set_title("Restore backup")
+            .add_filter("Grok App backup", &["grokbackup", "zip"])
+            .pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let summary = tauri::async_runtime::spawn_blocking(move || {
+        crate::backup::restore_backup_bundle(&path)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(Some(summary))
+}
+
 /// Wipe App data under the data root (sessions, projects, settings).
 /// Does not touch the CLI home (`~/.grok`). Double-confirm in the UI before calling.
 #[tauri::command]

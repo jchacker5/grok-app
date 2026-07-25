@@ -4,6 +4,7 @@ mod account;
 mod account_profiles;
 mod acp_client;
 mod agent_memory;
+mod backup;
 mod agent_prefs;
 mod app_update;
 mod extensions;
@@ -223,6 +224,8 @@ pub fn run() {
             commands::doctor_report,
             commands::export_support_bundle,
             commands::export_session_bundle,
+            commands::export_backup_bundle,
+            commands::import_backup_bundle,
             commands::reset_app_data,
             commands::skills_list,
             commands::inspect_mcp,
