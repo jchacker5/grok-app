@@ -1260,6 +1260,7 @@ const en = {
 
   // Slash palette
   "slash.section.commands": "Commands",
+  "slash.section.cli": "CLI",
   "slash.section.skills": "Skills",
   "slash.empty": "No matching commands or skills",
   "slash.goal": "Goal",
@@ -2875,6 +2876,7 @@ const zh: Record<MessageKey, string> = {
   "notify.testBody": "这是 Grok 提醒的示例效果。",
 
   "slash.section.commands": "命令",
+  "slash.section.cli": "CLI",
   "slash.section.skills": "技能",
   "slash.empty": "没有匹配的命令或技能",
   "slash.goal": "目标",

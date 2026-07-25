@@ -3,9 +3,11 @@ import {
   buildSlashCatalog,
   builtinSlashItems,
   customCommandsToSlashItems,
+  cliCommandsToSlashItems,
   filterSlashItems,
   skillsToSlashItems,
   type CustomCommandInfo,
+  type CliBuiltinCommandInfo,
   type SkillInfo,
   type SlashItem,
 } from "./slashCatalog";
@@ -86,6 +88,51 @@ describe("skillsToSlashItems", () => {
     expect(
       skillsToSlashItems([{ name: "x", description: "d" }]),
     ).toHaveLength(1);
+  });
+});
+
+describe("cliCommandsToSlashItems", () => {
+  it("maps CLI commands to slash items", () => {
+    const commands: CliBuiltinCommandInfo[] = [
+      { name: "web", description: "Search the web" },
+      { name: "edit", description: "Edit files" },
+    ];
+    const items = cliCommandsToSlashItems(commands);
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      id: "cli:web",
+      kind: "action",
+      name: "web",
+      displayTitle: "/web",
+      displayDescription: "Search the web",
+      source: "cli",
+      action: "cli:web",
+    });
+    expect(items[1]).toMatchObject({
+      id: "cli:edit",
+      kind: "action",
+      name: "edit",
+      displayTitle: "/edit",
+      displayDescription: "Edit files",
+      source: "cli",
+      action: "cli:edit",
+    });
+  });
+
+  it("dedupes CLI commands by name", () => {
+    const commands: CliBuiltinCommandInfo[] = [
+      { name: "web", description: "first" },
+      { name: "web", description: "second" },
+    ];
+    expect(cliCommandsToSlashItems(commands)).toHaveLength(1);
+  });
+
+  it("skips empty names", () => {
+    const commands: CliBuiltinCommandInfo[] = [
+      { name: "", description: "empty" },
+      { name: "  ", description: "whitespace" },
+    ];
+    expect(cliCommandsToSlashItems(commands)).toHaveLength(0);
   });
 });
 
@@ -186,13 +233,18 @@ describe("filterSlashItems", () => {
 });
 
 describe("buildSlashCatalog", () => {
-  it("splits commands and skills", () => {
+  it("splits commands, CLI commands, and skills", () => {
     const skills: SkillInfo[] = [
       { name: "s1", description: "one" },
       { name: "s2", description: "two", userInvocable: false },
     ];
-    const cat = buildSlashCatalog(skills);
+    const cliCommands: CliBuiltinCommandInfo[] = [
+      { name: "web", description: "Search the web" },
+    ];
+    const cat = buildSlashCatalog(skills, [], cliCommands);
     expect(cat.commands).toEqual(builtinSlashItems());
+    expect(cat.cli).toHaveLength(1);
+    expect(cat.cli[0]!.name).toBe("web");
     expect(cat.skills).toHaveLength(1);
     expect(cat.skills[0]!.name).toBe("s1");
   });
@@ -213,6 +265,12 @@ describe("buildSlashCatalog", () => {
     expect(custom.kind).toBe("custom");
     expect(custom.customActionType).toBe("insertText");
     expect(custom.customActionValue).toBe("Please review this code.");
+  });
+
+  it("returns empty cli array when no CLI commands provided", () => {
+    const skills: SkillInfo[] = [{ name: "s1", description: "one" }];
+    const cat = buildSlashCatalog(skills);
+    expect(cat.cli).toEqual([]);
   });
 });
 

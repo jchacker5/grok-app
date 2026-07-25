@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **CLI-native slash commands in composer palette**: the app now fetches built-in slash commands bundled with the Grok Build CLI via `grok inspect --json` (future `commands` field) and `~/.grok/commands.json` manifest. CLI commands appear under a "CLI" section in the `/` palette, showing their `/name` and description; selecting one inserts the command text into the composer. Forward-compatible — empty list when no CLI commands are yet exposed. (`cli_builtin_commands` Rust command + `CommandsListResult` API + `cliCommandsToSlashItems` catalog)
+
 ## [0.1.10] - 2026-07-25
 
 ### Added

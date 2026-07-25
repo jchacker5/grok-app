@@ -230,6 +230,7 @@ pub fn run() {
             commands::import_backup_bundle,
             commands::reset_app_data,
             commands::skills_list,
+            commands::cli_builtin_commands,
             commands::inspect_mcp,
             commands::project_inspect,
             commands::extensions_get,

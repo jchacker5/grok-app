@@ -20,6 +20,7 @@ import {
   IconArrowsMinimize,
   IconAttach,
   IconAutomations,
+  IconBolt,
   IconBox,
   IconCircleDashed,
   IconClipboardList,
@@ -78,20 +79,25 @@ function slashItemIcon(item: SlashItem): ReactNode {
       return <IconShieldCheck size={ICON_SIZE} />;
     default:
       if (item.kind === "mode") return <IconCircleDashed size={ICON_SIZE} />;
+      if (item.source === "cli") return <IconBolt size={ICON_SIZE} />;
       if (item.kind === "action") return <IconBox size={ICON_SIZE} />;
       return <IconSkills size={ICON_SIZE} />;
   }
 }
 
-/** Build keyboard-nav flat list: optional upload + commands + skills. */
+/** Build keyboard-nav flat list: optional upload + commands + CLI commands + skills. */
 export function buildComposerPlusEntries(opts: {
   showUpload: boolean;
   commands: SlashItem[];
+  cli: SlashItem[];
   skills: SlashItem[];
 }): ComposerPlusEntry[] {
   const out: ComposerPlusEntry[] = [];
   if (opts.showUpload) out.push({ id: "upload", kind: "upload" });
   for (const item of opts.commands) {
+    out.push({ id: item.id, kind: "slash", item });
+  }
+  for (const item of opts.cli) {
     out.push({ id: item.id, kind: "slash", item });
   }
   for (const item of opts.skills) {
@@ -102,14 +108,14 @@ export function buildComposerPlusEntries(opts: {
 
 /**
  * Rows for rendering: section headers + the same entries used for keyboard.
- * Order always: Add → Commands (builtins like Goals/Plan) → Skills.
- * Built-in commands must never sit under the skills section.
+ * Order always: Add → Commands (builtins like Goals/Plan) → CLI → Skills.
  */
 export function buildComposerPlusRows(
   entries: ComposerPlusEntry[],
   labels: {
     add: string;
     commands: string;
+    cli: string;
     skills: string;
   },
 ): ComposerPlusRow[] {
@@ -117,6 +123,7 @@ export function buildComposerPlusRows(
   let navIndex = 0;
   let addedAddSection = false;
   let addedCmdSection = false;
+  let addedCliSection = false;
   let addedSkillSection = false;
 
   for (const entry of entries) {
@@ -133,6 +140,16 @@ export function buildComposerPlusRows(
       if (!addedSkillSection) {
         rows.push({ type: "section", id: "sec-skills", label: labels.skills });
         addedSkillSection = true;
+      }
+      rows.push({ type: "entry", entry, navIndex: navIndex++ });
+      continue;
+    }
+
+    // CLI-built-in commands (source === "cli")
+    if (entry.item.source === "cli") {
+      if (!addedCliSection) {
+        rows.push({ type: "section", id: "sec-cli", label: labels.cli });
+        addedCliSection = true;
       }
       rows.push({ type: "entry", entry, navIndex: navIndex++ });
       continue;
@@ -217,6 +234,7 @@ export function ComposerPlusPanel({
   const rows = buildComposerPlusRows(entries, {
     add: tr("composer.add"),
     commands: tr("slash.section.commands"),
+    cli: tr("slash.section.cli"),
     skills: tr("composer.skills"),
   });
 

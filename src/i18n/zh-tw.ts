@@ -1188,6 +1188,7 @@ export const zhTW: Record<MessageKey, string> = {
   "notify.testBody": "這是 Grok 提醒的示範效果。",
 
   "slash.section.commands": "指令",
+  "slash.section.cli": "CLI",
   "slash.section.skills": "技能",
   "slash.empty": "沒有相符的指令或技能",
   "slash.goal": "目標",
