@@ -55,6 +55,10 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 fs2 = "0.4"
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 url = "2"
+# Cross-platform screen capture (resource-pane webview screenshot / recording).
+# macOS: requires Screen Recording TCC permission — first capture after grant
+# may be black; commands.rs surfaces an explicit permission-needed error.
+xcap = "0.9"
 
 [profile.release]
 codegen-units = 1

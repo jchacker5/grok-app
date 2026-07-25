@@ -9739,6 +9739,28 @@ textarea::-webkit-scrollbar-thumb:active,
   background: var(--bg-hover);
 }
 
+.embedded-browser__notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.embedded-browser__notice span {
+  flex: 1;
+  min-width: 0;
+}
+
+.embedded-browser__notice--permission {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+}
+
 /* Side panel mode: Files | Changes */
 .rp-side-modes {
   display: flex;

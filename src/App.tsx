@@ -3785,6 +3785,46 @@ export default function App() {
     [tr],
   );
 
+  /**
+   * Screenshot captured from the resource pane's embedded browser (camera
+   * toolbar button). Same saveTempAttachment → mergeAttachments pipeline as
+   * clipboard-paste images (App.tsx pasteMediaFromNativeClipboard above) —
+   * the backend already surfaced a permission-needed vs. generic-failure
+   * distinction (EmbeddedBrowser shows that inline), so any error reaching
+   * here is just the generic composer-attach failure toast.
+   */
+  const handleResourceScreenshot = useCallback(
+    (pngBase64: string, _sourceUrl: string) => {
+      if (!api.isTauri()) return;
+      void (async () => {
+        try {
+          const stamp = new Date()
+            .toISOString()
+            .replace(/[:.]/g, "-");
+          const entry = await api.saveTempAttachment(
+            pngBase64,
+            `screenshot-${stamp}.png`,
+            "image/png",
+          );
+          setAttachments((prev) =>
+            mergeAttachments(prev, [
+              { path: entry.path, name: entry.name, isDir: entry.isDir },
+            ]),
+          );
+          const msg = tr("resources.screenshotTaken");
+          setToast(msg);
+          window.setTimeout(
+            () => setToast((cur) => (cur === msg ? null : cur)),
+            2200,
+          );
+        } catch (e) {
+          setLocalError(String(e) || tr("resources.screenshotFailed"));
+        }
+      })();
+    },
+    [tr],
+  );
+
   const closeComposerMenu = useCallback(() => {
     const live = liveSlashRef.current;
     if (live.present) {
@@ -8288,6 +8328,7 @@ export default function App() {
               onRequestPlanChanges={() => void requestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}
               onElementPicked={handleElementPicked}
+              onScreenshot={handleResourceScreenshot}
               onClose={() =>
                 setLayout((l) => {
                   const n = { ...l, asideCollapsed: true };

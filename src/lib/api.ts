@@ -293,6 +293,24 @@ export async function pollResourceElementPick() {
   return invoke<PickPollResult>("resource_webview_poll_pick");
 }
 
+/**
+ * Exact error string `capture_resource_webview` returns when macOS Screen
+ * Recording permission hasn't been granted yet (detected server-side via a
+ * near-uniform-black frame heuristic). Match on this to show a dedicated
+ * permission-needed UI state instead of a generic capture-failed message.
+ */
+export const SCREEN_RECORDING_PERMISSION_ERROR = "screen-recording-permission-needed";
+
+/**
+ * Capture a PNG screenshot of the resource-pane embedded browser's native
+ * child webview. Returns base64 PNG bytes (no data-URL prefix). Rejects with
+ * `SCREEN_RECORDING_PERMISSION_ERROR` when the OS hasn't granted Screen
+ * Recording permission yet (macOS).
+ */
+export async function captureResourceWebview() {
+  return invoke<string>("capture_resource_webview");
+}
+
 /** GitHub Releases check (Settings → About). Does not auto-install. */
 export type AppUpdateCheck = {
   currentVersion: string;

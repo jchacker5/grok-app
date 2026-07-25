@@ -153,6 +153,7 @@ pub fn run() {
             commands::resource_webview_start_picker,
             commands::resource_webview_stop_picker,
             commands::resource_webview_poll_pick,
+            commands::capture_resource_webview,
             commands::app_check_update,
             commands::projects_list,
             commands::project_add,

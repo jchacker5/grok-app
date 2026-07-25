@@ -21,6 +21,8 @@ import {
   IconZoomReset,
   IconDevtools,
   IconCrosshair,
+  IconCamera,
+  IconClose,
 } from "@/components/icons";
 
 const WEBVIEW_LABEL = "resource-browser";
@@ -36,6 +38,8 @@ export interface EmbeddedBrowserProps {
   className?: string;
   /** Fired when the user picks an element via the crosshair toolbar toggle. */
   onElementPicked?: (info: api.PickedElementInfo) => void;
+  /** Fired with base64 PNG bytes after a successful screenshot capture. */
+  onScreenshot?: (pngBase64: string) => void;
 }
 
 function sanitizeLabel(s: string): string {
@@ -62,6 +66,7 @@ export function EmbeddedBrowser({
   active = true,
   className = "",
   onElementPicked,
+  onScreenshot,
 }: EmbeddedBrowserProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   // Dynamic import type — keep loose to avoid hard coupling on Tauri version.
@@ -189,6 +194,36 @@ export function EmbeddedBrowser({
     if (picking) stopPicking();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, active]);
+
+  // Screenshot: capture the resource-browser webview's own on-screen bounds
+  // (Rust resolves these live from the webview/window, no bounds need to be
+  // passed from here). macOS needs Screen Recording (TCC) permission — the
+  // backend detects a black/blank frame and returns a distinct error string
+  // so this can show a dedicated "grant permission" notice instead of a
+  // generic failure.
+  const [screenshotBusy, setScreenshotBusy] = useState(false);
+  const [screenshotNotice, setScreenshotNotice] = useState<
+    { kind: "permission" | "error"; message?: string } | null
+  >(null);
+
+  const takeScreenshot = () => {
+    if (!isTauri() || screenshotBusy) return;
+    setScreenshotBusy(true);
+    setScreenshotNotice(null);
+    void api
+      .captureResourceWebview()
+      .then((pngBase64) => onScreenshot?.(pngBase64))
+      .catch((e) => {
+        const msg = String(e);
+        if (msg.includes(api.SCREEN_RECORDING_PERMISSION_ERROR)) {
+          setScreenshotNotice({ kind: "permission" });
+        } else {
+          console.error("[EmbeddedBrowser] screenshot", e);
+          setScreenshotNotice({ kind: "error", message: msg });
+        }
+      })
+      .finally(() => setScreenshotBusy(false));
+  };
 
   // Layout → native webview bounds
   const syncBounds = async () => {
@@ -535,7 +570,47 @@ export function EmbeddedBrowser({
         >
           <IconCrosshair size={14} />
         </button>
+        <button
+          type="button"
+          className="chrome-btn"
+          onClick={takeScreenshot}
+          disabled={!ready || screenshotBusy}
+          title={tr("resources.screenshot")}
+        >
+          <IconCamera size={14} />
+        </button>
       </div>
+      {screenshotNotice ? (
+        <div
+          className={
+            "embedded-browser__notice" +
+            (screenshotNotice.kind === "permission" ? " embedded-browser__notice--permission" : "")
+          }
+          role="alert"
+        >
+          <span>
+            {screenshotNotice.kind === "permission"
+              ? tr("resources.screenshotPermission")
+              : tr("resources.screenshotFailed")}
+          </span>
+          <button
+            type="button"
+            className="chrome-btn"
+            onClick={takeScreenshot}
+            title={tr("resources.screenshot")}
+          >
+            <IconRefresh size={13} />
+          </button>
+          <button
+            type="button"
+            className="chrome-btn"
+            onClick={() => setScreenshotNotice(null)}
+            title={tr("image.close")}
+          >
+            <IconClose size={13} />
+          </button>
+        </div>
+      ) : null}
       {/* Host rectangle — native webview is painted on top of this area */}
       <div
         ref={hostRef}
