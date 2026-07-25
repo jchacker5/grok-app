@@ -8171,6 +8171,226 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   color: var(--danger);
 }
 
+/* ==========================================================================
+ * Export as Image modal — select messages, pick style, rasterize to PNG.
+ * .export-image-modal__* = live controls/list. .export-image-preview =
+ * the off-screen clone that html-to-image actually captures.
+ * ========================================================================== */
+.export-image-modal__body {
+  gap: var(--space-3, 12px);
+}
+
+.export-image-modal__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+.export-image-modal__style-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.export-image-modal__style-toggle .btn.is-active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-primary);
+}
+
+.export-image-modal__metadata-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.export-image-modal__select-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--text-sm);
+}
+
+.export-image-modal__select-label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.export-image-modal__count {
+  color: var(--text-tertiary);
+  margin-right: auto;
+}
+
+.export-image-modal__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 4px;
+}
+
+.export-image-modal__row-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.export-image-modal__row-check:hover {
+  background: var(--bg-hover);
+}
+
+.export-image-modal__row-role {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  color: var(--text-tertiary);
+  background: var(--bg-hover);
+}
+
+.export-image-modal__row-role--user {
+  color: var(--accent, #6b9fff);
+}
+
+.export-image-modal__row-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+/* Off-screen render surface — kept in the DOM (so html-to-image can
+   measure/rasterize it) but never visible or reachable. */
+.export-image-offscreen {
+  position: fixed;
+  top: 0;
+  left: -99999px;
+  pointer-events: none;
+}
+
+.export-image-preview {
+  box-sizing: border-box;
+  padding: 32px;
+  border-radius: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.export-image-preview--dark {
+  background: #15151a;
+  color: #f2f2f5;
+}
+
+.export-image-preview--light {
+  background: #f5f5f7;
+  color: #17171a;
+}
+
+.export-image-preview__header {
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.export-image-preview__title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.export-image-preview__meta {
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+.export-image-preview__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.export-image-preview__msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 82%;
+}
+
+.export-image-preview__msg--user {
+  align-items: flex-end;
+  align-self: flex-end;
+}
+
+.export-image-preview__msg--assistant {
+  align-items: flex-start;
+  align-self: flex-start;
+}
+
+.export-image-preview__bubble {
+  padding: 12px 16px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.export-image-preview--dark .export-image-preview__msg--user .export-image-preview__bubble {
+  background: #2b6bf0;
+  color: #ffffff;
+}
+
+.export-image-preview--dark .export-image-preview__msg--assistant .export-image-preview__bubble {
+  background: #232329;
+  color: #f2f2f5;
+}
+
+.export-image-preview--light .export-image-preview__msg--user .export-image-preview__bubble {
+  background: #2b6bf0;
+  color: #ffffff;
+}
+
+.export-image-preview--light .export-image-preview__msg--assistant .export-image-preview__bubble {
+  background: #e9e9ee;
+  color: #17171a;
+}
+
+.export-image-preview__ts {
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.export-image-preview__footer {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(128, 128, 128, 0.25);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  text-align: center;
+}
+
 /* ===== Doctor modal (structured health checks) ===== */
 .doctor-modal-overlay {
   z-index: 12100;

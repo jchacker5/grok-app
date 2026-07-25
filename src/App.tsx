@@ -97,6 +97,7 @@ import {
 } from "@/lib/permissionOptions";
 import { AskUserModal } from "@/components/AskUserModal";
 import { DoctorModal } from "@/components/DoctorModal";
+import { ExportImageModal } from "@/components/ExportImageModal";
 import {
   filterSessionSearch,
   mergeSessionSearchHits,
@@ -206,6 +207,7 @@ import {
   IconPinOff,
   IconRename,
   IconCopy,
+  IconPhoto,
   IconTrash,
   IconExternalLink,
   IconFork,
@@ -773,6 +775,12 @@ export default function App() {
   const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [exportImageTarget, setExportImageTarget] = useState<{
+    sessionId: string | null;
+    title: string;
+    projectName?: string | null;
+    messages: ChatMessage[];
+  } | null>(null);
   const [savedAccounts, setSavedAccounts] = useState<api.SavedAccount[]>([]);
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [perm, setPerm] = useState<PermissionPayload | null>(null);
@@ -6351,6 +6359,53 @@ export default function App() {
     ],
   );
 
+  /** Open the "Export as Image" modal for a session (fetches messages if not the active one). */
+  const openExportImage = useCallback(
+    async (sessionMeta?: {
+      id: string;
+      title: string;
+      projectId?: string | null;
+    }) => {
+      try {
+        const id = sessionMeta?.id ?? session.sessionId;
+        if (!id) return;
+        const title =
+          sessionMeta?.title ||
+          sessions.find((s) => s.id === id)?.title ||
+          session.title ||
+          tr("session.untitled");
+        const projectId =
+          sessionMeta?.projectId ??
+          sessions.find((s) => s.id === id)?.projectId ??
+          null;
+        const proj =
+          projects.find((p) => p.id === projectId) || activeProject || null;
+        let msgs = messages;
+        if (id !== session.sessionId) {
+          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        }
+        setExportImageTarget({
+          sessionId: id,
+          title,
+          projectName: proj?.name ?? null,
+          messages: msgs,
+        });
+      } catch (e) {
+        showToast(`${tr("exportImage.exportFail")}: ${String(e)}`, 5000);
+      }
+    },
+    [
+      session.sessionId,
+      session.title,
+      sessions,
+      messages,
+      projects,
+      activeProject,
+      showToast,
+      tr,
+    ],
+  );
+
   /** Full diagnostic zip (messages + agent trail + logs) for bug reports. */
   const exportSessionDiagnostic = useCallback(
     async (sessionId?: string | null) => {
@@ -9684,6 +9739,17 @@ export default function App() {
       </div>
       ))}
 
+      <ExportImageModal
+        key={exportImageTarget?.sessionId ?? "export-image-none"}
+        open={!!exportImageTarget}
+        onClose={() => setExportImageTarget(null)}
+        locale={locale}
+        sessionTitle={exportImageTarget?.title ?? ""}
+        sessionId={exportImageTarget?.sessionId ?? null}
+        projectName={exportImageTarget?.projectName ?? null}
+        messages={exportImageTarget?.messages ?? []}
+        onExported={(ok, message) => showToast(message, ok ? 3200 : 5000)}
+      />
       <DoctorModal
         open={showDoctor}
         onClose={() => setShowDoctor(false)}
@@ -10564,6 +10630,18 @@ export default function App() {
                 icon: <IconFileDiff size={16} />,
                 onClick: () => {
                   setSessionDiffA({ id: s.id, title: s.title });
+                },
+              },
+              {
+                id: "export-image",
+                label: tr("session.exportImage"),
+                icon: <IconPhoto size={16} />,
+                onClick: () => {
+                  void openExportImage({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
                 },
               },
               {

@@ -66,6 +66,7 @@ import {
   IconNotes as TbNotes,
   IconPaperclip as TbPaperclip,
   IconPencil as TbPencil,
+  IconPhoto as TbPhoto,
   IconPinned as TbPinned,
   IconPinnedOff as TbPinnedOff,
   IconPlayerRecordFilled as TbPlayerRecordFilled,
@@ -237,6 +238,7 @@ export const IconPlus = wrap(TbPlus);
 export const IconMore = wrap(TbDots);
 export const IconFolder = wrap(TbFolder);
 export const IconRename = wrap(TbPencil);
+export const IconPhoto = wrap(TbPhoto);
 export const IconShare = wrap(TbLink);
 export const IconTrash = wrap(TbTrash, { className: "g-icon--danger" });
 export const IconPaperclip = wrap(TbPaperclip);
