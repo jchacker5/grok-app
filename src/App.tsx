@@ -7460,7 +7460,7 @@ export default function App() {
           {selectedThreadIds.size > 0 ? (
             <div className="sidebar-bulk-bar">
               <span className="sidebar-bulk-bar__count">
-                {selectedThreadIds.size} selected
+                {tr("sidebar.bulkCount", { n: String(selectedThreadIds.size) })}
               </span>
               <button
                 type="button"
@@ -7473,7 +7473,7 @@ export default function App() {
                   clearSelection();
                 }}
               >
-                Settle
+                {tr("sidebar.bulkSettle")}
               </button>
               <button
                 type="button"
@@ -7486,7 +7486,7 @@ export default function App() {
                   clearSelection();
                 }}
               >
-                Archive
+                {tr("sidebar.bulkArchive")}
               </button>
               <button
                 type="button"
@@ -7499,14 +7499,14 @@ export default function App() {
                   clearSelection();
                 }}
               >
-                Delete
+                {tr("sidebar.bulkDelete")}
               </button>
               <button
                 type="button"
                 className="sidebar-bulk-bar__btn"
                 onClick={clearSelection}
               >
-                Cancel
+                {tr("common.cancel")}
               </button>
             </div>
           ) : null}
