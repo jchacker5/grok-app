@@ -39,6 +39,7 @@ import {
   IconListTree,
   IconPlan,
   IconRefresh,
+  IconRobot,
   IconSearch,
 } from "@/components/icons";
 import { CommitDialog } from "@/components/CommitDialog";
@@ -312,6 +313,8 @@ export function ResourceViewer({
   const [selectedChangePath, setSelectedChangePath] = useState<string | null>(
     null,
   );
+  /** Quick-open of the project's AGENTS.md — busy while finding/creating it. */
+  const [agentsFileBusy, setAgentsFileBusy] = useState(false);
   /** Tab id waiting for conflict resolve (reload vs overwrite). */
   const [conflictTabId, setConflictTabId] = useState<string | null>(null);
   /** Close tab while dirty — confirm discard. */
@@ -1476,6 +1479,29 @@ export function ResourceViewer({
     [projectPath, tabs, tr],
   );
 
+  /**
+   * "Agent Config" quick-open: find the project's AGENTS.md / CLAUDE.md /
+   * COPILOT_INSTRUCTIONS.md (root, then `.claude/`), or create AGENTS.md with
+   * a starter template if none exists, then open it as a normal editable tab.
+   */
+  const openOrCreateAgentsFile = useCallback(async () => {
+    if (!projectPath || !api.isTauri() || agentsFileBusy) return;
+    setAgentsFileBusy(true);
+    setError(null);
+    try {
+      let path = await api.fsFindAgentsFile(projectPath);
+      if (!path) {
+        const created = await api.fsCreateAgentsFile(projectPath, "AGENTS.md");
+        path = created.absolutePath;
+      }
+      await openAbsoluteFile(path, baseName(path));
+    } catch (e) {
+      setError(`${tr("resources.agentsFileFailed")}: ${String(e)}`);
+    } finally {
+      setAgentsFileBusy(false);
+    }
+  }, [projectPath, agentsFileBusy, openAbsoluteFile, tr]);
+
   const openUrl = useCallback(
     (url: string, title?: string) => {
       const u = url.trim();
@@ -2629,15 +2655,28 @@ export function ResourceViewer({
                   aria-label={tr("resources.filterPh")}
                 />
                 {sideMode === "files" ? (
-                  <Tip label={tr("resources.refresh")}>
-                    <button
-                      type="button"
-                      className="chrome-btn"
-                      onClick={() => void refresh()}
-                    >
-                      <IconRefresh size={14} />
-                    </button>
-                  </Tip>
+                  <>
+                    <Tip label={tr("resources.agentsFile")}>
+                      <button
+                        type="button"
+                        className="chrome-btn"
+                        disabled={!projectPath || agentsFileBusy}
+                        onClick={() => void openOrCreateAgentsFile()}
+                        aria-label={tr("resources.agentsFile")}
+                      >
+                        <IconRobot size={14} />
+                      </button>
+                    </Tip>
+                    <Tip label={tr("resources.refresh")}>
+                      <button
+                        type="button"
+                        className="chrome-btn"
+                        onClick={() => void refresh()}
+                      >
+                        <IconRefresh size={14} />
+                      </button>
+                    </Tip>
+                  </>
                 ) : sideMode === "changes" ? (
                   <Tip label={tr("changes.workspace.refresh")}>
                     <button

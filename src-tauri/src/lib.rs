@@ -268,6 +268,8 @@ pub fn run() {
             tray::tray_refresh,
             commands::fs_read_absolute,
             commands::fs_open_path,
+            commands::fs_find_agents_file,
+            commands::fs_create_agents_file,
             commands::session_auto_title,
             commands::automations_list,
             commands::automation_create,

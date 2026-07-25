@@ -564,6 +564,79 @@ fn write_text_at_path(
     })
 }
 
+/// Known per-project agent-instructions file names, in lookup priority order.
+pub const AGENTS_FILE_CANDIDATES: &[&str] = &[
+    "AGENTS.md",
+    "CLAUDE.md",
+    "COPILOT_INSTRUCTIONS.md",
+];
+
+/// Starter template inserted when creating a new agent-instructions file.
+fn agents_file_template(name: &str) -> String {
+    format!(
+        "# {name}\n\n\
+Project-specific instructions for AI coding agents (Claude, Copilot, etc.).\n\n\
+## Overview\n\n\
+Describe what this project does and any context an agent needs before making changes.\n\n\
+## Conventions\n\n\
+- \n\n\
+## Commands\n\n\
+- Build: \n\
+- Test: \n\
+- Lint: \n"
+    )
+}
+
+/// Locate the project's agent-instructions file (`AGENTS.md` / `CLAUDE.md` / …),
+/// checking the project root first, then its `.claude/` subdirectory.
+/// Returns the absolute path of the first match, or `None` if none exist.
+pub fn find_agents_file(project_root: &str) -> Result<Option<String>, String> {
+    let root = PathBuf::from(project_root);
+    if !root.is_dir() {
+        return Err(format!("project root is not a directory: {project_root}"));
+    }
+    for name in AGENTS_FILE_CANDIDATES {
+        let direct = root.join(name);
+        if direct.is_file() {
+            return Ok(Some(direct.to_string_lossy().to_string()));
+        }
+    }
+    for name in AGENTS_FILE_CANDIDATES {
+        let nested = root.join(".claude").join(name);
+        if nested.is_file() {
+            return Ok(Some(nested.to_string_lossy().to_string()));
+        }
+    }
+    Ok(None)
+}
+
+/// Create a new agent-instructions file (e.g. `AGENTS.md`) at the project root
+/// with a starter template. Errors if the file already exists or `filename`
+/// isn't one of the known candidates — use `fs_write_absolute` to edit it after.
+pub fn create_agents_file(project_root: &str, filename: &str) -> Result<FsWriteResult, String> {
+    let root = PathBuf::from(project_root);
+    if !root.is_dir() {
+        return Err(format!("project root is not a directory: {project_root}"));
+    }
+    let name = filename.trim();
+    if !AGENTS_FILE_CANDIDATES.contains(&name) {
+        return Err(format!("unsupported agent file name: {name}"));
+    }
+    let path = root.join(name);
+    if path.exists() {
+        return Err(format!("file already exists: {name}"));
+    }
+    let template = agents_file_template(name);
+    fs::write(&path, template.as_bytes()).map_err(|e| format!("create file: {e}"))?;
+    let meta = fs::metadata(&path).map_err(|e| format!("stat after create: {e}"))?;
+    Ok(FsWriteResult {
+        relative_path: name.to_string(),
+        absolute_path: path.to_string_lossy().to_string(),
+        size: meta.len(),
+        mtime_ms: file_mtime_ms(&path),
+    })
+}
+
 /// Read any absolute filesystem path for chat → resource pane preview.
 /// Not limited to a project root (agent outputs, session media, etc.).
 pub fn read_absolute_file(absolute: &str) -> Result<FsReadResult, String> {
@@ -1509,6 +1582,45 @@ mod tests {
         p.push(format!("grok-fs-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&p).unwrap();
         p
+    }
+
+    #[test]
+    fn find_agents_file_none_when_absent() {
+        let dir = tempfile_dir();
+        assert_eq!(find_agents_file(dir.to_str().unwrap()).unwrap(), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn find_agents_file_prefers_root_over_dotclaude_and_priority_order() {
+        let dir = tempfile_dir();
+        fs::create_dir_all(dir.join(".claude")).unwrap();
+        fs::write(dir.join(".claude/AGENTS.md"), "nested").unwrap();
+        // Nested hit is used until a root-level file appears.
+        let found = find_agents_file(dir.to_str().unwrap()).unwrap().unwrap();
+        assert!(found.ends_with(".claude/AGENTS.md") || found.ends_with(".claude\\AGENTS.md"));
+
+        fs::write(dir.join("CLAUDE.md"), "root claude").unwrap();
+        fs::write(dir.join("AGENTS.md"), "root agents").unwrap();
+        let found = find_agents_file(dir.to_str().unwrap()).unwrap().unwrap();
+        assert!(found.ends_with("AGENTS.md") && !found.contains(".claude"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn create_agents_file_writes_template_and_rejects_duplicate() {
+        let dir = tempfile_dir();
+        let result = create_agents_file(dir.to_str().unwrap(), "AGENTS.md").unwrap();
+        assert!(result.absolute_path.ends_with("AGENTS.md"));
+        let text = fs::read_to_string(dir.join("AGENTS.md")).unwrap();
+        assert!(text.contains("# AGENTS.md"));
+
+        let err = create_agents_file(dir.to_str().unwrap(), "AGENTS.md").unwrap_err();
+        assert!(err.contains("already exists"));
+
+        let err = create_agents_file(dir.to_str().unwrap(), "NOTES.md").unwrap_err();
+        assert!(err.contains("unsupported"));
+        let _ = fs::remove_dir_all(&dir);
     }
 }
 

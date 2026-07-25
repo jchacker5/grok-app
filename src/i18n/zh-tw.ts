@@ -210,6 +210,8 @@ export const zhTW: Record<MessageKey, string> = {
   "resources.search": "篩選檔案",
   "resources.filterPh": "篩選檔案…",
   "resources.refresh": "重新整理",
+  "resources.agentsFile": "代理設定（AGENTS.md / CLAUDE.md）— 開啟或建立",
+  "resources.agentsFileFailed": "無法開啟或建立代理設定檔案",
   "resources.back": "返回檔案清單",
   "resources.openFailed": "無法開啟檔案",
   "resources.openInEditor": "在編輯器中開啟",

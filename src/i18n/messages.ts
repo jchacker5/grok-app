@@ -225,6 +225,9 @@ const en = {
   "resources.search": "Filter files",
   "resources.filterPh": "Filter files…",
   "resources.refresh": "Refresh",
+  "resources.agentsFile":
+    "Agent Config (AGENTS.md / CLAUDE.md) — open or create",
+  "resources.agentsFileFailed": "Couldn't open or create the agent config file",
   "resources.back": "Back to files",
   "resources.openFailed": "Failed to open file",
   "resources.openInEditor": "Open in editor",
@@ -1873,6 +1876,8 @@ const zh: Record<MessageKey, string> = {
   "resources.search": "筛选文件",
   "resources.filterPh": "筛选文件…",
   "resources.refresh": "刷新",
+  "resources.agentsFile": "代理配置（AGENTS.md / CLAUDE.md）— 打开或创建",
+  "resources.agentsFileFailed": "无法打开或创建代理配置文件",
   "resources.back": "返回文件列表",
   "resources.openFailed": "无法打开文件",
   "resources.openInEditor": "在编辑器中打开",

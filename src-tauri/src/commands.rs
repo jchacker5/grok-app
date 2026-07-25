@@ -2129,6 +2129,26 @@ pub async fn fs_open_path(
     crate::fs_browser::open_path_smart(project_path.as_deref(), &path)
 }
 
+/// Locate the project's agent-instructions file (`AGENTS.md` / `CLAUDE.md` / …)
+/// for the Resource Viewer's "Agent Config" quick-open. Root first, then `.claude/`.
+#[tauri::command]
+pub async fn fs_find_agents_file(project_path: String) -> Result<Option<String>, String> {
+    crate::fs_browser::find_agents_file(&project_path)
+}
+
+/// Create a new agent-instructions file at the project root with a starter
+/// template (used when the Resource Viewer's quick-open finds none).
+#[tauri::command]
+pub async fn fs_create_agents_file(
+    project_path: String,
+    filename: Option<String>,
+) -> Result<crate::fs_browser::FsWriteResult, String> {
+    crate::fs_browser::create_agents_file(
+        &project_path,
+        filename.as_deref().unwrap_or("AGENTS.md"),
+    )
+}
+
 /// Auto-name a session from the first user message.
 /// Returns heuristic title immediately; low-effort CLI refine emits `session://title`.
 #[tauri::command]

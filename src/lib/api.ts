@@ -800,6 +800,22 @@ export async function fsOpenPath(path: string, projectPath?: string | null) {
   });
 }
 
+/**
+ * Locate the project's agent-instructions file (`AGENTS.md` / `CLAUDE.md` / …),
+ * checking the project root then its `.claude/` subdirectory. `null` = none found.
+ */
+export async function fsFindAgentsFile(projectPath: string) {
+  return invoke<string | null>("fs_find_agents_file", { projectPath });
+}
+
+/** Create a new agent-instructions file at the project root with a starter template. */
+export async function fsCreateAgentsFile(projectPath: string, filename?: string) {
+  return invoke<FsWriteResult>("fs_create_agents_file", {
+    projectPath,
+    filename: filename ?? null,
+  });
+}
+
 /** Auto-title session from first user message (heuristic + optional low-effort CLI). */
 export async function sessionAutoTitle(id: string, firstMessage: string) {
   return invoke<{
