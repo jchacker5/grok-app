@@ -11,6 +11,17 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-07-25
+
+### Added
+
+- **Native OS push notifications** via `tauri-plugin-notification` (turn complete, permission requests, etc. now surface as real system notifications, not just in-app toasts).
+- **Live Preview Panel v2**: zoom + devtools toggle, in-app element picker, screenshot capture, and screen recording (start/stop/save) for the embedded browser preview.
+- **Plugin marketplace catalog browser** in Settings → Extensions (browse and install known MCP/skill plugins, not just manage already-installed ones).
+- **Inline diff review comments**: leave comments directly on lines in the Changes panel's diff view.
+- **SSH tunnel manager + WSL distro picker**: manage SSH port-forward tunnels and pick a WSL distro as the agent's working environment (Windows).
+- **Git commit & PR workflow**: stage files, get an AI-drafted commit message, push, and open a PR — all from the app (`git_stage_paths` / `git_commit` / `git_push` commands + UI).
+
 ## [0.1.9] - 2026-07-25
 
 ### Added
