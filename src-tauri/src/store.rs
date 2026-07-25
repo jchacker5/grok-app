@@ -167,6 +167,34 @@ pub struct AppSettings {
     /// the normal local-CLI spawn path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acp_server_addr: Option<String>,
+    /// SSH tunnel manager: `user@host` (or `user@host:port` — the `:port` part
+    /// is ignored, `ssh_tunnel_remote_port` below is authoritative) target for
+    /// the convenience SSH tunnel that fronts `acp_server_addr`. `None`/empty
+    /// means the tunnel manager is unconfigured (user still may hand-roll their
+    /// own tunnel + `acp_server_addr` as before).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_tunnel_target: Option<String>,
+    /// Remote port the ACP server listens on at `ssh_tunnel_target` (forwarded
+    /// as `-L <local>:localhost:<remote>`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_tunnel_remote_port: Option<u16>,
+    /// Local port to bind the forward on (`127.0.0.1:<local_port>`); this is
+    /// also what gets written into `acp_server_addr` on a successful connect.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_tunnel_local_port: Option<u16>,
+    /// Optional `-i <identity_file>` private key path for the tunnel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_tunnel_identity_file: Option<String>,
+    /// Whether the SSH tunnel manager should be considered "on" (drives UI
+    /// state / whether to auto-reconnect at launch in a future iteration).
+    #[serde(default)]
+    pub ssh_tunnel_enabled: bool,
+    /// **Windows only.** WSL distro name (`wsl -l -q` entry) to run the local
+    /// `grok agent stdio` process inside of, via `wsl.exe -d <distro> -- grok
+    /// ...`, instead of invoking a `grok` binary on the host filesystem. Empty
+    /// on non-Windows or when not using WSL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wsl_distro: Option<String>,
     /// Max warm/live agent processes (I02). Default 3.
     #[serde(default = "default_max_concurrent_agents")]
     pub max_concurrent_agents: u32,
@@ -296,6 +324,12 @@ impl Default for AppSettings {
             default_open_target: default_open_target(),
             composer_prefs_scope: default_composer_prefs_scope(),
             acp_server_addr: None,
+            ssh_tunnel_target: None,
+            ssh_tunnel_remote_port: None,
+            ssh_tunnel_local_port: None,
+            ssh_tunnel_identity_file: None,
+            ssh_tunnel_enabled: false,
+            wsl_distro: None,
             max_concurrent_agents: default_max_concurrent_agents(),
             agent_idle_minutes: default_agent_idle_minutes(),
             stream_stall_seconds: default_stream_stall_seconds(),

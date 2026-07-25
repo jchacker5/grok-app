@@ -14,6 +14,7 @@ import {
   IconBolt as TbBolt,
   IconGitBranch as TbGitBranch,
   IconBox as TbBox,
+  IconBrandWindows as TbBrandWindows,
   IconBrush as TbBrush,
   IconCalendarTime as TbCalendarTime,
   IconCheck as TbCheck,
@@ -49,6 +50,7 @@ import {
   IconMicrophone as TbMicrophone,
   IconMinus as TbMinus,
   IconMoon as TbMoon,
+  IconNetwork as TbNetwork,
   IconNotes as TbNotes,
   IconPaperclip as TbPaperclip,
   IconPencil as TbPencil,
@@ -279,3 +281,7 @@ export const IconActivity = wrap(TbActivity);
 export const IconSparkles = wrap(TbSparkles);
 export const IconBox = wrap(TbBox);
 export const IconPuzzle = wrap(TbPuzzle);
+/** SSH tunnel manager (Settings → Runtime). */
+export const IconTunnel = wrap(TbNetwork);
+/** WSL distro picker (Settings → Runtime, Windows only). */
+export const IconWindows = wrap(TbBrandWindows);

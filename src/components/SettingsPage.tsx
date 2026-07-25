@@ -28,8 +28,16 @@ import {
   IconSettings,
   IconShield,
   IconTrash,
+  IconTunnel,
   IconUser,
+  IconWindows,
 } from "@/components/icons";
+import {
+  formatLoopbackAcpAddr,
+  isLoopbackAcpAddr,
+  isValidPort,
+  validateSshTarget,
+} from "@/lib/sshTunnel";
 import type { Theme } from "@/lib/theme";
 import type {
   ComposerPrefsScope,
@@ -103,6 +111,19 @@ export interface SettingsPageProps {
   /** API mode: remote ACP server `host:port` (empty = local CLI spawn). */
   acpServerAddr: string;
   onAcpServerAddr: (v: string) => void;
+  /** SSH tunnel manager fields (convenience layer over `acpServerAddr`). */
+  sshTunnelTarget?: string;
+  onSshTunnelTarget?: (v: string) => void;
+  sshTunnelRemotePort?: number | null;
+  onSshTunnelRemotePort?: (v: number | null) => void;
+  sshTunnelLocalPort?: number | null;
+  onSshTunnelLocalPort?: (v: number | null) => void;
+  sshTunnelIdentityFile?: string;
+  onSshTunnelIdentityFile?: (v: string) => void;
+  /** True on Windows — shows the WSL distro picker. */
+  isWindows?: boolean;
+  wslDistro?: string;
+  onWslDistro?: (v: string) => void;
   /** Max warm/live agent processes (I02). */
   maxConcurrentAgents?: number;
   onMaxConcurrentAgents?: (v: number) => void;
@@ -372,6 +393,235 @@ function AcpServerField({
           </button>
         </div>
       ) : null}
+      {addr && !isLoopbackAcpAddr(addr) ? (
+        <div className="settings-row__hint is-warning">
+          {t("settings.acpNonLoopbackWarning")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Convenience SSH tunnel manager fronting the raw-TCP ACP transport above —
+ * spawns and supervises `ssh -N -L <local>:localhost:<remote> <target>` and,
+ * once the forward is confirmed listening, hands the resulting
+ * `127.0.0.1:<local port>` back via `onConnected` so the caller can populate
+ * the ACP server address field automatically.
+ */
+function SshTunnelField({
+  target,
+  onTarget,
+  remotePort,
+  onRemotePort,
+  localPort,
+  onLocalPort,
+  identityFile,
+  onIdentityFile,
+  onConnected,
+  t,
+}: {
+  target: string;
+  onTarget: (v: string) => void;
+  remotePort: number | null;
+  onRemotePort: (v: number | null) => void;
+  localPort: number | null;
+  onLocalPort: (v: number | null) => void;
+  identityFile: string;
+  onIdentityFile: (v: string) => void;
+  onConnected: (localPort: number) => void;
+  t: (k: string, vars?: Vars) => string;
+}) {
+  const [status, setStatus] = useState<api.SshTunnelStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    void api
+      .sshTunnelStatus()
+      .then(setStatus)
+      .catch(() => {});
+  }, []);
+
+  const targetCheck = validateSshTarget(target);
+  const portsOk = isValidPort(remotePort) && isValidPort(localPort);
+  const canConnect = api.isTauri() && targetCheck.valid && portsOk && !busy;
+
+  const connect = async () => {
+    if (!canConnect || remotePort == null || localPort == null) return;
+    setBusy(true);
+    try {
+      const result = await api.sshTunnelStart(
+        target.trim(),
+        remotePort,
+        localPort,
+        identityFile.trim() || null,
+      );
+      setStatus(result);
+      if (result.state === "connected" && result.localPort) {
+        onConnected(result.localPort);
+      }
+    } catch (e) {
+      setStatus({ state: "error", message: String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!api.isTauri() || busy) return;
+    setBusy(true);
+    try {
+      setStatus(await api.sshTunnelStop());
+    } catch (e) {
+      setStatus({ state: "error", message: String(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statusLine = (() => {
+    if (!status) return null;
+    switch (status.state) {
+      case "connected":
+        return t("settings.sshTunnelStatusConnected", {
+          port: String(status.localPort ?? ""),
+        });
+      case "connecting":
+        return t("settings.sshTunnelStatusConnecting");
+      case "error":
+        return t("settings.sshTunnelStatusError", {
+          error: status.message || "unknown",
+        });
+      default:
+        return t("settings.sshTunnelStatusIdle");
+    }
+  })();
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">
+          <IconTunnel size={16} />
+          {t("settings.sshTunnel")}
+        </div>
+        <div className="settings-row__desc">{t("settings.sshTunnelDesc")}</div>
+      </div>
+      <div className="settings-ssh-field">
+        <input
+          className="settings-input"
+          value={target}
+          placeholder={t("settings.sshTunnelTargetPh")}
+          onChange={(e) => onTarget(e.target.value)}
+        />
+        <input
+          className="settings-input settings-input--port"
+          type="number"
+          min={1}
+          max={65535}
+          value={remotePort ?? ""}
+          placeholder={t("settings.sshTunnelRemotePortPh")}
+          onChange={(e) => {
+            const raw = e.target.value.trim();
+            const n = Number(raw);
+            onRemotePort(raw === "" || !Number.isFinite(n) ? null : Math.round(n));
+          }}
+        />
+        <input
+          className="settings-input settings-input--port"
+          type="number"
+          min={1}
+          max={65535}
+          value={localPort ?? ""}
+          placeholder={t("settings.sshTunnelLocalPortPh")}
+          onChange={(e) => {
+            const raw = e.target.value.trim();
+            const n = Number(raw);
+            onLocalPort(raw === "" || !Number.isFinite(n) ? null : Math.round(n));
+          }}
+        />
+      </div>
+      <input
+        className="settings-input"
+        value={identityFile}
+        placeholder={t("settings.sshTunnelIdentityFilePh")}
+        onChange={(e) => onIdentityFile(e.target.value)}
+      />
+      <div className="settings-row__actions">
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={!canConnect}
+          onClick={() => void connect()}
+        >
+          {busy ? t("settings.sshTunnelConnecting") : t("settings.sshTunnelConnect")}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={!api.isTauri() || busy || !status || status.state === "idle"}
+          onClick={() => void disconnect()}
+        >
+          {t("settings.sshTunnelDisconnect")}
+        </button>
+      </div>
+      {statusLine ? (
+        <div
+          className={
+            "settings-row__hint" + (status?.state === "error" ? " is-danger" : "")
+          }
+        >
+          {statusLine}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Windows-only: pick the WSL distro `grok agent stdio` should run inside of. */
+function WslDistroField({
+  value,
+  onChange,
+  t,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  t: (k: string, vars?: Vars) => string;
+}) {
+  const [distros, setDistros] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    setLoading(true);
+    void api
+      .wslListDistros()
+      .then(setDistros)
+      .catch(() => setDistros([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">
+          <IconWindows size={16} />
+          {t("settings.wslDistro")}
+        </div>
+        <div className="settings-row__desc">{t("settings.wslDistroDesc")}</div>
+      </div>
+      <Select
+        value={value}
+        onChange={onChange}
+        disabled={loading}
+        options={[
+          { value: "", label: t("settings.wslDistroNone") },
+          ...distros.map((d) => ({ value: d, label: d })),
+        ]}
+      />
+      {!loading && distros.length === 0 ? (
+        <div className="settings-row__hint">{t("settings.wslDistroEmpty")}</div>
+      ) : null}
     </div>
   );
 }
@@ -468,6 +718,17 @@ export function SettingsPage({
   onCliBlur,
   acpServerAddr,
   onAcpServerAddr,
+  sshTunnelTarget = "",
+  onSshTunnelTarget,
+  sshTunnelRemotePort = null,
+  onSshTunnelRemotePort,
+  sshTunnelLocalPort = null,
+  onSshTunnelLocalPort,
+  sshTunnelIdentityFile = "",
+  onSshTunnelIdentityFile,
+  isWindows = false,
+  wslDistro = "",
+  onWslDistro,
   maxConcurrentAgents = 3,
   onMaxConcurrentAgents,
   agentIdleMinutes = 30,
@@ -1798,6 +2059,25 @@ export function SettingsPage({
               onChange={onAcpServerAddr}
               t={t}
             />
+            <SshTunnelField
+              target={sshTunnelTarget}
+              onTarget={(v) => onSshTunnelTarget?.(v)}
+              remotePort={sshTunnelRemotePort}
+              onRemotePort={(v) => onSshTunnelRemotePort?.(v)}
+              localPort={sshTunnelLocalPort}
+              onLocalPort={(v) => onSshTunnelLocalPort?.(v)}
+              identityFile={sshTunnelIdentityFile}
+              onIdentityFile={(v) => onSshTunnelIdentityFile?.(v)}
+              onConnected={(port) => onAcpServerAddr(formatLoopbackAcpAddr(port))}
+              t={t}
+            />
+            {isWindows && (
+              <WslDistroField
+                value={wslDistro}
+                onChange={(v) => onWslDistro?.(v)}
+                t={t}
+              />
+            )}
             <div className="settings-row settings-row--stack">
               <div className="settings-row__text">
                 <div className="settings-row__label">

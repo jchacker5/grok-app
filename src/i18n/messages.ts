@@ -574,6 +574,29 @@ const en = {
   "settings.acpTestFail": "Failed: {error}",
   "settings.acpSetupHint":
     "On the machine that runs the agent, expose stdio over TCP (example with socat):",
+  "settings.acpNonLoopbackWarning":
+    "This address is not on your local machine (127.0.0.1/localhost). The raw TCP connection has no built-in auth or TLS — prefer the SSH tunnel manager below unless you already have your own VPN/WireGuard/Tailscale in place.",
+  "settings.sshTunnel": "SSH tunnel",
+  "settings.sshTunnelDesc":
+    "Convenience wrapper around ssh -N -L <local>:localhost:<remote> <target> — supervises the tunnel process and, once connected, fills in the ACP server address above with 127.0.0.1:<local port>.",
+  "settings.sshTunnelTargetPh": "user@host",
+  "settings.sshTunnelRemotePortPh": "Remote port",
+  "settings.sshTunnelLocalPortPh": "Local port",
+  "settings.sshTunnelIdentityFilePh": "Identity file (optional, -i)",
+  "settings.sshTunnelConnect": "Connect",
+  "settings.sshTunnelConnecting": "Connecting…",
+  "settings.sshTunnelDisconnect": "Disconnect",
+  "settings.sshTunnelStatusIdle": "Not connected.",
+  "settings.sshTunnelStatusConnecting": "Connecting…",
+  "settings.sshTunnelStatusConnected":
+    "Connected — forwarding 127.0.0.1:{port}. ACP server address updated automatically.",
+  "settings.sshTunnelStatusError": "Failed: {error}",
+  "settings.wslDistro": "WSL distro",
+  "settings.wslDistroDesc":
+    "Run the agent inside a specific WSL distro (wsl.exe -d <distro> -- grok …) instead of a host binary path.",
+  "settings.wslDistroNone": "None (use host CLI)",
+  "settings.wslDistroEmpty":
+    "No WSL distros found. Install one with “wsl --install -d <Distro>” from an elevated prompt.",
   "settings.maxConcurrentAgents": "Max concurrent agents",
   "settings.maxConcurrentAgentsDesc":
     "Warm agent processes kept for open chats (default 3). Opening more than this prompts you to wait or free a session.",
@@ -1903,6 +1926,29 @@ const zh: Record<MessageKey, string> = {
   "settings.acpTestFail": "失败：{error}",
   "settings.acpSetupHint":
     "在运行 agent 的机器上，用类似 socat 的方式把 stdio 暴露到 TCP：",
+  "settings.acpNonLoopbackWarning":
+    "此地址不是本机地址（127.0.0.1/localhost）。原始 TCP 连接没有内置的鉴权或 TLS —— 除非你已经有自己的 VPN/WireGuard/Tailscale，否则建议改用下方的 SSH 隧道管理器。",
+  "settings.sshTunnel": "SSH 隧道",
+  "settings.sshTunnelDesc":
+    "对 ssh -N -L <本地端口>:localhost:<远程端口> <目标> 的便捷封装 —— 会监管隧道进程，连接成功后自动把上方的 ACP 服务器地址填为 127.0.0.1:<本地端口>。",
+  "settings.sshTunnelTargetPh": "user@host",
+  "settings.sshTunnelRemotePortPh": "远程端口",
+  "settings.sshTunnelLocalPortPh": "本地端口",
+  "settings.sshTunnelIdentityFilePh": "密钥文件（可选，-i）",
+  "settings.sshTunnelConnect": "连接",
+  "settings.sshTunnelConnecting": "连接中…",
+  "settings.sshTunnelDisconnect": "断开",
+  "settings.sshTunnelStatusIdle": "未连接。",
+  "settings.sshTunnelStatusConnecting": "连接中…",
+  "settings.sshTunnelStatusConnected":
+    "已连接 — 正在转发 127.0.0.1:{port}。已自动更新 ACP 服务器地址。",
+  "settings.sshTunnelStatusError": "失败：{error}",
+  "settings.wslDistro": "WSL 发行版",
+  "settings.wslDistroDesc":
+    "在指定的 WSL 发行版中运行 agent（wsl.exe -d <发行版> -- grok …），而不是使用主机上的二进制路径。",
+  "settings.wslDistroNone": "无（使用主机 CLI）",
+  "settings.wslDistroEmpty":
+    "未找到 WSL 发行版。请在管理员提示符下运行 “wsl --install -d <发行版>” 安装一个。",
   "settings.maxConcurrentAgents": "最大并发 Agent 数",
   "settings.maxConcurrentAgentsDesc":
     "为打开的对话保留的热 Agent 进程数（默认 3）。超过上限时会提示等待或释放其他会话。",
