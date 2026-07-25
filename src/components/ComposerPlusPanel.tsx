@@ -14,6 +14,7 @@ import {
 } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
+import { OverlayScroll } from "@/components/OverlayScroll";
 import type { SlashItem } from "@/lib/slashCatalog";
 import {
   IconActivity,
@@ -218,10 +219,11 @@ export function ComposerPlusPanel({
   resolveDescription: (item: SlashItem) => string;
 }) {
   const tr = createT(locale);
+  /** The OverlayScroll viewport — the actual scrolling element (not the
+   * outer floating-positioned panel, which only sizes/positions it). */
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const setRefs = (node: HTMLDivElement | null) => {
-    listRef.current = node;
     if (typeof panelRef === "function") panelRef(node);
     else if (panelRef && "current" in panelRef) {
       (panelRef as { current: HTMLDivElement | null }).current = node;
@@ -277,6 +279,7 @@ export function ComposerPlusPanel({
       data-filter-query={q}
       style={style}
     >
+      <OverlayScroll className="composer-plus__scroll" viewportRef={listRef}>
       {q ? (
         <div className="composer-plus__filter" aria-live="polite">
           <span className="composer-plus__filter-label">/</span>
@@ -380,6 +383,7 @@ export function ComposerPlusPanel({
           </span>
         </div>
       )}
+      </OverlayScroll>
     </div>
   );
 }

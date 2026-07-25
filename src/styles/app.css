@@ -7584,7 +7584,9 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
  * Width is set by floatingStyle (exact match to composer shell) — do NOT set
  * width:100%!important here (it overrides the inline width and blows past the input).
  * Layout: [icon] Name  description… (name first; desc yields + ellipsis)
- * Height ≈ 10 rows (28px) + 2 section labels + pad.
+ * Height ≈ 10 rows (28px) + up to 3 section labels + pad. Scrolling itself
+ * lives on the inner .composer-plus__scroll (OverlayScroll) so overflow past
+ * this budget is visibly scrollable (thumb on hover) instead of clipped.
  */
 .composer-plus {
   z-index: 10000;
@@ -7592,17 +7594,25 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   max-width: calc(100vw - 16px) !important;
   min-width: 0;
   /*
-   * ~10 items @ 28px + 2 section headers (~22px) + pad ≈ 300px.
+   * Sections: Commands + CLI + Skills — up to 3 headers (~22px each) +
+   * ~10-14 items @ 28px + pad ≈ 360px.
    * !important so inline floating maxHeight (estHeight+80) cannot expand it.
    */
-  max-height: min(300px, calc(100vh - 24px)) !important;
-  overflow-x: hidden;
-  overflow-y: auto;
+  max-height: min(360px, calc(100vh - 24px)) !important;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 0;
   padding: 4px;
   box-sizing: border-box;
+}
+
+.composer-plus__scroll {
+  min-height: 0;
+}
+
+.composer-plus__scroll .overlay-scroll__viewport {
+  overflow-x: hidden;
 }
 
 .composer-plus--portal {
