@@ -17,6 +17,17 @@ See `docs/llm-wiki/release.md`.
 
 - **Voice audio quality**: mic capture now prefers an `AudioWorklet` processor (falls back to `ScriptProcessor`), with noise-gate sensitivity, peak normalization, and playback rate control.
 - **Voice settings expansion**: Settings → Voice gains mic device picker, noise suppression toggle, sensitivity slider, dictation language (auto or manual), and an end-of-turn feedback chime toggle.
+- **Dictation keyboard shortcut**: `⌘⇧D` / `Ctrl+Shift+D` toggles dictation from the composer.
+- **Live mic meter**: waveform bars animate with real-time RMS audio level during dictation.
+- **Punctuation voice commands**: spoken "period", "comma", "new line", "question mark", etc. insert proper punctuation via transcript post-processing.
+- **Playback rate control**: voice AI output speed slider (0.5x–2.0x) persists across sessions.
+
+### Fixed
+
+- **Sensitivity scale mismatch**: Settings → Voice sensitivity slider now correctly converts 0–100 UI to 0–1 internal range (the noise gate was always off after touching the slider).
+- **Bulk delete N dialogs**: bulk delete now shows one confirm dialog for all selected sessions instead of one per session.
+- **Bulk archive race**: bulk archive now batch-archives via `Promise.all` instead of per-session confirm/path logic.
+- **AudioContext leak**: dictation PCM capture `AudioContext` is now properly closed when dictation ends.
 
 ## [0.1.8] - 2026-07-25
 
