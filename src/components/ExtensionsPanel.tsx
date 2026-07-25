@@ -4,7 +4,7 @@
  * Plugins from `grok plugin list/install/update/…` (config.toml disabled list).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
@@ -34,6 +34,7 @@ import {
   sortMcpByName,
   sortPluginsByName,
   sortSkillsByName,
+  truncateInstallLog,
   type PluginFilter,
 } from "@/lib/extensionsUi";
 
@@ -90,6 +91,34 @@ export function ExtensionsPanel({
   const [mpSourceFilter, setMpSourceFilter] = useState<string | null>(null);
   const [installTarget, setInstallTarget] = useState<api.MarketplacePluginDto | null>(null);
 
+  // Install progress modal — live CLI output for the in-flight install.
+  const [installProgressOpen, setInstallProgressOpen] = useState(false);
+  const [installProgressSource, setInstallProgressSource] = useState("");
+  const [installProgressBusyKey, setInstallProgressBusyKey] = useState("install");
+  const [installProgressLines, setInstallProgressLines] = useState<string[]>([]);
+  const [installProgressStatus, setInstallProgressStatus] = useState<
+    "running" | "success" | "error"
+  >("running");
+  const installProgressQueueRef = useRef<string[]>([]);
+
+  // Flush queued CLI lines into state at ~10Hz instead of per-line, so a
+  // chatty install doesn't trigger hundreds of re-renders a second.
+  useEffect(() => {
+    if (!installProgressOpen) return;
+    const id = window.setInterval(() => {
+      if (installProgressQueueRef.current.length === 0) return;
+      const batch = installProgressQueueRef.current;
+      installProgressQueueRef.current = [];
+      setInstallProgressLines((prev) => [...prev, ...batch]);
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [installProgressOpen]);
+
+  const displayedInstallLog = useMemo(
+    () => truncateInstallLog(installProgressLines),
+    [installProgressLines],
+  );
+
   const installedPluginNames = useMemo(
     () => new Set(plugins.map((p) => p.name)),
     [plugins],
@@ -133,20 +162,6 @@ export function ExtensionsPanel({
       return a.name.localeCompare(b.name);
     });
   }, [mpPlugins, mpSourceFilter, mpSearch, installedPluginNames]);
-
-  const confirmInstall = async () => {
-    const target = installTarget;
-    if (!target) return;
-    setInstallTarget(null);
-    const sourceUrl =
-      typeof target.source === "object" && target.source
-        ? target.source.url ?? target.source.path ?? target.name
-        : target.name;
-    await runPluginAction("marketplace-install", async () => {
-      await api.pluginInstall(sourceUrl);
-      await refreshMarketplace();
-    });
-  };
 
   const refresh = useCallback(async () => {
     if (!api.isTauri()) {
@@ -201,6 +216,65 @@ export function ExtensionsPanel({
   useEffect(() => {
     void refreshMarketplace();
   }, [refreshMarketplace]);
+
+  /**
+   * Run a plugin install with a live progress modal: opens the modal,
+   * subscribes to `plugin:install-progress` events for this source, streams
+   * CLI output into the log, and resolves to success/error so the modal can
+   * show a checkmark or a retry button instead of just a busy spinner.
+   */
+  const runInstall = useCallback(
+    async (source: string, busyKey: string) => {
+      if (!api.isTauri() || actionBusy) return;
+      setActionBusy(busyKey);
+      setActionError(null);
+      setInstallProgressSource(source);
+      setInstallProgressBusyKey(busyKey);
+      setInstallProgressLines([]);
+      installProgressQueueRef.current = [];
+      setInstallProgressStatus("running");
+      setInstallProgressOpen(true);
+      const unlisten = await api.listen<api.PluginInstallProgressEvent>(
+        "plugin:install-progress",
+        (payload) => {
+          if (payload.source !== source) return;
+          installProgressQueueRef.current.push(payload.line);
+        },
+      );
+      try {
+        await api.pluginInstall(source);
+        setInstallProgressStatus("success");
+        setInstallSource("");
+        await refresh();
+        await refreshMarketplace();
+      } catch (e) {
+        const msg = String(e);
+        setInstallProgressStatus("error");
+        setActionError(msg);
+        installProgressQueueRef.current.push(msg);
+      } finally {
+        unlisten();
+        setActionBusy(null);
+      }
+    },
+    [actionBusy, refresh, refreshMarketplace],
+  );
+
+  const confirmInstall = async () => {
+    const target = installTarget;
+    if (!target) return;
+    setInstallTarget(null);
+    const sourceUrl =
+      typeof target.source === "object" && target.source
+        ? target.source.url ?? target.source.path ?? target.name
+        : target.name;
+    await runInstall(sourceUrl, "marketplace-install");
+  };
+
+  const retryInstall = () => {
+    if (!installProgressSource) return;
+    void runInstall(installProgressSource, installProgressBusyKey);
+  };
 
   const bannerError = useMemo(
     () => mergeInspectErrors(skillsError, mcpError, pluginsError),
@@ -349,10 +423,7 @@ export function ExtensionsPanel({
       setActionError(tr("ext.plugins.installEmpty"));
       return;
     }
-    await runPluginAction("install", async () => {
-      await api.pluginInstall(source);
-      setInstallSource("");
-    });
+    await runInstall(source, "install");
   };
 
   const updatePlugin = (p: api.PluginDto) => {
@@ -1075,6 +1146,61 @@ export function ExtensionsPanel({
             marketplace: installTarget?.marketplaceName ?? "",
           })}
         </p>
+      </GlassModal>
+
+      <GlassModal
+        open={installProgressOpen}
+        onClose={() => {
+          if (installProgressStatus !== "running") setInstallProgressOpen(false);
+        }}
+        title={tr("ext.install.progressTitle", { name: installProgressSource })}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        footer={
+          installProgressStatus === "error" ? (
+            <>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setInstallProgressOpen(false)}
+              >
+                {tr("common.close")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--solid"
+                onClick={() => retryInstall()}
+              >
+                {tr("ext.install.retry")}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={installProgressStatus === "running"}
+              onClick={() => setInstallProgressOpen(false)}
+            >
+              {tr("common.close")}
+            </button>
+          )
+        }
+      >
+        <p
+          className={
+            "ext-install-status ext-install-status--" + installProgressStatus
+          }
+        >
+          {installProgressStatus === "running" && tr("ext.install.running")}
+          {installProgressStatus === "success" && tr("ext.install.success")}
+          {installProgressStatus === "error" && tr("ext.install.failed")}
+        </p>
+        <pre className="ext-install-log">
+          {displayedInstallLog.length > 0
+            ? displayedInstallLog.join("\n")
+            : tr("ext.install.waiting")}
+        </pre>
       </GlassModal>
 
       <GlassModal

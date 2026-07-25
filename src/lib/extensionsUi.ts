@@ -293,3 +293,25 @@ export function normalizePluginUpdateName(
   const s = (raw ?? "").trim();
   return s ? s : null;
 }
+
+/**
+ * Truncate a live install log for display: past `max` lines, keep the first
+ * `head` and last `tail` with an omission marker between them so a chatty
+ * install doesn't freeze the UI by rendering thousands of `<pre>` lines.
+ * Computed fresh from the full log each call — safe to call every render.
+ */
+export function truncateInstallLog(
+  lines: string[],
+  max = 500,
+  head = 50,
+  tail = 50,
+): string[] {
+  if (lines.length <= max) return lines;
+  const omitted = lines.length - head - tail;
+  if (omitted <= 0) return lines;
+  return [
+    ...lines.slice(0, head),
+    `… ${omitted} lines omitted …`,
+    ...lines.slice(lines.length - tail),
+  ];
+}

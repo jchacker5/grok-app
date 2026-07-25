@@ -3479,6 +3479,129 @@ fn run_grok_cli_args(args: &[&str], timeout_secs: u64) -> Result<(String, String
     }
 }
 
+/// Tauri event emitted for each line of `stdout`/`stderr` a streamed CLI run
+/// produces. `source` echoes the caller-provided install source so the UI can
+/// ignore stale events from a previous/cancelled install.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PluginInstallProgressEvent {
+    source: String,
+    line: String,
+    stream: &'static str,
+}
+
+/// Like `run_grok_cli_args`, but pipes the child's stdout/stderr and emits a
+/// `plugin:install-progress` event per line as the process runs, so the UI
+/// can show live CLI output instead of a blank spinner until it exits.
+/// Returns the same `(stdout, stderr, ok)` shape once the process completes.
+fn run_grok_cli_args_streaming(
+    app: &tauri::AppHandle,
+    progress_source: &str,
+    args: &[&str],
+    timeout_secs: u64,
+) -> Result<(String, String, bool), String> {
+    use tauri::Emitter;
+
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    let Some(cli_path) = probe.path.filter(|_| probe.found) else {
+        return Err("Grok Build CLI not found".into());
+    };
+
+    let args_owned: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let app_for_thread = app.clone();
+    let source_for_thread = progress_source.to_string();
+    std::thread::spawn(move || {
+        let mut cmd = std::process::Command::new(&cli_path);
+        cmd.args(&args_owned);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+        crate::process_util::apply_no_window_std(&mut cmd);
+        if let Some(path_env) = crate::process_util::enriched_path_env() {
+            cmd.env("PATH", path_env);
+        }
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tx.send(Err(format!("Failed to run grok: {e}")));
+                return;
+            }
+        };
+
+        let stdout_pipe = child.stdout.take();
+        let stderr_pipe = child.stderr.take();
+        let stdout_buf = Arc::new(std::sync::Mutex::new(String::new()));
+        let stderr_buf = Arc::new(std::sync::Mutex::new(String::new()));
+
+        fn spawn_line_reader(
+            pipe: impl std::io::Read + Send + 'static,
+            app: tauri::AppHandle,
+            source: String,
+            stream: &'static str,
+            buf: Arc<std::sync::Mutex<String>>,
+        ) -> std::thread::JoinHandle<()> {
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                let reader = std::io::BufReader::new(pipe);
+                for line in reader.lines().map_while(Result::ok) {
+                    if let Ok(mut b) = buf.lock() {
+                        if !b.is_empty() {
+                            b.push('\n');
+                        }
+                        b.push_str(&line);
+                    }
+                    let _ = app.emit(
+                        "plugin:install-progress",
+                        PluginInstallProgressEvent {
+                            source: source.clone(),
+                            line,
+                            stream,
+                        },
+                    );
+                }
+            })
+        }
+
+        let mut handles = Vec::new();
+        if let Some(pipe) = stdout_pipe {
+            handles.push(spawn_line_reader(
+                pipe,
+                app_for_thread.clone(),
+                source_for_thread.clone(),
+                "stdout",
+                stdout_buf.clone(),
+            ));
+        }
+        if let Some(pipe) = stderr_pipe {
+            handles.push(spawn_line_reader(
+                pipe,
+                app_for_thread.clone(),
+                source_for_thread.clone(),
+                "stderr",
+                stderr_buf.clone(),
+            ));
+        }
+
+        let status = child.wait();
+        for h in handles {
+            let _ = h.join();
+        }
+        let stdout = stdout_buf.lock().map(|b| b.clone()).unwrap_or_default();
+        let stderr = stderr_buf.lock().map(|b| b.clone()).unwrap_or_default();
+        let result = match status {
+            Ok(s) => Ok((stdout, stderr, s.success())),
+            Err(e) => Err(format!("Failed to run grok: {e}")),
+        };
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
+        Ok(inner) => inner,
+        Err(_) => Err(format!("grok command timed out after {timeout_secs}s")),
+    }
+}
+
 /// Path to the user-level Grok config that tracks plugin enable/disable.
 /// Same file Grok Build reads for `[plugins].enabled` / `[plugins].disabled`.
 fn user_grok_config_toml() -> std::path::PathBuf {
@@ -4016,6 +4139,9 @@ pub fn normalize_plugin_update_name(name: Option<&str>) -> Option<String> {
 
 /// Install from path / git URL / GitHub shorthand (`grok plugin install <source> --trust`).
 /// Soft-respawns agent on success. `--trust` is required for non-interactive UI.
+/// Streams CLI stdout/stderr as `plugin:install-progress` events (keyed by
+/// `source`) while the install runs, so the UI can show live progress instead
+/// of a blank spinner for the ~180s install window.
 #[tauri::command]
 pub async fn plugin_install(
     app: tauri::AppHandle,
@@ -4024,8 +4150,12 @@ pub async fn plugin_install(
 ) -> Result<serde_json::Value, String> {
     let source = normalize_plugin_install_source(&source)?;
     let source_for_cmd = source.clone();
+    let source_for_progress = source.clone();
+    let app_for_cmd = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        run_grok_cli_args(
+        run_grok_cli_args_streaming(
+            &app_for_cmd,
+            &source_for_progress,
             &["plugin", "install", &source_for_cmd, "--trust"],
             PLUGIN_MUTATE_TIMEOUT_SECS,
         )

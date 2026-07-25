@@ -1201,6 +1201,12 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.plugins.installHint":
     "呼叫 `grok plugin install --trust`（路徑、git URL 或 GitHub 簡寫）。不是完整的市集瀏覽介面。",
   "ext.plugins.installEmpty": "請輸入路徑、git URL 或 owner/repo。",
+  "ext.install.progressTitle": "正在安裝 {name}",
+  "ext.install.running": "正在執行 `grok plugin install`…",
+  "ext.install.success": "安裝成功。",
+  "ext.install.failed": "安裝失敗。",
+  "ext.install.retry": "重試",
+  "ext.install.waiting": "等待 CLI 輸出…",
   "ext.plugins.update": "更新",
   "ext.plugins.updateAll": "全部更新",
   "ext.plugins.updating": "正在更新…",

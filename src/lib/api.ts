@@ -1622,8 +1622,21 @@ export async function pluginDetails(name: string) {
 }
 
 /**
+ * Progress line — payload of the `plugin:install-progress` Tauri event.
+ * `source` echoes the install source passed to `pluginInstall` so listeners
+ * can ignore stale events from a previous/cancelled install.
+ */
+export interface PluginInstallProgressEvent {
+  source: string;
+  line: string;
+  stream: "stdout" | "stderr";
+}
+
+/**
  * Install from path, git URL, or GitHub shorthand (`grok plugin install --trust`).
- * Soft-respawns agent on success.
+ * Soft-respawns agent on success. Emits `plugin:install-progress` events with
+ * live CLI stdout/stderr lines while the install runs (~180s timeout); listen
+ * with `api.listen<PluginInstallProgressEvent>("plugin:install-progress", …)`.
  */
 export async function pluginInstall(source: string) {
   return invoke<PluginActionResult>("plugin_install", { source });

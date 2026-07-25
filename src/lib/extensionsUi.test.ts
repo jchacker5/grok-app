@@ -22,6 +22,7 @@ import {
   sortMcpByName,
   sortPluginsByName,
   sortSkillsByName,
+  truncateInstallLog,
 } from "./extensionsUi";
 
 describe("enable-set merge / filter", () => {
@@ -271,5 +272,26 @@ describe("plugin helpers", () => {
     expect(normalizePluginUpdateName("  demo ")).toBe("demo");
     expect(normalizePluginUpdateName("")).toBeNull();
     expect(normalizePluginUpdateName(undefined)).toBeNull();
+  });
+});
+
+describe("truncateInstallLog", () => {
+  it("returns the log unchanged when under the cap", () => {
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${i}`);
+    expect(truncateInstallLog(lines, 500, 50, 50)).toEqual(lines);
+  });
+
+  it("keeps head + tail with an omission marker once over the cap", () => {
+    const lines = Array.from({ length: 120 }, (_, i) => `line ${i}`);
+    const out = truncateInstallLog(lines, 100, 10, 10);
+    expect(out).toHaveLength(21);
+    expect(out.slice(0, 10)).toEqual(lines.slice(0, 10));
+    expect(out[10]).toBe("… 100 lines omitted …");
+    expect(out.slice(11)).toEqual(lines.slice(-10));
+  });
+
+  it("is a no-op when head+tail already cover the whole log", () => {
+    const lines = Array.from({ length: 20 }, (_, i) => `line ${i}`);
+    expect(truncateInstallLog(lines, 10, 10, 10)).toEqual(lines);
   });
 });

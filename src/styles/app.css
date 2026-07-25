@@ -12824,6 +12824,39 @@ div.composer__input:empty::before {
   color: var(--text-secondary);
 }
 
+.ext-install-status {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ext-install-status--running {
+  color: var(--text-secondary);
+}
+
+.ext-install-status--success {
+  color: #6bcf8e;
+}
+
+.ext-install-status--error {
+  color: #e05a5a;
+}
+
+.ext-install-log {
+  margin: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, #000 24%, transparent);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+}
+
 .ext-empty {
   margin: 0;
   padding: 22px 16px;
