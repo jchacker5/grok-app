@@ -547,6 +547,29 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.acpTestFail": "失敗：{error}",
   "settings.acpSetupHint":
     "在執行 agent 的機器上，用類似 socat 的方式把 stdio 暴露到 TCP：",
+  "settings.acpNonLoopbackWarning":
+    "此位址不是本機位址（127.0.0.1/localhost）。原始 TCP 連線沒有內建的驗證或 TLS —— 除非你已經有自己的 VPN/WireGuard/Tailscale，否則建議改用下方的 SSH 通道管理器。",
+  "settings.sshTunnel": "SSH 通道",
+  "settings.sshTunnelDesc":
+    "對 ssh -N -L <本機埠>:localhost:<遠端埠> <目標> 的便利封裝 —— 會監管通道行程，連線成功後自動把上方的 ACP 伺服器位址填為 127.0.0.1:<本機埠>。",
+  "settings.sshTunnelTargetPh": "user@host",
+  "settings.sshTunnelRemotePortPh": "遠端埠",
+  "settings.sshTunnelLocalPortPh": "本機埠",
+  "settings.sshTunnelIdentityFilePh": "金鑰檔案（選填，-i）",
+  "settings.sshTunnelConnect": "連線",
+  "settings.sshTunnelConnecting": "連線中…",
+  "settings.sshTunnelDisconnect": "中斷連線",
+  "settings.sshTunnelStatusIdle": "尚未連線。",
+  "settings.sshTunnelStatusConnecting": "連線中…",
+  "settings.sshTunnelStatusConnected":
+    "已連線 — 正在轉發 127.0.0.1:{port}。已自動更新 ACP 伺服器位址。",
+  "settings.sshTunnelStatusError": "失敗：{error}",
+  "settings.wslDistro": "WSL 發行版",
+  "settings.wslDistroDesc":
+    "在指定的 WSL 發行版中執行 agent（wsl.exe -d <發行版> -- grok …），而不是使用主機上的執行檔路徑。",
+  "settings.wslDistroNone": "無（使用主機 CLI）",
+  "settings.wslDistroEmpty":
+    "找不到 WSL 發行版。請在系統管理員提示字元下執行「wsl --install -d <發行版>」安裝一個。",
   "settings.maxConcurrentAgents": "最大並發 Agent 數",
   "settings.maxConcurrentAgentsDesc":
     "為開啟的對話保留的熱 Agent 行程數（預設 3）。超過上限時會提示等待或釋放其他工作階段。",

@@ -202,6 +202,45 @@ export async function acpTestConnection(addr: string) {
   return invoke<AcpProbeResult>("acp_test_connection", { addr });
 }
 
+/** SSH tunnel manager status shape (flat DTO, mirrors `AcpProbeResult`). */
+export interface SshTunnelStatus {
+  state: "idle" | "connecting" | "connected" | "error";
+  localPort?: number | null;
+  message?: string | null;
+}
+
+/**
+ * Start (or replace) the convenience SSH tunnel fronting API-mode
+ * (`acp_server_addr`): spawns `ssh -N -L <local>:localhost:<remote> <target>`
+ * and confirms the forward is listening before resolving `connected`.
+ */
+export async function sshTunnelStart(
+  target: string,
+  remotePort: number,
+  localPort: number,
+  identityFile?: string | null,
+) {
+  return invoke<SshTunnelStatus>("ssh_tunnel_start", {
+    target,
+    remotePort,
+    localPort,
+    identityFile: identityFile ?? null,
+  });
+}
+
+export async function sshTunnelStop() {
+  return invoke<SshTunnelStatus>("ssh_tunnel_stop");
+}
+
+export async function sshTunnelStatus() {
+  return invoke<SshTunnelStatus>("ssh_tunnel_status");
+}
+
+/** List installed WSL distros (`wsl -l -q`). Empty array on non-Windows. */
+export async function wslListDistros() {
+  return invoke<string[]>("wsl_list_distros");
+}
+
 export interface CliInstallProgress {
   phase: string;
   message: string;
@@ -805,6 +844,22 @@ export interface AppSettings {
   /** API mode: `host:port` of a remote ACP server. When set, sessions connect
    *  over TCP instead of spawning the local CLI. Empty/unset = local spawn. */
   acpServerAddr?: string | null;
+  /** SSH tunnel manager: `user@host` target (no port suffix — see
+   *  `sshTunnelRemotePort`) for the convenience tunnel fronting
+   *  `acpServerAddr`. Unset/empty = tunnel manager unconfigured. */
+  sshTunnelTarget?: string | null;
+  /** Remote port the ACP server listens on at `sshTunnelTarget`. */
+  sshTunnelRemotePort?: number | null;
+  /** Local port to bind the forward on; also written into `acpServerAddr`
+   *  (as `127.0.0.1:<port>`) on a successful connect. */
+  sshTunnelLocalPort?: number | null;
+  /** Optional `-i <identityFile>` private key path for the tunnel. */
+  sshTunnelIdentityFile?: string | null;
+  /** Whether the SSH tunnel manager is considered "on". */
+  sshTunnelEnabled?: boolean;
+  /** Windows only: WSL distro to run `grok agent stdio` inside of via
+   *  `wsl.exe -d <distro> -- grok ...` instead of a host binary path. */
+  wslDistro?: string | null;
   /** Max warm/live agent processes (default 3). */
   maxConcurrentAgents?: number;
   /** Recycle idle agent processes after N minutes (default 30). */

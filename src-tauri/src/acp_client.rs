@@ -225,10 +225,14 @@ impl AcpClient {
         session_data_mode: &str,
         opts: SpawnOptions,
     ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<AcpEvent>), AgentError> {
+        // Loaded once up front — reused below for both the API-mode TCP branch
+        // and the WSL local-spawn branch so we don't read settings.json twice.
+        let boot_settings = crate::store::load_settings();
+
         // API mode: if an ACP server address is configured, connect over TCP
         // instead of spawning a local CLI. The server drives an agent running
         // elsewhere (WSL/SSH/container) but speaks the identical ACP protocol.
-        if let Some(addr) = crate::store::load_settings()
+        if let Some(addr) = boot_settings
             .acp_server_addr
             .as_deref()
             .map(str::trim)
@@ -237,7 +241,20 @@ impl AcpClient {
             return Self::connect_tcp(addr, cwd);
         }
 
-        if !cli_path.exists() {
+        // WSL mode (Windows only): the agent binary lives inside the WSL
+        // filesystem, not on the host, so `grok` is resolved by WSL's own PATH
+        // rather than via `cli_path` — skip the host-filesystem existence
+        // check below when this is set.
+        #[cfg(target_os = "windows")]
+        let wsl_distro: Option<String> = boot_settings
+            .wsl_distro
+            .clone()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        #[cfg(not(target_os = "windows"))]
+        let wsl_distro: Option<String> = None;
+
+        if wsl_distro.is_none() && !cli_path.exists() {
             return Err(AgentError::new(
                 AgentErrorCode::CliNotFound,
                 format!("CLI not found: {}", cli_path.display()),
@@ -279,10 +296,24 @@ impl AcpClient {
         // Skip background update checks so ACP handshakes are not delayed on launch.
         // `--sandbox` is top-level only (not accepted by `grok agent` / `stdio`);
         // also set GROK_SANDBOX so nested tools inherit the same profile.
-        let settings = crate::store::load_settings();
+        let settings = &boot_settings;
         let sandbox = SandboxSpawnSpec::from_setting(&settings.sandbox_profile);
 
-        let mut cmd = Command::new(&cli_path);
+        // WSL mode: wrap as `wsl.exe -d <distro> -- grok ...` instead of
+        // invoking the host `cli_path` directly — reuses this exact local
+        // stdio spawn path, not `connect_tcp`. Note: env vars set on `cmd`
+        // below (GROK_HOME, PATH, GROK_SANDBOX) apply to the `wsl.exe`
+        // Windows-side process; WSL does not automatically forward host env
+        // vars into the Linux guest without WSLENV, so GROK_HOME under WSL
+        // falls back to the distro's own default (out of scope here — see
+        // plan's explicit exclusions for this feature).
+        let mut cmd = if let Some(ref distro) = wsl_distro {
+            let mut c = Command::new("wsl.exe");
+            c.arg("-d").arg(distro).arg("--").arg("grok");
+            c
+        } else {
+            Command::new(&cli_path)
+        };
         cmd.arg("--no-auto-update");
         if let Some(ref sb) = sandbox {
             for a in sb.cli_args() {

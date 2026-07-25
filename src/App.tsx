@@ -767,6 +767,15 @@ export default function App() {
   }>({ found: false, path: null, version: null, source: "", cliAuthPresent: false });
   const [manualCliPath, setManualCliPath] = useState("");
   const [acpServerAddr, setAcpServerAddr] = useState("");
+  const [sshTunnelTarget, setSshTunnelTarget] = useState("");
+  const [sshTunnelRemotePort, setSshTunnelRemotePort] = useState<number | null>(
+    null,
+  );
+  const [sshTunnelLocalPort, setSshTunnelLocalPort] = useState<number | null>(
+    null,
+  );
+  const [sshTunnelIdentityFile, setSshTunnelIdentityFile] = useState("");
+  const [wslDistro, setWslDistro] = useState("");
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(3);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
@@ -1001,6 +1010,19 @@ export default function App() {
       );
       setManualCliPath(settings.manualCliPath || cli.path || "");
       setAcpServerAddr(settings.acpServerAddr || "");
+      setSshTunnelTarget(settings.sshTunnelTarget || "");
+      setSshTunnelRemotePort(
+        typeof settings.sshTunnelRemotePort === "number"
+          ? settings.sshTunnelRemotePort
+          : null,
+      );
+      setSshTunnelLocalPort(
+        typeof settings.sshTunnelLocalPort === "number"
+          ? settings.sshTunnelLocalPort
+          : null,
+      );
+      setSshTunnelIdentityFile(settings.sshTunnelIdentityFile || "");
+      setWslDistro(settings.wslDistro || "");
       setMaxConcurrentAgents(
         typeof settings.maxConcurrentAgents === "number" &&
           settings.maxConcurrentAgents >= 1
@@ -6507,6 +6529,42 @@ export default function App() {
             setAcpServerAddr(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, acpServerAddr: v.trim() || null }),
+            );
+          }}
+          sshTunnelTarget={sshTunnelTarget}
+          onSshTunnelTarget={(v) => {
+            setSshTunnelTarget(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, sshTunnelTarget: v.trim() || null }),
+            );
+          }}
+          sshTunnelRemotePort={sshTunnelRemotePort}
+          onSshTunnelRemotePort={(v) => {
+            setSshTunnelRemotePort(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, sshTunnelRemotePort: v }),
+            );
+          }}
+          sshTunnelLocalPort={sshTunnelLocalPort}
+          onSshTunnelLocalPort={(v) => {
+            setSshTunnelLocalPort(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, sshTunnelLocalPort: v }),
+            );
+          }}
+          sshTunnelIdentityFile={sshTunnelIdentityFile}
+          onSshTunnelIdentityFile={(v) => {
+            setSshTunnelIdentityFile(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, sshTunnelIdentityFile: v.trim() || null }),
+            );
+          }}
+          isWindows={platform === "win"}
+          wslDistro={wslDistro}
+          onWslDistro={(v) => {
+            setWslDistro(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, wslDistro: v.trim() || null }),
             );
           }}
           maxConcurrentAgents={maxConcurrentAgents}

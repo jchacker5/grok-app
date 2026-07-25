@@ -41,6 +41,7 @@ mod integration_test;
 mod acp_golden_test;
 mod session_fsm;
 mod session_manager;
+mod ssh_tunnel;
 mod store;
 mod tray;
 mod tray_i18n;
@@ -67,6 +68,7 @@ pub fn run() {
 
     let session_mgr = Arc::new(SessionManager::new());
     let voice_host = Arc::new(voice_host::VoiceHost::new());
+    let ssh_tunnel_mgr = ssh_tunnel::SshTunnelManager::new();
 
     tauri::Builder::default()
         // Must be registered first so a second process exits and focuses the primary window.
@@ -82,6 +84,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(session_mgr)
         .manage(voice_host)
+        .manage(ssh_tunnel_mgr)
         // Range-capable media streaming (video/audio/pdf) — never loads multi‑GB into RAM.
         .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
             std::thread::spawn(move || {
@@ -148,6 +151,10 @@ pub fn run() {
             commands::session_resolve_ask_user,
             commands::probe_cli,
             commands::acp_test_connection,
+            commands::ssh_tunnel_start,
+            commands::ssh_tunnel_stop,
+            commands::ssh_tunnel_status,
+            commands::wsl_list_distros,
             commands::cli_install_latest,
             commands::cli_install_commands,
             commands::pick_cli_binary,

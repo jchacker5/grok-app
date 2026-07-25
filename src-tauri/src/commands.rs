@@ -185,6 +185,188 @@ pub async fn acp_test_connection(
     Ok(crate::acp_client::probe_acp_server(addr).await)
 }
 
+/// Status DTO for the SSH tunnel manager (`ssh_tunnel::SshTunnelManager`) —
+/// a flat, frontend-friendly shape mirroring `AcpProbeResult`'s convention
+/// rather than an internally-tagged enum.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshTunnelStatusDto {
+    /// "idle" | "connecting" | "connected" | "error"
+    pub state: String,
+    pub local_port: Option<u16>,
+    pub message: Option<String>,
+}
+
+impl From<&crate::ssh_tunnel::TunnelState> for SshTunnelStatusDto {
+    fn from(s: &crate::ssh_tunnel::TunnelState) -> Self {
+        use crate::ssh_tunnel::TunnelState;
+        match s {
+            TunnelState::Idle => Self {
+                state: "idle".into(),
+                local_port: None,
+                message: None,
+            },
+            TunnelState::Connecting => Self {
+                state: "connecting".into(),
+                local_port: None,
+                message: None,
+            },
+            TunnelState::Connected { local_port } => Self {
+                state: "connected".into(),
+                local_port: Some(*local_port),
+                message: None,
+            },
+            TunnelState::Error { message } => Self {
+                state: "error".into(),
+                local_port: None,
+                message: Some(message.clone()),
+            },
+        }
+    }
+}
+
+/// Start (or replace) the convenience SSH tunnel fronting API-mode
+/// (`acp_server_addr`). Spawns `ssh -N -L <local>:localhost:<remote> <target>`
+/// and confirms the forward is actually listening before returning `Connected`.
+#[tauri::command]
+pub async fn ssh_tunnel_start(
+    mgr: State<'_, Arc<crate::ssh_tunnel::SshTunnelManager>>,
+    target: String,
+    remote_port: u16,
+    local_port: u16,
+    identity_file: Option<String>,
+) -> Result<SshTunnelStatusDto, String> {
+    let state = mgr
+        .start(&target, remote_port, local_port, identity_file.as_deref())
+        .await?;
+    Ok(SshTunnelStatusDto::from(&state))
+}
+
+#[tauri::command]
+pub async fn ssh_tunnel_stop(
+    mgr: State<'_, Arc<crate::ssh_tunnel::SshTunnelManager>>,
+) -> Result<SshTunnelStatusDto, String> {
+    mgr.stop().await;
+    Ok(SshTunnelStatusDto::from(&mgr.status().await))
+}
+
+#[tauri::command]
+pub async fn ssh_tunnel_status(
+    mgr: State<'_, Arc<crate::ssh_tunnel::SshTunnelManager>>,
+) -> Result<SshTunnelStatusDto, String> {
+    Ok(SshTunnelStatusDto::from(&mgr.status().await))
+}
+
+/// `wsl -l -q` (and its stderr) can come back UTF-16LE — a well-known Windows
+/// console quirk that appears when the output is redirected/piped instead of
+/// going to a real console. Decode defensively: BOM-prefixed or clearly
+/// NUL-heavy byte streams are treated as UTF-16LE, otherwise UTF-8.
+fn decode_wsl_text(raw: &[u8]) -> String {
+    if raw.len() >= 2 && raw[0] == 0xFF && raw[1] == 0xFE {
+        return decode_utf16le(&raw[2..]);
+    }
+    let sample_len = raw.len().min(64);
+    if sample_len >= 4
+        && raw[..sample_len].iter().filter(|&&b| b == 0).count() * 4 >= sample_len
+    {
+        return decode_utf16le(raw);
+    }
+    String::from_utf8_lossy(raw).into_owned()
+}
+
+fn decode_utf16le(bytes: &[u8]) -> String {
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
+    String::from_utf16_lossy(&units)
+}
+
+/// Parse `wsl -l -q` stdout into a clean distro-name list: handles the
+/// UTF-16LE quirk above, trims BOM/CR/whitespace, drops blank lines.
+fn parse_wsl_distro_list(raw: &[u8]) -> Vec<String> {
+    decode_wsl_text(raw)
+        .lines()
+        .map(|l| l.trim().trim_start_matches('\u{feff}').trim())
+        .filter(|l| !l.is_empty())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// List installed WSL distros (`wsl -l -q`). Windows-only in practice —
+/// returns an empty list on other platforms without attempting to run `wsl`.
+/// Does a `which::which("wsl")` presence check first so a stock Windows
+/// machine without WSL installed gets a clear error instead of a raw spawn
+/// failure.
+#[tauri::command]
+pub async fn wsl_list_distros() -> Result<Vec<String>, String> {
+    if !cfg!(target_os = "windows") {
+        return Ok(Vec::new());
+    }
+    which::which("wsl").map_err(|_| {
+        "wsl executable not found — Windows Subsystem for Linux does not appear \
+         to be installed on this machine (run `wsl --install` from an elevated \
+         prompt, or enable it under Optional Features)."
+            .to_string()
+    })?;
+    let output = tauri::async_runtime::spawn_blocking(|| {
+        let mut cmd = std::process::Command::new("wsl");
+        cmd.args(["-l", "-q"]);
+        crate::process_util::apply_no_window_std(&mut cmd);
+        cmd.output()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("failed to run `wsl -l -q`: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "`wsl -l -q` failed: {}",
+            decode_wsl_text(&output.stderr).trim()
+        ));
+    }
+    Ok(parse_wsl_distro_list(&output.stdout))
+}
+
+#[cfg(test)]
+mod wsl_distro_list_tests {
+    use super::*;
+
+    #[test]
+    fn parses_plain_utf8_lines() {
+        let raw = b"Ubuntu\r\nDebian\r\ndocker-desktop\r\n\r\n";
+        assert_eq!(
+            parse_wsl_distro_list(raw),
+            vec!["Ubuntu", "Debian", "docker-desktop"]
+        );
+    }
+
+    #[test]
+    fn parses_utf16le_with_bom() {
+        // Mimics the real `wsl -l -q` console-redirect quirk on Windows.
+        let text = "Ubuntu\r\nDebian\r\n";
+        let mut raw = vec![0xFFu8, 0xFE];
+        for u in text.encode_utf16() {
+            raw.extend_from_slice(&u.to_le_bytes());
+        }
+        assert_eq!(parse_wsl_distro_list(&raw), vec!["Ubuntu", "Debian"]);
+    }
+
+    #[test]
+    fn parses_utf16le_without_bom_via_heuristic() {
+        let text = "Ubuntu\r\nAlpine\r\n";
+        let raw: Vec<u8> = text
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+        assert_eq!(parse_wsl_distro_list(&raw), vec!["Ubuntu", "Alpine"]);
+    }
+
+    #[test]
+    fn empty_output_yields_empty_list() {
+        assert!(parse_wsl_distro_list(b"").is_empty());
+    }
+}
+
 /// Download + install latest Grok Build (multi-mirror, progress via `setup://cli-install-progress`).
 #[tauri::command]
 pub async fn cli_install_latest(app: tauri::AppHandle) -> Result<crate::cli_install::CliInstallResult, String> {

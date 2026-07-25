@@ -4041,6 +4041,36 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   min-width: 0;
 }
 
+.settings-row__hint.is-warning {
+  color: var(--warning);
+  background: var(--warning-muted, rgba(240, 153, 61, 0.12));
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.settings-ssh-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-ssh-field .settings-input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.settings-input--port {
+  flex: 0 0 96px !important;
+  min-width: 72px !important;
+}
+
+.settings-row__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .settings-acp-cmd {
   display: block;
   margin-top: 4px;
