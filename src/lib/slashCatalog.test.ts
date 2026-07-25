@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildSlashCatalog,
   builtinSlashItems,
+  customCommandsToSlashItems,
   filterSlashItems,
   skillsToSlashItems,
+  type CustomCommandInfo,
   type SkillInfo,
   type SlashItem,
 } from "./slashCatalog";
@@ -22,6 +24,7 @@ describe("builtinSlashItems", () => {
       "new",
       "automations",
       "settings",
+      "commands",
       "yolo",
     ]);
 
@@ -185,5 +188,69 @@ describe("buildSlashCatalog", () => {
     expect(cat.commands).toEqual(builtinSlashItems());
     expect(cat.skills).toHaveLength(1);
     expect(cat.skills[0]!.name).toBe("s1");
+  });
+
+  it("merges user-defined custom commands after built-ins", () => {
+    const customCommands: CustomCommandInfo[] = [
+      {
+        id: "c1",
+        name: "review",
+        description: "Insert a code review prompt",
+        actionType: "insertText",
+        actionValue: "Please review this code.",
+      },
+    ];
+    const cat = buildSlashCatalog([], customCommands);
+    expect(cat.commands).toHaveLength(builtinSlashItems().length + 1);
+    const custom = cat.commands.find((i) => i.name === "review")!;
+    expect(custom.kind).toBe("custom");
+    expect(custom.customActionType).toBe("insertText");
+    expect(custom.customActionValue).toBe("Please review this code.");
+  });
+});
+
+describe("customCommandsToSlashItems", () => {
+  it("maps custom commands to slash items", () => {
+    const cmds: CustomCommandInfo[] = [
+      {
+        id: "abc",
+        name: "standup",
+        description: "Open the automations panel",
+        actionType: "openPanel",
+        actionValue: "automations",
+      },
+    ];
+    const items = customCommandsToSlashItems(cmds);
+    expect(items).toEqual([
+      {
+        id: "custom:abc",
+        kind: "custom",
+        name: "standup",
+        displayTitle: "standup",
+        displayDescription: "Open the automations panel",
+        customActionType: "openPanel",
+        customActionValue: "automations",
+      },
+    ]);
+  });
+
+  it("dedupes by name", () => {
+    const cmds: CustomCommandInfo[] = [
+      {
+        id: "a",
+        name: "dup",
+        description: "first",
+        actionType: "insertText",
+        actionValue: "x",
+      },
+      {
+        id: "b",
+        name: "dup",
+        description: "second",
+        actionType: "insertText",
+        actionValue: "y",
+      },
+    ];
+    expect(customCommandsToSlashItems(cmds)).toHaveLength(1);
   });
 });

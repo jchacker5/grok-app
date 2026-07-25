@@ -92,6 +92,11 @@ pub fn automations_file() -> PathBuf {
     app_data_root().join("automations.json")
 }
 
+/// User-defined slash commands (safe actions only — see `store::CustomCommand`).
+pub fn custom_commands_file() -> PathBuf {
+    app_data_root().join("custom_commands.json")
+}
+
 /// Named project groupings ("Grok Spaces").
 pub fn spaces_file() -> PathBuf {
     app_data_root().join("spaces.json")

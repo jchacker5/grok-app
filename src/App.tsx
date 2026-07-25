@@ -177,6 +177,7 @@ import { StatusModal } from "@/components/StatusModal";
 import { McpStatusModal } from "@/components/McpStatusModal";
 import { SessionDiffModal } from "@/components/SessionDiffModal";
 import type { SessionDiffMessage } from "@/lib/sessionDiff";
+import { CustomCommandsModal } from "@/components/CustomCommandsModal";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -895,6 +896,45 @@ export default function App() {
     },
     [],
   );
+
+  /**
+   * Custom slash command `toggleSetting` action — fixed whitelist of existing,
+   * already-persisted boolean settings. Functional updaters keep this stable
+   * (no external deps) so it's safe to call from `applySlashItem`.
+   */
+  const toggleCustomSetting = useCallback((key: string) => {
+    const persist = (patch: Record<string, boolean>) => {
+      void api.settingsGet().then((s) => api.settingsSet({ ...s, ...patch }));
+    };
+    switch (key) {
+      case "wordWrap":
+        setWordWrap((v) => {
+          persist({ wordWrap: !v });
+          return !v;
+        });
+        return;
+      case "notificationsEnabled":
+        setNotificationsEnabled((v) => {
+          persist({ notificationsEnabled: !v });
+          return !v;
+        });
+        return;
+      case "autoOpenTaskPanel":
+        setAutoOpenTaskPanel((v) => {
+          persist({ autoOpenTaskPanel: !v });
+          return !v;
+        });
+        return;
+      case "diffIgnoreWhitespace":
+        setDiffIgnoreWhitespace((v) => {
+          persist({ diffIgnoreWhitespace: !v });
+          return !v;
+        });
+        return;
+      default:
+        return;
+    }
+  }, []);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -4513,6 +4553,15 @@ export default function App() {
 
   /** Bumped when Extensions skill toggles change so slash palette refilters. */
   const [skillsReloadToken, setSkillsReloadToken] = useState(0);
+  /** User-defined `/name` commands (safe actions only) — see CustomCommandsModal. */
+  const [customCommands, setCustomCommands] = useState<api.CustomCommandDto[]>(
+    [],
+  );
+  const [showCustomCommandsModal, setShowCustomCommandsModal] =
+    useState(false);
+  /** Bumped after create/edit/delete in the modal so the slash catalog refilters. */
+  const [customCommandsReloadToken, setCustomCommandsReloadToken] =
+    useState(0);
 
   // Load skills catalog for slash palette (Grok inspect).
   useEffect(() => {
@@ -4546,9 +4595,26 @@ export default function App() {
     };
   }, [activeProject?.path, skillsReloadToken]);
 
+  // Load user-defined custom commands for the slash palette (Tauri-only store).
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    let cancelled = false;
+    void api
+      .customCommandsList()
+      .then((rows) => {
+        if (!cancelled) setCustomCommands(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomCommands([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customCommandsReloadToken]);
+
   const slashCatalog = useMemo(
-    () => buildSlashCatalog(skillInfos),
-    [skillInfos],
+    () => buildSlashCatalog(skillInfos, customCommands),
+    [skillInfos, customCommands],
   );
   const resolveSlashTitle = useCallback(
     (item: SlashItem) => {
@@ -5248,6 +5314,49 @@ export default function App() {
         return;
       }
 
+      // User-defined /command (safe actions only — insertText / toggleSetting / openPanel).
+      if (item.kind === "custom") {
+        const value = item.customActionValue ?? "";
+        if (item.customActionType === "insertText") {
+          if (q) {
+            setDraft((d) => d.slice(0, q.start) + value + d.slice(q.end));
+          } else {
+            setDraft((d) => {
+              const needsSpace = d.length > 0 && !/\s$/.test(d);
+              return `${d}${needsSpace ? " " : ""}${value}`;
+            });
+          }
+          return;
+        }
+        // toggleSetting / openPanel: strip the /query, then perform the action.
+        if (q) {
+          setDraft((d) => d.slice(0, q.start) + d.slice(q.end));
+        }
+        if (item.customActionType === "toggleSetting") {
+          toggleCustomSetting(value);
+          return;
+        }
+        if (item.customActionType === "openPanel") {
+          switch (value) {
+            case "automations":
+              navigateAutomations();
+              return;
+            case "settings":
+              navigateSettings("general");
+              return;
+            case "extensions":
+              navigateSettings("extensions");
+              return;
+            case "commands":
+              setShowCustomCommandsModal(true);
+              return;
+            default:
+              return;
+          }
+        }
+        return;
+      }
+
       // Remove the /query from draft for mode/action
       if (q) {
         setDraft((d) => d.slice(0, q.start) + d.slice(q.end));
@@ -5297,6 +5406,9 @@ export default function App() {
           case "settings":
             navigateSettings("general");
             return;
+          case "manageCommands":
+            setShowCustomCommandsModal(true);
+            return;
           case "yolo": {
             const next: PermissionPolicyId =
               policy === "always_approve" ? "ask" : "always_approve";
@@ -5320,6 +5432,7 @@ export default function App() {
       openMcpModal,
       applyPermissionPolicy,
       showToast,
+      toggleCustomSetting,
     ],
   );
 
@@ -9572,6 +9685,14 @@ export default function App() {
           projects.find((p) => p.id === projectId)?.name ?? null
         }
         loadMessages={loadSessionDiffMessages}
+      />
+      <CustomCommandsModal
+        open={showCustomCommandsModal}
+        t={(k, vars) =>
+          tr(k as Parameters<typeof tr>[0], vars as Record<string, string | number>)
+        }
+        onClose={() => setShowCustomCommandsModal(false)}
+        onChanged={() => setCustomCommandsReloadToken((n) => n + 1)}
       />
       {rewindTimeline && (
         <div

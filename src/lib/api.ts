@@ -2580,6 +2580,54 @@ export async function customPromptDelete(id: string): Promise<void> {
   return invoke<void>("custom_prompt_delete", { id });
 }
 
+// ─── Custom slash commands (user-defined, safe actions only) ───────────────
+//
+// SAFE actions only — `insertText` / `toggleSetting` / `openPanel`.
+// Arbitrary shell execution is intentionally not supported (see plan 014).
+
+export type CustomCommandActionType =
+  | "insertText"
+  | "toggleSetting"
+  | "openPanel";
+
+export interface CustomCommandDto {
+  id: string;
+  name: string;
+  description: string;
+  actionType: CustomCommandActionType;
+  actionValue: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomCommandInputDto {
+  name: string;
+  description: string;
+  actionType: CustomCommandActionType;
+  actionValue: string;
+}
+
+export async function customCommandsList(): Promise<CustomCommandDto[]> {
+  return invoke<CustomCommandDto[]>("custom_commands_list");
+}
+
+export async function customCommandCreate(
+  input: CustomCommandInputDto,
+): Promise<CustomCommandDto> {
+  return invoke<CustomCommandDto>("custom_command_create", { input });
+}
+
+export async function customCommandUpdate(
+  id: string,
+  input: CustomCommandInputDto,
+): Promise<CustomCommandDto> {
+  return invoke<CustomCommandDto>("custom_command_update", { id, input });
+}
+
+export async function customCommandDelete(id: string): Promise<void> {
+  return invoke<void>("custom_command_delete", { id });
+}
+
 // ─── Spaces ────────────────────────────────────────────────────────────────
 
 export interface SpaceDto {

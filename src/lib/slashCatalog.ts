@@ -4,7 +4,10 @@
  * or display strings for dynamic skills.
  */
 
-export type SlashKind = "mode" | "skill" | "action" | "prompt";
+export type SlashKind = "mode" | "skill" | "action" | "prompt" | "custom";
+
+/** Safe actions a user-defined slash command can perform. RunShell is out of scope. */
+export type CustomCommandActionType = "insertText" | "toggleSetting" | "openPanel";
 
 export type SlashItem = {
   id: string;
@@ -17,6 +20,18 @@ export type SlashItem = {
   source?: string;
   action?: string;
   mode?: "goal" | "plan";
+  /** `kind: "custom"` only — safe action to run when this item is selected. */
+  customActionType?: CustomCommandActionType;
+  customActionValue?: string;
+};
+
+/** Minimal shape needed to project a persisted custom command into a `SlashItem`. */
+export type CustomCommandInfo = {
+  id: string;
+  name: string;
+  description: string;
+  actionType: CustomCommandActionType;
+  actionValue: string;
 };
 
 export type SkillInfo = {
@@ -102,6 +117,14 @@ export function builtinSlashItems(): SlashItem[] {
       action: "settings",
     },
     {
+      id: "commands",
+      kind: "action",
+      name: "commands",
+      titleKey: "slash.commands",
+      descriptionKey: "slash.commandsDesc",
+      action: "manageCommands",
+    },
+    {
       id: "yolo",
       kind: "action",
       name: "yolo",
@@ -130,6 +153,29 @@ export function skillsToSlashItems(skills: SkillInfo[]): SlashItem[] {
       displayTitle: name,
       displayDescription: s.description,
       source: s.source,
+    });
+  }
+  return out;
+}
+
+/** Map user-defined custom commands to slash items (dedupes by name). */
+export function customCommandsToSlashItems(
+  commands: CustomCommandInfo[],
+): SlashItem[] {
+  const seen = new Set<string>();
+  const out: SlashItem[] = [];
+  for (const c of commands) {
+    const name = (c.name ?? "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push({
+      id: `custom:${c.id}`,
+      kind: "custom" as const,
+      name,
+      displayTitle: name,
+      displayDescription: c.description,
+      customActionType: c.actionType,
+      customActionValue: c.actionValue,
     });
   }
   return out;
@@ -174,13 +220,19 @@ export function filterSlashItems(
   });
 }
 
-/** Full catalog split into built-in commands and skill items. */
-export function buildSlashCatalog(skills: SkillInfo[]): {
+/** Full catalog split into built-in + custom commands, and skill items. */
+export function buildSlashCatalog(
+  skills: SkillInfo[],
+  customCommands: CustomCommandInfo[] = [],
+): {
   commands: SlashItem[];
   skills: SlashItem[];
 } {
   return {
-    commands: builtinSlashItems(),
+    commands: [
+      ...builtinSlashItems(),
+      ...customCommandsToSlashItems(customCommands),
+    ],
     skills: skillsToSlashItems(skills),
   };
 }

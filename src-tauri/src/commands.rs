@@ -1847,6 +1847,33 @@ pub async fn custom_prompt_delete(id: String) -> Result<(), String> {
     store::delete_custom_prompt(&id)
 }
 
+// ─── Custom slash commands (user-defined, safe actions only) ──────────────
+
+#[tauri::command]
+pub async fn custom_commands_list() -> Result<Vec<store::CustomCommand>, String> {
+    Ok(store::load_custom_commands())
+}
+
+#[tauri::command]
+pub async fn custom_command_create(
+    input: store::CustomCommandInput,
+) -> Result<store::CustomCommand, String> {
+    store::create_custom_command(input)
+}
+
+#[tauri::command]
+pub async fn custom_command_update(
+    id: String,
+    input: store::CustomCommandInput,
+) -> Result<store::CustomCommand, String> {
+    store::update_custom_command(&id, input)
+}
+
+#[tauri::command]
+pub async fn custom_command_delete(id: String) -> Result<(), String> {
+    store::delete_custom_command(&id)
+}
+
 // ─── Spaces ────────────────────────────────────────────────────────────────
 
 #[tauri::command]

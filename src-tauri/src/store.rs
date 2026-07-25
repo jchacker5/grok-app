@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::paths::{
-    automations_file, custom_prompts_file, ensure_app_dirs, presets_file, projects_file,
-    session_dir, sessions_index_file, settings_file, spaces_file,
+    automations_file, custom_commands_file, custom_prompts_file, ensure_app_dirs, presets_file,
+    projects_file, session_dir, sessions_index_file, settings_file, spaces_file,
 };
 
 /// Where composer model / effort / mode / permission choices are remembered.
@@ -1567,6 +1567,133 @@ pub fn delete_custom_prompt(id: &str) -> Result<(), String> {
         return Err("custom prompt not found".into());
     }
     save_custom_prompts(&list)
+}
+
+// ─── Custom slash commands (user-defined, safe actions only) ──────────────
+//
+// Intentionally SAFE actions only: `insertText` / `toggleSetting` / `openPanel`.
+// Arbitrary shell execution (`RunShell`) is out of scope — see plan 014 —
+// and must not be added here without a separate, explicitly-approved design
+// (confirmation gate, timeout, no persisted output).
+
+/// User-defined slash command, invoked as `/name` from the slash palette.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomCommand {
+    pub id: String,
+    /// Slug matching `^[a-zA-Z0-9_]+$` — used verbatim as `/name`.
+    pub name: String,
+    pub description: String,
+    /// `insertText` | `toggleSetting` | `openPanel`
+    pub action_type: String,
+    /// Payload for `action_type`: literal text, a whitelisted setting key,
+    /// or a whitelisted panel id. Interpreted host-side (UI), not executed here.
+    pub action_value: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomCommandInput {
+    pub name: String,
+    pub description: String,
+    pub action_type: String,
+    pub action_value: String,
+}
+
+const CUSTOM_COMMAND_ACTION_TYPES: [&str; 3] = ["insertText", "toggleSetting", "openPanel"];
+
+fn valid_custom_command_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn validate_custom_command_input(
+    input: &CustomCommandInput,
+) -> Result<(String, String, String, String), String> {
+    let name = input.name.trim().to_string();
+    if !valid_custom_command_name(&name) {
+        return Err("name must match ^[a-zA-Z0-9_]+$ (letters, numbers, underscore)".into());
+    }
+    let action_type = input.action_type.trim().to_string();
+    if !CUSTOM_COMMAND_ACTION_TYPES.contains(&action_type.as_str()) {
+        return Err(format!("unsupported action type: {action_type}"));
+    }
+    let action_value = input.action_value.trim().to_string();
+    if action_value.is_empty() {
+        return Err("action value empty".into());
+    }
+    let description = input.description.trim().to_string();
+    Ok((name, description, action_type, action_value))
+}
+
+pub fn load_custom_commands() -> Vec<CustomCommand> {
+    let _ = ensure_app_dirs();
+    let mut list: Vec<CustomCommand> = read_json(&custom_commands_file());
+    list.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    list
+}
+
+pub fn save_custom_commands(list: &[CustomCommand]) -> Result<(), String> {
+    let _ = ensure_app_dirs();
+    write_json(&custom_commands_file(), &list)
+}
+
+pub fn create_custom_command(input: CustomCommandInput) -> Result<CustomCommand, String> {
+    let (name, description, action_type, action_value) = validate_custom_command_input(&input)?;
+    let mut list = load_custom_commands();
+    if list.iter().any(|c| c.name.eq_ignore_ascii_case(&name)) {
+        return Err("a command named this already exists".into());
+    }
+    let now = Utc::now();
+    let cmd = CustomCommand {
+        id: Uuid::new_v4().to_string(),
+        name,
+        description,
+        action_type,
+        action_value,
+        created_at: now,
+        updated_at: now,
+    };
+    list.push(cmd.clone());
+    save_custom_commands(&list)?;
+    Ok(cmd)
+}
+
+pub fn update_custom_command(id: &str, input: CustomCommandInput) -> Result<CustomCommand, String> {
+    let (name, description, action_type, action_value) = validate_custom_command_input(&input)?;
+    let mut list = load_custom_commands();
+    if list
+        .iter()
+        .any(|c| c.id != id && c.name.eq_ignore_ascii_case(&name))
+    {
+        return Err("a command named this already exists".into());
+    }
+    let cmd = list
+        .iter_mut()
+        .find(|c| c.id == id)
+        .ok_or_else(|| "command not found".to_string())?;
+    cmd.name = name;
+    cmd.description = description;
+    cmd.action_type = action_type;
+    cmd.action_value = action_value;
+    cmd.updated_at = Utc::now();
+    let clone = cmd.clone();
+    save_custom_commands(&list)?;
+    Ok(clone)
+}
+
+pub fn delete_custom_command(id: &str) -> Result<(), String> {
+    let mut list = load_custom_commands();
+    let before = list.len();
+    list.retain(|c| c.id != id);
+    if list.len() == before {
+        return Err("command not found".into());
+    }
+    save_custom_commands(&list)
 }
 
 /// Load app secrets (API keys). Backend-agnostic: OS keychain preferred, file fallback.
