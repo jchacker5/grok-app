@@ -35,6 +35,9 @@ import {
   IconFirstAidKit as TbFirstAidKit,
   IconFolder as TbFolder,
   IconFolderPlus as TbFolderPlus,
+  IconGitCommit as TbGitCommit,
+  IconGitPullRequest as TbGitPullRequest,
+  IconSquareCheck as TbSquareCheck,
   IconHandStop as TbHandStop,
   IconHeadset as TbHeadset,
   IconInfoCircle as TbInfoCircle,
@@ -288,3 +291,7 @@ export const IconPuzzle = wrap(TbPuzzle);
 export const IconTunnel = wrap(TbNetwork);
 /** WSL distro picker (Settings → Runtime, Windows only). */
 export const IconWindows = wrap(TbBrandWindows);
+export const IconGitBranch = wrap(TbGitBranch);
+export const IconGitCommit = wrap(TbGitCommit);
+export const IconGitPullRequest = wrap(TbGitPullRequest);
+export const IconCheckSquare = wrap(TbSquareCheck);

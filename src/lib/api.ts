@@ -472,6 +472,101 @@ export async function gitShowFile(projectPath: string, path: string) {
   return invoke<GitShowFileResult>("git_show_file", { projectPath, path });
 }
 
+// ── Git mutating operations (stage / commit / push / PR) ───────────────────
+// Unlike the read-only helpers above, these throw / reject on failure — the
+// Changes panel toolbar + CommitDialog surface the error directly.
+
+export interface GitStagedDiffResult {
+  available: boolean;
+  diff?: string | null;
+  reason?: string | null;
+}
+
+/** Diff of staged (index vs HEAD) changes across the whole repo. */
+export async function gitStagedDiff(projectPath: string) {
+  return invoke<GitStagedDiffResult>("git_staged_diff", { projectPath });
+}
+
+/** Stage repo-relative paths (`git add --`). */
+export async function gitStagePaths(projectPath: string, paths: string[]) {
+  return invoke<void>("git_stage_paths", { projectPath, paths });
+}
+
+/** Unstage repo-relative paths (`git restore --staged --`). */
+export async function gitUnstagePaths(projectPath: string, paths: string[]) {
+  return invoke<void>("git_unstage_paths", { projectPath, paths });
+}
+
+export interface GitCommitResult {
+  sha: string;
+  subject: string;
+}
+
+/** Commit currently staged changes. Rejects with a clear message when nothing is staged. */
+export async function gitCommit(projectPath: string, message: string) {
+  return invoke<GitCommitResult>("git_commit", { projectPath, message });
+}
+
+export interface GitPushResult {
+  branch: string;
+  remote: string;
+  setUpstream: boolean;
+}
+
+/** Push the current branch (optionally `-u origin <branch>` on first push). */
+export async function gitPush(projectPath: string, setUpstream = false) {
+  return invoke<GitPushResult>("git_push", { projectPath, setUpstream });
+}
+
+export interface GhAvailability {
+  available: boolean;
+  version?: string | null;
+}
+
+/** Probe for the GitHub CLI (`gh`) on PATH. */
+export async function gitGhCliAvailable() {
+  return invoke<GhAvailability>("git_gh_cli_available");
+}
+
+export interface GitPrOpenResult {
+  /** "gh" when the GitHub CLI opened the create-PR page itself, "browser" for the compare-URL fallback. */
+  method: "gh" | "browser" | string;
+  url?: string | null;
+}
+
+/** Open a "create PR" page for the current branch (gh CLI when available, else browser compare URL). */
+export async function gitPrOpen(
+  projectPath: string,
+  title: string,
+  body: string,
+  base?: string | null,
+) {
+  return invoke<GitPrOpenResult>("git_pr_open", {
+    projectPath,
+    title,
+    body,
+    base: base ?? null,
+  });
+}
+
+/**
+ * Silent, ephemeral AI text draft (e.g. a commit message). Runs a single
+ * prompt turn in a brand-new throwaway agent process — never touches the
+ * user's live chat session or its transcript. `modelId` omitted uses the
+ * agent's own default.
+ */
+export async function acpEphemeralPrompt(
+  projectPath: string,
+  prompt: string,
+  modelId?: string | null,
+) {
+  return invoke<string>("acp_ephemeral_prompt", {
+    projectPath,
+    modelId: modelId ?? null,
+    prompt,
+  });
+}
+
 export interface FsEntry {
   name: string;
   relativePath: string;

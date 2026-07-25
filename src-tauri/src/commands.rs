@@ -4753,6 +4753,658 @@ detached
     }
 }
 
+// ── Git mutating operations (stage / commit / push / PR) ───────────────────
+// Unlike the read-only helpers above, these are NOT soft-fail: callers (the
+// Changes panel toolbar + CommitDialog) surface `Err` directly to the user.
+
+/// Current branch name, or `None` when detached / unborn HEAD.
+fn git_current_branch(project: &str) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .args(["-C", project, "rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let b = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if b.is_empty() || b == "HEAD" {
+        None
+    } else {
+        Some(b)
+    }
+}
+
+fn clean_git_paths(paths: Vec<String>) -> Vec<String> {
+    paths
+        .into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+/// Diff of staged (index vs HEAD) changes across the whole repo. Feeds the
+/// AI commit-message draft prompt and (optionally) a future "staged diff"
+/// preview; soft-fails like the other read-only git helpers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStagedDiffResult {
+    pub available: bool,
+    pub diff: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[tauri::command]
+pub async fn git_staged_diff(project_path: String) -> Result<GitStagedDiffResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Ok(GitStagedDiffResult {
+            available: false,
+            diff: None,
+            reason: Some("empty path".into()),
+        });
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Ok(GitStagedDiffResult {
+            available: false,
+            diff: None,
+            reason: Some("project not a directory".into()),
+        });
+    }
+    if let Err(reason) = git_probe_work_tree(&project) {
+        return Ok(GitStagedDiffResult {
+            available: false,
+            diff: None,
+            reason: Some(reason),
+        });
+    }
+    let out = std::process::Command::new("git")
+        .args([
+            "-C",
+            &project,
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "--cached",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Ok(GitStagedDiffResult {
+            available: false,
+            diff: None,
+            reason: Some(if err.is_empty() {
+                "git diff --cached failed".into()
+            } else {
+                err.chars().take(200).collect()
+            }),
+        });
+    }
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    Ok(GitStagedDiffResult {
+        available: true,
+        diff: Some(text.chars().take(400_000).collect()),
+        reason: None,
+    })
+}
+
+/// Stage the given repo-relative paths (`git add --`).
+#[tauri::command]
+pub async fn git_stage_paths(project_path: String, paths: Vec<String>) -> Result<(), String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty project path".into());
+    }
+    git_probe_work_tree(&project)?;
+    let paths = clean_git_paths(paths);
+    if paths.is_empty() {
+        return Err("no paths given".into());
+    }
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["-C", &project, "add", "--"]).args(&paths);
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if err.is_empty() {
+            "git add failed".into()
+        } else {
+            err.chars().take(400).collect()
+        });
+    }
+    Ok(())
+}
+
+/// Unstage the given repo-relative paths (`git restore --staged --`).
+#[tauri::command]
+pub async fn git_unstage_paths(project_path: String, paths: Vec<String>) -> Result<(), String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty project path".into());
+    }
+    git_probe_work_tree(&project)?;
+    let paths = clean_git_paths(paths);
+    if paths.is_empty() {
+        return Err("no paths given".into());
+    }
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["-C", &project, "restore", "--staged", "--"])
+        .args(&paths);
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if err.is_empty() {
+            "git restore --staged failed".into()
+        } else {
+            err.chars().take(400).collect()
+        });
+    }
+    Ok(())
+}
+
+/// Result of a successful commit (Commit / Commit & Push actions).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitResult {
+    pub sha: String,
+    pub subject: String,
+}
+
+/// Commit currently staged changes. Errs clearly when nothing is staged
+/// rather than surfacing git's own (less obvious) "nothing to commit" text.
+#[tauri::command]
+pub async fn git_commit(project_path: String, message: String) -> Result<GitCommitResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty project path".into());
+    }
+    git_probe_work_tree(&project)?;
+    let message = message.trim();
+    if message.is_empty() {
+        return Err("commit message is empty".into());
+    }
+    let staged = std::process::Command::new("git")
+        .args(["-C", &project, "diff", "--cached", "--name-only"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if String::from_utf8_lossy(&staged.stdout).trim().is_empty() {
+        return Err("nothing staged — stage at least one file before committing".into());
+    }
+    let out = std::process::Command::new("git")
+        .args(["-C", &project, "commit", "-m", message])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let detail = if !err.is_empty() { err } else { stdout };
+        return Err(if detail.is_empty() {
+            "git commit failed".into()
+        } else {
+            detail.chars().take(400).collect()
+        });
+    }
+    let sha_out = std::process::Command::new("git")
+        .args(["-C", &project, "rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let sha = String::from_utf8_lossy(&sha_out.stdout).trim().to_string();
+    let subject_out = std::process::Command::new("git")
+        .args(["-C", &project, "log", "-1", "--pretty=%s"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let subject = String::from_utf8_lossy(&subject_out.stdout).trim().to_string();
+    Ok(GitCommitResult { sha, subject })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPushResult {
+    pub branch: String,
+    pub remote: String,
+    pub set_upstream: bool,
+}
+
+/// Push the current branch. When no tracking remote exists, either the
+/// caller opts into `set_upstream` (→ `git push -u origin <branch>`) or we
+/// return a clear, actionable error instead of a bare git failure.
+#[tauri::command]
+pub async fn git_push(project_path: String, set_upstream: bool) -> Result<GitPushResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty project path".into());
+    }
+    git_probe_work_tree(&project)?;
+    let branch = git_current_branch(&project)
+        .ok_or_else(|| "not on a branch (detached HEAD)".to_string())?;
+
+    let has_upstream = std::process::Command::new("git")
+        .args([
+            "-C",
+            &project,
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{u}",
+        ])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !has_upstream && !set_upstream {
+        return Err(
+            "no upstream remote configured for this branch — enable \"set upstream\" and retry"
+                .into(),
+        );
+    }
+
+    let want_set_upstream = set_upstream || !has_upstream;
+    if want_set_upstream {
+        let has_origin = std::process::Command::new("git")
+            .args(["-C", &project, "remote", "get-url", "origin"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !has_origin {
+            return Err("no \"origin\" remote configured".into());
+        }
+    }
+
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["-C", &project, "push"]);
+    if want_set_upstream {
+        cmd.args(["-u", "origin", &branch]);
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if err.is_empty() {
+            "git push failed".into()
+        } else {
+            err.chars().take(400).collect()
+        });
+    }
+    Ok(GitPushResult {
+        branch,
+        remote: "origin".into(),
+        set_upstream: want_set_upstream,
+    })
+}
+
+/// Probe for the GitHub CLI (`gh`) on PATH — used to prefer `gh pr create
+/// --web` over the manual browser-compare-URL fallback.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GhAvailability {
+    pub available: bool,
+    pub version: Option<String>,
+}
+
+#[tauri::command]
+pub async fn git_gh_cli_available() -> Result<GhAvailability, String> {
+    match std::process::Command::new("gh").arg("--version").output() {
+        Ok(o) if o.status.success() => {
+            let text = String::from_utf8_lossy(&o.stdout).to_string();
+            let version = text.lines().next().map(|l| l.trim().to_string());
+            Ok(GhAvailability {
+                available: true,
+                version,
+            })
+        }
+        _ => Ok(GhAvailability {
+            available: false,
+            version: None,
+        }),
+    }
+}
+
+/// Normalize a git remote URL (`git@host:owner/repo.git`,
+/// `https://host/owner/repo(.git)`, `ssh://git@host/owner/repo.git`) into a
+/// GitHub-style compare URL. Pure + unit-tested. GitHub only for v1 —
+/// GitLab/Bitbucket compare-URL formats are explicitly out of scope.
+fn normalize_remote_to_compare_url(
+    remote_url: &str,
+    base: Option<&str>,
+    head: &str,
+) -> Option<String> {
+    let s = remote_url.trim();
+    let head = head.trim();
+    if s.is_empty() || head.is_empty() {
+        return None;
+    }
+
+    let (host, owner_repo): (String, String) = if let Some(rest) = s.strip_prefix("git@") {
+        // git@host:owner/repo(.git)
+        let mut parts = rest.splitn(2, ':');
+        let host = parts.next()?.to_string();
+        let path = parts.next()?.to_string();
+        (host, path)
+    } else if let Some(rest) = s.strip_prefix("ssh://git@") {
+        // ssh://git@host[:port]/owner/repo(.git)
+        let path_start = rest.find('/')?;
+        let host_part = &rest[..path_start];
+        let host = host_part.split(':').next().unwrap_or(host_part).to_string();
+        let path = rest[path_start + 1..].to_string();
+        (host, path)
+    } else if let Some(rest) = s.strip_prefix("https://") {
+        let path_start = rest.find('/')?;
+        (rest[..path_start].to_string(), rest[path_start + 1..].to_string())
+    } else if let Some(rest) = s.strip_prefix("http://") {
+        let path_start = rest.find('/')?;
+        (rest[..path_start].to_string(), rest[path_start + 1..].to_string())
+    } else {
+        return None;
+    };
+
+    let owner_repo = owner_repo.trim_end_matches(".git").trim_matches('/');
+    if owner_repo.is_empty() || host.is_empty() {
+        return None;
+    }
+
+    let compare = match base.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(b) => format!("{b}...{head}"),
+        None => head.to_string(),
+    };
+    Some(format!("https://{host}/{owner_repo}/compare/{compare}?expand=1"))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPrOpenResult {
+    /// "gh" when the GitHub CLI opened the create-PR page itself, "browser"
+    /// when we normalized the remote URL and opened it via `open_external_url`.
+    pub method: String,
+    pub url: Option<String>,
+}
+
+/// Open a "create PR" page for the current branch. Prefers `gh pr create
+/// --web` (lets `gh` open the browser itself — no URL parsing needed);
+/// falls back to normalizing the `origin` remote into a GitHub compare URL.
+#[tauri::command]
+pub async fn git_pr_open(
+    project_path: String,
+    title: String,
+    body: String,
+    base: Option<String>,
+) -> Result<GitPrOpenResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty project path".into());
+    }
+    git_probe_work_tree(&project)?;
+    let head = git_current_branch(&project)
+        .ok_or_else(|| "not on a branch (detached HEAD)".to_string())?;
+
+    let gh_ok = std::process::Command::new("gh")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if gh_ok {
+        let mut cmd = std::process::Command::new("gh");
+        cmd.current_dir(&project);
+        cmd.args(["pr", "create", "--title", &title, "--body", &body, "--web"]);
+        if let Some(b) = base.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+            cmd.args(["--base", b]);
+        }
+        let out = cmd.output().map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(if err.is_empty() {
+                "gh pr create failed".into()
+            } else {
+                err.chars().take(400).collect()
+            });
+        }
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let url = stdout
+            .lines()
+            .rev()
+            .find(|l| l.trim_start().starts_with("http"))
+            .map(|s| s.trim().to_string());
+        return Ok(GitPrOpenResult {
+            method: "gh".into(),
+            url,
+        });
+    }
+
+    // Fallback: normalize `origin` remote → GitHub compare URL, open via the
+    // existing open-external-url command (no new "open browser" mechanism).
+    let remote_out = std::process::Command::new("git")
+        .args(["-C", &project, "remote", "get-url", "origin"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !remote_out.status.success() {
+        return Err("gh not found and no \"origin\" remote configured".into());
+    }
+    let remote_url = String::from_utf8_lossy(&remote_out.stdout).trim().to_string();
+    let url = normalize_remote_to_compare_url(&remote_url, base.as_deref(), &head)
+        .ok_or_else(|| format!("could not parse \"origin\" remote URL: {remote_url}"))?;
+    open_external_url(url.clone()).await?;
+    Ok(GitPrOpenResult {
+        method: "browser".into(),
+        url: Some(url),
+    })
+}
+
+/// Silent, ephemeral AI commit-message draft. Runs a single prompt turn in a
+/// brand-new throwaway agent process (`ephemeral_acp`) — never touches the
+/// user's live chat session or its transcript.
+#[tauri::command]
+pub async fn acp_ephemeral_prompt(
+    project_path: String,
+    model_id: Option<String>,
+    prompt: String,
+) -> Result<String, String> {
+    crate::ephemeral_acp::run_ephemeral_prompt(&project_path, model_id.as_deref(), &prompt).await
+}
+
+#[cfg(test)]
+mod git_mutation_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// Throwaway `git init`-ed repo with one initial commit, cleaned up on drop.
+    struct TempRepo {
+        path: PathBuf,
+    }
+
+    impl TempRepo {
+        fn new(name: &str) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let path = std::env::temp_dir().join(format!(
+                "grok-app-git-test-{name}-{}-{nanos}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&path).expect("mkdir temp repo");
+            let repo = Self { path };
+            repo.run(&["init", "-q"]);
+            repo.run(&["config", "user.email", "test@example.com"]);
+            repo.run(&["config", "user.name", "Test"]);
+            std::fs::write(repo.path.join("README.md"), "hello\n").unwrap();
+            repo.run(&["add", "."]);
+            repo.run(&["commit", "-q", "-m", "initial"]);
+            repo
+        }
+
+        fn run(&self, args: &[&str]) {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&self.path)
+                .output()
+                .expect("git command");
+            assert!(
+                out.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+
+        fn path_str(&self) -> String {
+            self.path.to_string_lossy().into_owned()
+        }
+    }
+
+    impl Drop for TempRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[tokio::test]
+    async fn stage_then_commit_round_trip() {
+        let repo = TempRepo::new("stage-commit");
+        std::fs::write(repo.path.join("a.txt"), "one\n").unwrap();
+        git_stage_paths(repo.path_str(), vec!["a.txt".into()])
+            .await
+            .expect("stage");
+        let commit = git_commit(repo.path_str(), "add a.txt".into())
+            .await
+            .expect("commit");
+        assert!(!commit.sha.is_empty());
+        assert_eq!(commit.subject, "add a.txt");
+    }
+
+    #[tokio::test]
+    async fn commit_without_staged_changes_errors() {
+        let repo = TempRepo::new("commit-empty");
+        let err = git_commit(repo.path_str(), "nothing to commit".into())
+            .await
+            .unwrap_err();
+        assert!(err.contains("nothing staged"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn commit_with_blank_message_errors() {
+        let repo = TempRepo::new("commit-blank-msg");
+        std::fs::write(repo.path.join("a.txt"), "one\n").unwrap();
+        git_stage_paths(repo.path_str(), vec!["a.txt".into()])
+            .await
+            .expect("stage");
+        let err = git_commit(repo.path_str(), "   ".into()).await.unwrap_err();
+        assert!(err.contains("empty"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn unstage_removes_from_index() {
+        let repo = TempRepo::new("unstage");
+        std::fs::write(repo.path.join("b.txt"), "b\n").unwrap();
+        git_stage_paths(repo.path_str(), vec!["b.txt".into()])
+            .await
+            .expect("stage");
+        git_unstage_paths(repo.path_str(), vec!["b.txt".into()])
+            .await
+            .expect("unstage");
+        let err = git_commit(repo.path_str(), "should fail".into())
+            .await
+            .unwrap_err();
+        assert!(err.contains("nothing staged"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn stage_with_no_paths_errors() {
+        let repo = TempRepo::new("stage-empty-paths");
+        let err = git_stage_paths(repo.path_str(), vec![]).await.unwrap_err();
+        assert_eq!(err, "no paths given");
+    }
+
+    #[tokio::test]
+    async fn push_without_upstream_errors_clearly() {
+        let repo = TempRepo::new("push-no-upstream");
+        let err = git_push(repo.path_str(), false).await.unwrap_err();
+        assert!(err.contains("upstream"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn push_with_set_upstream_but_no_origin_errors_clearly() {
+        let repo = TempRepo::new("push-set-upstream-no-origin");
+        let err = git_push(repo.path_str(), true).await.unwrap_err();
+        assert!(err.contains("origin"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn gh_cli_probe_is_well_formed() {
+        let res = git_gh_cli_available().await.expect("probe never hard-fails");
+        if res.available {
+            assert!(res.version.is_some());
+        } else {
+            assert!(res.version.is_none());
+        }
+    }
+
+    #[test]
+    fn compare_url_from_ssh_shorthand() {
+        let url = normalize_remote_to_compare_url(
+            "git@github.com:owner/repo.git",
+            Some("main"),
+            "feature/x",
+        )
+        .expect("url");
+        assert_eq!(
+            url,
+            "https://github.com/owner/repo/compare/main...feature/x?expand=1"
+        );
+    }
+
+    #[test]
+    fn compare_url_from_https() {
+        let url = normalize_remote_to_compare_url(
+            "https://github.com/owner/repo.git",
+            Some("main"),
+            "feature/x",
+        )
+        .expect("url");
+        assert_eq!(
+            url,
+            "https://github.com/owner/repo/compare/main...feature/x?expand=1"
+        );
+    }
+
+    #[test]
+    fn compare_url_without_base_omits_triple_dot() {
+        let url =
+            normalize_remote_to_compare_url("https://github.com/owner/repo", None, "feature/x")
+                .expect("url");
+        assert_eq!(
+            url,
+            "https://github.com/owner/repo/compare/feature/x?expand=1"
+        );
+    }
+
+    #[test]
+    fn compare_url_ssh_protocol_form() {
+        let url = normalize_remote_to_compare_url(
+            "ssh://git@github.com/owner/repo.git",
+            Some("develop"),
+            "fix",
+        )
+        .expect("url");
+        assert_eq!(
+            url,
+            "https://github.com/owner/repo/compare/develop...fix?expand=1"
+        );
+    }
+
+    #[test]
+    fn compare_url_rejects_unrecognized_scheme() {
+        assert!(normalize_remote_to_compare_url("not-a-url", None, "head").is_none());
+    }
+
+    #[test]
+    fn compare_url_rejects_empty_head() {
+        assert!(normalize_remote_to_compare_url(
+            "https://github.com/owner/repo.git",
+            None,
+            ""
+        )
+        .is_none());
+    }
+}
+
 /// Reveal a path in the system file manager (Finder / Explorer).
 #[tauri::command]
 pub async fn path_reveal(path: String) -> Result<(), String> {

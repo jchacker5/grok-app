@@ -23,6 +23,7 @@ import { FileMediaPlayer } from "@/components/FileMediaPlayer";
 import { ImageUi } from "@/components/ImageUi";
 import {
   IconActivity,
+  IconCheckSquare,
   IconChevronDown,
   IconChevronRight,
   IconClose,
@@ -32,11 +33,15 @@ import {
   IconFileDiff,
   IconFolder,
   IconFiles,
+  IconGitCommit,
+  IconGitPullRequest,
   IconListTree,
   IconPlan,
   IconRefresh,
   IconSearch,
 } from "@/components/icons";
+import { CommitDialog } from "@/components/CommitDialog";
+import { DEFAULT_MODEL_ID, type ModelOption } from "@/lib/grokCatalog";
 import { PlanReviewPanel } from "@/components/PlanReviewPanel";
 import type { PlanReviewState } from "@/lib/planBody";
 import { OfficeDocumentPreview } from "@/components/OfficeDocumentPreview";
@@ -298,6 +303,22 @@ export function ResourceViewer({
   const [workspaceReason, setWorkspaceReason] = useState<string | null>(null);
   const [workspaceBranch, setWorkspaceBranch] = useState<string | null>(null);
   const [pathCopyFlash, setPathCopyFlash] = useState(false);
+  /** Git-index-backed staged paths (Changes → Workspace stage toolbar). */
+  const [stagedPaths, setStagedPaths] = useState<Set<string>>(new Set());
+  const [stageBusyPaths, setStageBusyPaths] = useState<Set<string>>(new Set());
+  const [stageOpBusy, setStageOpBusy] = useState(false);
+  const [stageError, setStageError] = useState<string | null>(null);
+  const [commitDialogOpen, setCommitDialogOpen] = useState(false);
+  const [prBusy, setPrBusy] = useState(false);
+  const [prError, setPrError] = useState<string | null>(null);
+  const [prResult, setPrResult] = useState<{
+    method: string;
+    url?: string | null;
+  } | null>(null);
+  const [defaultModelId, setDefaultModelId] = useState<string>(DEFAULT_MODEL_ID);
+  const [catalogModels, setCatalogModels] = useState<ModelOption[] | undefined>(
+    undefined,
+  );
   /** Open-with target for the location button (finder / editor id). */
   const [openWithTarget, setOpenWithTarget] = useState(() => {
     try {
@@ -488,6 +509,146 @@ export function ResourceViewer({
   useEffect(() => {
     void refreshWorkspaceStatus();
   }, [projectPath, refreshWorkspaceStatus]);
+
+  // Re-derive staged paths from git's own index status on every workspace
+  // refresh — the authoritative source of truth (toggleStage/stageAll below
+  // optimistically nudge this set, but a refresh always reconciles it).
+  useEffect(() => {
+    setStagedPaths(
+      new Set(
+        workspaceFiles
+          .filter((w) => w.indexStatus !== " " && w.indexStatus !== "?")
+          .map((w) => w.path),
+      ),
+    );
+  }, [workspaceFiles]);
+
+  // App's current default model + live catalog, for the CommitDialog picker
+  // (Automation.modelId override precedent: default = app's current model).
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    let cancelled = false;
+    void api
+      .composerPrefsResolve()
+      .then((p) => {
+        if (!cancelled && p?.modelId) setDefaultModelId(p.modelId);
+      })
+      .catch(() => {});
+    void api
+      .modelsListAvailable()
+      .then((r) => {
+        if (!cancelled && r?.models?.length) {
+          setCatalogModels(
+            r.models.map((m) => ({
+              id: m.id,
+              label: m.label,
+              isDefault: m.isDefault,
+              source: m.source,
+            })),
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleStage = useCallback(
+    async (w: WorkspaceGitFile) => {
+      if (!projectPath) return;
+      const path = w.path;
+      const currentlyStaged = stagedPaths.has(path);
+      setStageBusyPaths((prev) => new Set(prev).add(path));
+      setStageError(null);
+      setStagedPaths((prev) => {
+        const next = new Set(prev);
+        if (currentlyStaged) next.delete(path);
+        else next.add(path);
+        return next;
+      });
+      try {
+        if (currentlyStaged) {
+          await api.gitUnstagePaths(projectPath, [path]);
+        } else {
+          await api.gitStagePaths(projectPath, [path]);
+        }
+        await refreshWorkspaceStatus();
+      } catch (e) {
+        setStagedPaths((prev) => {
+          const next = new Set(prev);
+          if (currentlyStaged) next.add(path);
+          else next.delete(path);
+          return next;
+        });
+        setStageError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setStageBusyPaths((prev) => {
+          const next = new Set(prev);
+          next.delete(path);
+          return next;
+        });
+      }
+    },
+    [projectPath, stagedPaths, refreshWorkspaceStatus],
+  );
+
+  const stageAll = useCallback(async () => {
+    if (!projectPath || workspaceFiles.length === 0) return;
+    setStageOpBusy(true);
+    setStageError(null);
+    try {
+      await api.gitStagePaths(
+        projectPath,
+        workspaceFiles.map((w) => w.path),
+      );
+      await refreshWorkspaceStatus();
+    } catch (e) {
+      setStageError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStageOpBusy(false);
+    }
+  }, [projectPath, workspaceFiles, refreshWorkspaceStatus]);
+
+  const unstageAll = useCallback(async () => {
+    if (!projectPath || workspaceFiles.length === 0) return;
+    setStageOpBusy(true);
+    setStageError(null);
+    try {
+      await api.gitUnstagePaths(
+        projectPath,
+        workspaceFiles.map((w) => w.path),
+      );
+      await refreshWorkspaceStatus();
+    } catch (e) {
+      setStageError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStageOpBusy(false);
+    }
+  }, [projectPath, workspaceFiles, refreshWorkspaceStatus]);
+
+  const openPr = useCallback(async () => {
+    if (!projectPath) return;
+    setPrBusy(true);
+    setPrError(null);
+    setPrResult(null);
+    try {
+      const title = workspaceBranch ? workspaceBranch : "Update";
+      const res = await api.gitPrOpen(projectPath, title, "", null);
+      setPrResult(res);
+    } catch (e) {
+      setPrError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrBusy(false);
+    }
+  }, [projectPath, workspaceBranch]);
+
+  const handleCommitted = useCallback(() => {
+    setStageError(null);
+    setPrError(null);
+    setPrResult(null);
+    void refreshWorkspaceStatus();
+  }, [refreshWorkspaceStatus]);
 
   // Drop selection if neither session nor workspace still lists the path.
   useEffect(() => {
@@ -2494,6 +2655,78 @@ export function ResourceViewer({
                           </span>
                         ) : null}
                       </div>
+                      {workspaceAvailable && workspaceFiles.length > 0 ? (
+                        <div className="rp-changes-toolbar">
+                          <div className="rp-changes-toolbar__bulk">
+                            <button
+                              type="button"
+                              className="rp-changes-toolbar__btn"
+                              disabled={stageOpBusy}
+                              onClick={() => void stageAll()}
+                            >
+                              <IconCheckSquare size={13} />
+                              {tr("changes.stage.stageAll")}
+                            </button>
+                            <button
+                              type="button"
+                              className="rp-changes-toolbar__btn"
+                              disabled={stageOpBusy || stagedPaths.size === 0}
+                              onClick={() => void unstageAll()}
+                            >
+                              {tr("changes.stage.unstageAll")}
+                            </button>
+                          </div>
+                          <div className="rp-changes-toolbar__actions">
+                            <Tip label={tr("changes.commit.openButton")}>
+                              <button
+                                type="button"
+                                className="rp-changes-toolbar__btn"
+                                disabled={stagedPaths.size === 0}
+                                onClick={() => setCommitDialogOpen(true)}
+                              >
+                                <IconGitCommit size={13} />
+                                {tr("changes.commit.openButton")}
+                              </button>
+                            </Tip>
+                            <Tip
+                              label={
+                                !workspaceBranch
+                                  ? tr("changes.pr.noBranch")
+                                  : tr("changes.pr.publish")
+                              }
+                            >
+                              <button
+                                type="button"
+                                className="rp-changes-toolbar__btn"
+                                disabled={prBusy}
+                                onClick={() => void openPr()}
+                              >
+                                <IconGitPullRequest size={13} />
+                                {prBusy
+                                  ? tr("changes.pr.opening")
+                                  : tr("changes.pr.publish")}
+                              </button>
+                            </Tip>
+                          </div>
+                          {stageError ? (
+                            <div className="rp-changes-toolbar__hint rp-changes-toolbar__hint--error">
+                              {stageError}
+                            </div>
+                          ) : null}
+                          {prError ? (
+                            <div className="rp-changes-toolbar__hint rp-changes-toolbar__hint--error">
+                              {prError}
+                            </div>
+                          ) : null}
+                          {!prError && prResult ? (
+                            <div className="rp-changes-toolbar__hint">
+                              {prResult.method === "gh"
+                                ? tr("changes.pr.openedGh")
+                                : tr("changes.pr.openedBrowser")}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {workspaceLoading && workspaceFiles.length === 0 ? (
                         <div className="rp-changes-section__empty">
                           {tr("changes.workspace.loading")}
@@ -2529,6 +2762,26 @@ export function ResourceViewer({
                               }
                               role="listitem"
                             >
+                              <label
+                                className="rp-changes-row__stage"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={stagedPaths.has(w.path)}
+                                  disabled={stageBusyPaths.has(w.path)}
+                                  onChange={() => void toggleStage(w)}
+                                  aria-label={
+                                    stagedPaths.has(w.path)
+                                      ? tr("changes.stage.unstageFile", {
+                                          name: w.name,
+                                        })
+                                      : tr("changes.stage.stageFile", {
+                                          name: w.name,
+                                        })
+                                  }
+                                />
+                              </label>
                               <button
                                 type="button"
                                 className="rp-changes-row__main"
@@ -2736,6 +2989,19 @@ export function ResourceViewer({
       >
         <p className="rp-modal-copy">{tr("resources.discardBody")}</p>
       </GlassModal>
+
+      <CommitDialog
+        open={commitDialogOpen}
+        onClose={() => setCommitDialogOpen(false)}
+        locale={locale}
+        projectPath={projectPath || ""}
+        stagedPaths={workspaceFiles
+          .filter((w) => stagedPaths.has(w.path))
+          .map((w) => w.path)}
+        models={catalogModels}
+        defaultModelId={defaultModelId}
+        onCommitted={handleCommitted}
+      />
     </div>
   );
 }
