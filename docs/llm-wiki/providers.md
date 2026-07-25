@@ -32,12 +32,19 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 | `name` | Display label |
 | `baseUrl` | OpenAI-compatible root, usually ends with `/v1` |
 | `apiKey` | Required for custom relay; never returned plaintext to UI |
-| `model` | Request body model id |
+| `model` | Multi-model textarea — comma-separated model IDs that the user can select from the composer model picker |
 | `apiBackend` | Message format: `responses` (default) \| `chat_completions` \| `messages` |
 | `isDefault` | Maps to `[models].default` |
+| `binaryPath` | (Settings → General) Override the CLI binary path for this provider's agent harness |
+| `homePath` | (Settings → General) Override `GROK_HOME` directory for this provider |
+| `customModels` | (Settings → General) Additional model slugs to recognize, comma-separated |
 
 CPA / sub2api / grok-go are **not special-cased** — any compatible base URL works.
 No bundled third-party presets (e.g. yunyi) ship with the app; users add relays themselves.
+
+### Provider model field UI
+
+The **Model IDs** field is a `<textarea>` (not a single-line `<input>`) supporting multiple ID values. Users enter comma-separated model slugs (e.g. `grok-4-5, grok-4-5-vision`). A **Fetch models** button auto-populates from `GET {base}/models`. The earlier single-input "Request model" field was replaced to support multi-model providers.
 
 ## Settings UI (Account → Custom providers)
 

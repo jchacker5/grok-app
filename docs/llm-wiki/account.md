@@ -66,6 +66,7 @@ Grok Build CLI does **not** expose grok.com web history. Supported migration:
 
 ## Settings IA
 
+- **General** (`settings.nav.general`): display (timestamp format, word wrap, diff whitespace); sidebar (sort order, preview count, auto-archive); behavior (confirm delete/archive, glass opacity, auto-open task panel, add project base dir, provider update checks); per-provider overrides (binary path, config directory, custom model IDs); keybindings viewer; restore defaults.
 - **Account** (`settings.nav.account`): profile, SuperGrok quota, heatmap, call logs only.
 - **CLI / Runtime** (`settings.nav.runtime`): binary path + Doctor — **not** mixed into Account.
 

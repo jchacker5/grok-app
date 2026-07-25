@@ -223,7 +223,7 @@ fn platform_triple() -> Result<(&'static str, &'static str), String> {
     Ok((os, arch))
 }
 
-fn http_client() -> Result<reqwest::Client, String> {
+pub fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
@@ -275,7 +275,7 @@ async fn fetch_version_text(client: &reqwest::Client, base: &str) -> Result<Stri
     Ok(version)
 }
 
-async fn resolve_version(
+pub async fn resolve_version(
     app: &AppHandle,
     client: &reqwest::Client,
 ) -> Result<(String, String), String> {

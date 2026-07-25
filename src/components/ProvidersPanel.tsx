@@ -609,7 +609,7 @@ export function ProvidersPanel({
                 <label className="prov-field prov-field--full">
                   <span className="prov-field__label-row">
                     <span className="prov-field__label">
-                      {tr("prov.requestModel")}
+                      {tr("prov.modelLabel")}
                     </span>
                     <button
                       type="button"
@@ -621,14 +621,14 @@ export function ProvidersPanel({
                       {tr("prov.fetchModels")}
                     </button>
                   </span>
-                  <input
-                    className="settings-input"
+                  <textarea
+                    className="settings-input prov-model-area"
+                    rows={2}
                     value={form.model}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, model: e.target.value }))
                     }
-                    placeholder={tr("prov.modelPh")}
-                    list="prov-model-suggestions"
+                    placeholder={tr("prov.modelPhMulti")}
                     autoComplete="off"
                     spellCheck={false}
                   />

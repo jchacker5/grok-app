@@ -676,6 +676,73 @@ const en = {
     "Default app when opening a path from the resource pane",
   "settings.openFinder": "Finder / Explorer",
 
+  "settings.addProjectBaseDir": "Add project starts in",
+  "settings.addProjectBaseDirDesc":
+    "Default directory when the Add Project browser opens.",
+  "settings.autoOpenTaskPanel": "Auto-open task panel",
+  "settings.autoOpenTaskPanelDesc":
+    "Open the right-side task panel automatically when steps appear.",
+  "settings.binaryPath": "Binary path",
+  "settings.binaryPathDesc":
+    "Path to the CLI binary for this provider.",
+  "settings.binaryPathPh": "/usr/local/bin/my-cli",
+  "settings.homePathPh": "~/.grok-app-override",
+  "settings.confirmArchive": "Confirm before archiving",
+  "settings.confirmArchiveDesc":
+    "Require a second click before archiving a chat.",
+  "settings.confirmDelete": "Confirm before deleting",
+  "settings.confirmDeleteDesc":
+    "Ask before permanently deleting a chat or session.",
+  "settings.customModels": "Custom model IDs",
+  "settings.customModelsDesc":
+    "Additional model slugs to show for this provider (one per line).",
+  "settings.customModelsPh": "e.g. gpt-5-turbo",
+  "settings.customModelsPlaceholder": "e.g. gpt-5-turbo",
+  "settings.diffWhitespace": "Hide whitespace changes",
+  "settings.diffWhitespaceDesc":
+    "Ignore whitespace-only edits in the diff view by default.",
+  "settings.format.timestamp": "Time format",
+  "settings.format.timestamp12h": "12-hour",
+  "settings.format.timestamp24h": "24-hour",
+  "settings.format.timestampDesc":
+    "System default follows your OS clock preference.",
+  "settings.format.timestampLocale": "System default",
+  "settings.glassOpacity": "Glass opacity",
+  "settings.glassOpacityDesc":
+    "Transparency of glass surfaces (menus, dialogs, composer).",
+  "settings.homePath": "Config directory",
+  "settings.homePathDesc":
+    "Custom config directory for this provider.",
+  "settings.keybindings": "Keyboard shortcuts",
+  "settings.keybindingsDesc":
+    "Customize keyboard shortcuts. JSON file at ~/.grok-app/keybindings.json",
+  "settings.keybindingsOpen": "Edit keybindings.json",
+  "settings.providerUpdateChecks": "Provider update checks",
+  "settings.providerUpdateChecksDesc":
+    "Check installed provider CLIs for newer available versions.",
+  "settings.restoreDefaults": "Restore defaults",
+  "settings.restoreDefaultsBtn": "Restore all",
+  "settings.restoreDefaultsConfirm":
+    "Reset all settings to defaults? This cannot be undone.",
+  "settings.restoreDefaultsDesc":
+    "Reset all settings to their factory defaults.",
+  "settings.sidebar.previewCount": "Message preview lines",
+  "settings.sidebar.previewCountDesc":
+    "How many message lines to show per chat in the sidebar (1-15).",
+  "settings.sidebar.sort": "Sidebar sort order",
+  "settings.sidebar.sortCreated": "Date created",
+  "settings.sidebar.sortDesc":
+    "How projects and chats are ordered in the sidebar.",
+  "settings.sidebar.sortManual": "Manual (drag to reorder)",
+  "settings.sidebar.sortUpdated": "Last updated",
+  "settings.threadAutoSettle": "Auto-archive after (days)",
+  "settings.threadAutoSettleDesc":
+    "Chats idle for this many days are automatically archived (1-90, or off).",
+  "settings.threadAutoSettleOff": "Off",
+  "settings.wordWrap": "Word wrap",
+  "settings.wordWrapDesc":
+    "Wrap long lines in code blocks, tables, diffs, and file previews by default.",
+
   "prov.emptyTitle": "No providers yet",
   "prov.detailEmpty": "Select a provider or add a new one.",
   "prov.new": "Add provider",
@@ -698,8 +765,8 @@ const en = {
   "prov.keyKeep": "Leave blank to keep saved key",
   "prov.keyShow": "Show",
   "prov.keyHide": "Hide",
-  "prov.requestModel": "Request model",
-  "prov.modelPh": "e.g. grok-4.5",
+  "prov.modelLabel": "Model IDs",
+  "prov.modelPhMulti": "e.g. grok-4-5, grok-4-5-vision",
   "prov.fetchModels": "Fetch models",
   "prov.fetching": "Fetching…",
   "prov.loaded": "Loaded {n} models",
@@ -1274,6 +1341,17 @@ const en = {
   "voice.settingsAutoSend": "Auto-send dictation on silence",
   "voice.settingsKeepAgents": "Keep agents running after ending voice",
   "voice.needProject": "Select a trusted project before starting voice.",
+
+  "cli.updateAvailable": "Grok Build v{v} is available",
+  "cli.updateNow": "Update",
+  "cli.installing": "Installing Grok Build…",
+  "cli.updateError": "Update failed",
+  "cli.retry": "Retry",
+  "cli.dismiss": "Dismiss",
+
+  "session.unsettle": "Unsettle",
+  "session.settle": "Settle",
+  "session.snooze": "Snooze",
 } as const;
 
 const zh: Record<MessageKey, string> = {
@@ -1943,8 +2021,8 @@ const zh: Record<MessageKey, string> = {
   "prov.keyKeep": "留空则保留已有 Key",
   "prov.keyShow": "显示",
   "prov.keyHide": "隐藏",
-  "prov.requestModel": "请求模型",
-  "prov.modelPh": "例如 grok-4.5",
+  "prov.modelLabel": "模型 ID",
+  "prov.modelPhMulti": "例如 grok-4-5, grok-4-5-vision",
   "prov.fetchModels": "拉取模型",
   "prov.fetching": "拉取中…",
   "prov.loaded": "已加载 {n} 个模型",
@@ -2501,6 +2579,66 @@ const zh: Record<MessageKey, string> = {
   "voice.settingsAutoSend": "静音后自动发送语音输入",
   "voice.settingsKeepAgents": "结束语音后保留 Agent 任务",
   "voice.needProject": "请先选择并信任一个项目再开始语音。",
+
+  "cli.updateAvailable": "Grok Build v{v} 可用",
+  "cli.updateNow": "立即更新",
+  "cli.installing": "正在安装 Grok Build…",
+  "cli.updateError": "更新失败",
+  "cli.retry": "重试",
+  "cli.dismiss": "关闭",
+
+  "session.unsettle": "取消沉淀",
+  "session.settle": "沉淀",
+  "session.snooze": "延后",
+
+  "settings.format.timestamp": "时间格式",
+  "settings.format.timestampDesc": "系统默认跟随您的操作系统时钟偏好",
+  "settings.format.timestampLocale": "系统默认",
+  "settings.format.timestamp12h": "12 小时制",
+  "settings.format.timestamp24h": "24 小时制",
+  "settings.sidebar.sort": "侧栏排序方式",
+  "settings.sidebar.sortDesc": "项目与对话在侧栏中的排序方式",
+  "settings.sidebar.sortUpdated": "最后更新",
+  "settings.sidebar.sortCreated": "创建日期",
+  "settings.sidebar.sortManual": "手动（拖拽排序）",
+  "settings.sidebar.previewCount": "消息预览行数",
+  "settings.sidebar.previewCountDesc": "侧栏每个对话显示的消息行数（1-15）",
+  "settings.wordWrap": "自动换行",
+  "settings.wordWrapDesc": "默认在代码块、表格、diff 和文件预览中自动换行",
+  "settings.diffWhitespace": "隐藏空白变更",
+  "settings.diffWhitespaceDesc": "默认在 diff 视图中忽略仅空白字符的编辑",
+  "settings.confirmDelete": "删除前确认",
+  "settings.confirmDeleteDesc": "永久删除对话或会话前先询问",
+  "settings.confirmArchive": "归档前确认",
+  "settings.confirmArchiveDesc": "归档对话前需要再次点击确认",
+  "settings.glassOpacity": "玻璃透明度",
+  "settings.glassOpacityDesc": "玻璃表面（菜单、对话框、输入区）的透明度",
+  "settings.restoreDefaults": "恢复默认值",
+  "settings.restoreDefaultsDesc": "将所有设置重置为出厂默认值",
+  "settings.restoreDefaultsBtn": "全部恢复",
+  "settings.restoreDefaultsConfirm": "重置所有设置为默认值？此操作无法撤销。",
+  "settings.threadAutoSettle": "自动归档（天数）",
+  "settings.threadAutoSettleDesc": "对话闲置此天数后自动归档（1-90，或关闭）",
+  "settings.threadAutoSettleOff": "关闭",
+  "settings.autoOpenTaskPanel": "自动打开任务面板",
+  "settings.autoOpenTaskPanelDesc": "出现步骤时自动打开右侧任务面板",
+  "settings.addProjectBaseDir": "添加项目起始目录",
+  "settings.addProjectBaseDirDesc": "添加项目浏览器打开时的默认目录",
+  "settings.providerUpdateChecks": "提供商更新检查",
+  "settings.providerUpdateChecksDesc": "检查已安装的提供商 CLI 是否有更新的版本",
+  "settings.binaryPath": "二进制路径",
+  "settings.binaryPathDesc": "此提供商 CLI 二进制文件的路径",
+  "settings.binaryPathPh": "/usr/local/bin/my-cli",
+  "settings.homePathPh": "~/.grok-app-override",
+  "settings.homePath": "配置目录",
+  "settings.homePathDesc": "此提供商的自定义配置目录",
+  "settings.customModels": "自定义模型 ID",
+  "settings.customModelsDesc": "为此提供商显示的额外模型代号（每行一个）",
+  "settings.customModelsPh": "例如：gpt-5-turbo",
+  "settings.customModelsPlaceholder": "例如：gpt-5-turbo",
+  "settings.keybindings": "键盘快捷键",
+  "settings.keybindingsDesc": "自定义键盘快捷键。JSON 文件位于 ~/.grok-app/keybindings.json",
+  "settings.keybindingsOpen": "编辑 keybindings.json",
 };
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {

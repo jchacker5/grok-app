@@ -23,9 +23,9 @@ export interface VoiceOrbProps {
 
 const COLORS: Record<VoiceOrbState, { core: string; glow: string }> = {
   idle: { core: "#3a3f52", glow: "rgba(90, 100, 140, 0.25)" },
-  connecting: { core: "#7a6a2a", glow: "rgba(224, 190, 80, 0.35)" },
-  listening: { core: "#2a6f8a", glow: "rgba(64, 190, 230, 0.45)" },
-  speaking: { core: "#5a3a8a", glow: "rgba(160, 100, 230, 0.5)" },
+  connecting: { core: "#1a6bff", glow: "rgba(55, 148, 255, 0.3)" },
+  listening: { core: "#3794ff", glow: "rgba(55, 148, 255, 0.4)" },
+  speaking: { core: "#2563eb", glow: "rgba(55, 148, 255, 0.45)" },
 };
 
 /** Small sum-of-sines pseudo-noise — deterministic, no dependency needed. */

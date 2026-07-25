@@ -260,6 +260,18 @@ export async function appCheckUpdate() {
   return invoke<AppUpdateCheck>("app_check_update");
 }
 
+/** CLI version check — whether the installed Grok Build CLI has a newer version. */
+export type CliUpdateCheck = {
+  currentVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  error: string | null;
+};
+
+export async function cliCheckUpdate() {
+  return invoke<CliUpdateCheck>("cli_check_update");
+}
+
 export async function projectsList() {
   return invoke<
     Array<{
@@ -592,6 +604,11 @@ export async function sessionsList() {
       pinned?: boolean;
       /** Shell automation run */
       scheduled?: boolean;
+      settledAt?: string;
+      snoozedUntil?: string;
+      branch?: string;
+      prRef?: string;
+      prState?: string;
     }>
   >("sessions_list");
 }
@@ -694,6 +711,23 @@ export async function sessionSetPinned(id: string, pinned: boolean) {
   return invoke("session_set_pinned", { id, pinned });
 }
 
+export async function sessionSetSettled(id: string, settledAt: string | null) {
+  return invoke("session_set_settled", { id, settledAt });
+}
+
+export async function sessionSetSnoozed(id: string, snoozedUntil: string | null) {
+  return invoke("session_set_snoozed", { id, snoozedUntil });
+}
+
+export async function sessionSetBranchPr(
+  id: string,
+  branch: string | null,
+  prRef: string | null,
+  prState: string | null,
+) {
+  return invoke("session_set_branch_pr", { id, branch, prRef, prState });
+}
+
 /** Bind session to a project, or clear (`projectId: null`) for orphan / other sessions. */
 export async function sessionSetProject(
   id: string,
@@ -793,6 +827,30 @@ export interface AppSettings {
   voiceDictationAutoSend?: boolean;
   /** Keep delegated agents running when live voice ends. */
   voiceKeepAgentsOnEnd?: boolean;
+  /** Timestamp display format. */
+  timestampFormat?: string;
+  /** Sidebar sort order. */
+  sidebarSortOrder?: string;
+  /** Wrap long lines in code blocks etc. */
+  wordWrap?: boolean;
+  /** Ignore whitespace in diff view. */
+  diffIgnoreWhitespace?: boolean;
+  /** Confirm before deleting. */
+  confirmDelete?: boolean;
+  /** Confirm before archiving. */
+  confirmArchive?: boolean;
+  /** Glass surface opacity (40-100). */
+  glassOpacity?: number;
+  /** Sidebar message preview lines (1-15). */
+  sidebarThreadPreviewCount?: number;
+  /** Auto-archive idle threads after N days (null = off). */
+  threadAutoSettleDays?: number | null;
+  /** Auto-open task panel when steps appear. */
+  autoOpenTaskPanel?: boolean;
+  /** Default Add Project directory. */
+  addProjectBaseDir?: string;
+  /** Check provider CLIs for updates. */
+  enableProviderUpdateChecks?: boolean;
 }
 
 export interface VoiceSessionState {

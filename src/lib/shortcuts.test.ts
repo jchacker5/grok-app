@@ -9,8 +9,8 @@ describe("shortcuts catalog", () => {
 
   it("every row has mac and win bindings", () => {
     for (const s of SHORTCUTS) {
-      expect(s.mac.trim().length).toBeGreaterThan(0);
-      expect(s.win.trim().length).toBeGreaterThan(0);
+      expect(s.defaultMac.trim().length).toBeGreaterThan(0);
+      expect(s.defaultWin.trim().length).toBeGreaterThan(0);
       expect(s.labelKey.startsWith("shortcuts.")).toBe(true);
     }
   });

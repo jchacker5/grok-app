@@ -11,6 +11,42 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Settings expansion**: 16 new settings in Settings → General:
+  - Timestamp format (system default / 12-hour / 24-hour)
+  - Sidebar sort order (last updated / date created / manual drag)
+  - Sidebar message preview line count (1–15 slider)
+  - Word wrap for code blocks, diffs, and file previews
+  - Diff whitespace toggle (ignore whitespace-only changes)
+  - Confirm before delete / archive dialogs
+  - Glass surface opacity slider (40–100%)
+  - Auto-archive idle threads after N days (1–90)
+  - Auto-open task panel when tool steps appear
+  - Add project base directory picker
+  - Provider update checks on startup
+  - Per-provider binary path & config directory override
+  - Per-provider custom model IDs
+  - Restore all defaults button
+  - Keyboard shortcuts viewer with user overrides
+- **Keyboard shortcuts refactor**: `shortcuts.ts` → `keybindings.ts` with `getUserOverrides()` / `setUserOverrides()` stored in `localStorage`; backward-compatible re-exports.
+- **Chat input morphing button**: trailing button transitions between mic (empty), send arrow (has text), and stop (generating / dictating) — matching Grok.com's pill-composer pattern.
+- **Dictation waveform visualization**: 4 animated equalizer bars appear inline in the composer during dictation, placeholder text changes to "Listening…".
+- **Pulse ring on dictation button**: animated blue ring radiates from the trailing button while recording.
+- **Grok.com blue orb**: live voice orb updated from purple/teal to Grok's signature `#3794ff` blue palette.
+- **Voice overlay refinement**: compact panel, centered orb, user/assistant line backgrounds, softer end button.
+
+### Changed
+
+- **Composer shape**: border-radius increased from 18px → **24px** (more pill-like); padding widened.
+- **Providers panel**: model field changed from single-line input to textarea supporting multiple model IDs (comma-separated); field label updated to "Model IDs".
+- **Voice orb colors**: `connecting` / `listening` / `speaking` states shifted to `#3794ff` blue tones.
+- **Voice overlay**: redesigned panel (400px, rounded 20px, centered orb, transcript line backgrounds, subtler end button).
+
+### Fixed
+
+- **N/A**
+
 ## [0.1.7] - 2026-07-24
 
 ### Added

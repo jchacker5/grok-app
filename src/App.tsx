@@ -261,6 +261,7 @@ import {
   WindowControls,
   toggleMaximizeFromTitlebar,
 } from "@/components/WindowControls";
+import { CliUpdateBanner } from "@/components/CliUpdateBanner";
 
 interface Project {
   id: string;
@@ -285,6 +286,16 @@ interface SessionRow {
   pinned?: boolean;
   /** Shell scheduled-automation run */
   scheduled?: boolean;
+  /** ISO datetime when thread was settled (manually marked done). */
+  settledAt?: string;
+  /** ISO datetime until which the thread is snoozed. */
+  snoozedUntil?: string;
+  /** Git branch name. */
+  branch?: string;
+  /** PR reference number (e.g. "1234"). */
+  prRef?: string;
+  /** PR state: "open" | "merged" | "closed". */
+  prState?: string;
 }
 
 type ContextMenuState =
@@ -425,6 +436,12 @@ export default function App() {
     [projects, activeSpaceId],
   );
   const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set());
+  const [showingJumpHints, setShowingJumpHints] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try { return parseInt(localStorage.getItem("sidebar-width") || "260", 10); } catch { return 260; }
+  });
+  const [isDraggingRail, setIsDraggingRail] = useState(false);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   /** Per-session message cache so switching away mid-turn does not drop the UI. */
   const messagesBySessionRef = useRef<Map<string, ChatMessage[]>>(new Map());
@@ -464,6 +481,22 @@ export default function App() {
   const pendingComposerFocus = useRef(false);
   const [sessionDataMode, setSessionDataMode] = useState("independent");
   const [defaultOpenTarget, setDefaultOpenTarget] = useState("finder");
+  const [timestampFormat, setTimestampFormat] = useState("locale");
+  const [sidebarSortOrder, setSidebarSortOrder] = useState("updated_at");
+  const [wordWrap, setWordWrap] = useState(true);
+  const [diffIgnoreWhitespace, setDiffIgnoreWhitespace] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState(true);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [glassOpacity, setGlassOpacity] = useState(80);
+  const [sidebarThreadPreviewCount, setSidebarThreadPreviewCount] = useState(6);
+  const [threadAutoSettleDays, setThreadAutoSettleDays] = useState<number | null>(null);
+  const [autoOpenTaskPanel, setAutoOpenTaskPanel] = useState(false);
+  const [addProjectBaseDir, setAddProjectBaseDir] = useState("");
+  const [enableProviderUpdateChecks, setEnableProviderUpdateChecks] = useState(true);
+  const [binaryPath, setBinaryPath] = useState("");
+  const [homePath, setHomePath] = useState("");
+  const [customModels, setCustomModels] = useState("");
+  const [cliUpdateDismissed, setCliUpdateDismissed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   /** Hash route: workbench | settings/:section | automations */
   const [appView, setAppView] = useState<"workbench" | "settings">("workbench");
@@ -893,6 +926,11 @@ export default function App() {
           archived: !!x.archived,
           pinned: !!x.pinned,
           scheduled: !!x.scheduled,
+          settledAt: x.settledAt,
+          snoozedUntil: x.snoozedUntil,
+          branch: x.branch,
+          prRef: x.prRef,
+          prState: x.prState,
         })),
       );
       void api.trayRefresh();
@@ -2337,6 +2375,11 @@ export default function App() {
           archived: !!s.archived,
           pinned: !!s.pinned,
           scheduled: !!s.scheduled,
+          settledAt: s.settledAt,
+          snoozedUntil: s.snoozedUntil,
+          branch: s.branch,
+          prRef: s.prRef,
+          prState: s.prState,
         })),
       );
       void api.trayRefresh();
@@ -2954,10 +2997,73 @@ export default function App() {
     }
   };
 
+  const settleSession = async (s: SessionRow, settled: boolean) => {
+    setCtxMenu(null);
+    try {
+      await api.sessionSetSettled(
+        s.id,
+        settled ? new Date().toISOString() : null,
+      );
+      await refreshSessions();
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  const snoozeSession = async (s: SessionRow, snoozedUntil: string | null) => {
+    setCtxMenu(null);
+    try {
+      await api.sessionSetSnoozed(s.id, snoozedUntil);
+      await refreshSessions();
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
   /** Permanent delete — confirm first; leave workbench if viewing that chat. */
   const deleteSessionConfirm = (s: SessionRow) => {
     deleteSessionsConfirm([s]);
   };
+
+  const startRailDrag = (e: ReactMouseEvent) => {
+    e.preventDefault();
+    setIsDraggingRail(true);
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const onMove = (me: MouseEvent) => {
+      const newWidth = Math.max(200, Math.min(window.innerWidth * 0.4, startWidth + me.clientX - startX));
+      setSidebarWidth(newWidth);
+    };
+    const onUp = () => {
+      setIsDraggingRail(false);
+      try { localStorage.setItem("sidebar-width", String(sidebarWidth)); } catch { /* ignore */ }
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const handleThreadClick = (e: React.MouseEvent, s: SessionRow, proj: Project | null) => {
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      setSelectedThreadIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(s.id)) {
+          next.delete(s.id);
+        } else {
+          next.add(s.id);
+        }
+        return next;
+      });
+    } else {
+      setSelectedThreadIds(new Set());
+      void openSession(s, proj);
+    }
+  };
+
+  const clearSelection = () => setSelectedThreadIds(new Set());
 
   /** Bulk restore archived sessions. */
   const restoreSessions = async (rows: SessionRow[]) => {
@@ -5236,7 +5342,13 @@ export default function App() {
                 projectId: hit.projectId,
                 updatedAt: hit.updatedAt,
                 archived: !!hit.archived,
+                pinned: !!hit.pinned,
                 scheduled: !!hit.scheduled,
+                settledAt: hit.settledAt,
+                snoozedUntil: hit.snoozedUntil,
+                branch: hit.branch,
+                prRef: hit.prRef,
+                prState: hit.prState,
               };
               setSessions(
                 list.map((s) => ({
@@ -5245,7 +5357,13 @@ export default function App() {
                   projectId: s.projectId,
                   updatedAt: s.updatedAt,
                   archived: !!s.archived,
+                  pinned: !!s.pinned,
                   scheduled: !!s.scheduled,
+                  settledAt: s.settledAt,
+                  snoozedUntil: s.snoozedUntil,
+                  branch: s.branch,
+                  prRef: s.prRef,
+                  prState: s.prState,
                 })),
               );
             }
@@ -6000,6 +6118,37 @@ export default function App() {
     }
   }, [appView, settingsSection, refreshAccount, refreshSavedAccounts]);
 
+  // Keyboard jump hints (Cmd/Ctrl held → show jump numbers on visible rows)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Meta" || e.key === "Control") {
+        setShowingJumpHints(true);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key >= "1" && e.key <= "9") {
+        e.preventDefault();
+        const idx = parseInt(e.key) - 1;
+        const visibleRows = document.querySelectorAll(
+          ".tree-l3:not(.tree-l3--settled):not(.tree-l3--snoozed):not(.tree-l3--archived)",
+        );
+        if (visibleRows[idx]) {
+          (visibleRows[idx] as HTMLElement).click();
+          setShowingJumpHints(false);
+        }
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Meta" || e.key === "Control") {
+        setShowingJumpHints(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+
   const settingsLabels = useMemo(() => {
     const keys = [
       "settings.backToApp",
@@ -6418,6 +6567,105 @@ export default function App() {
               api.settingsSet({ ...s, defaultOpenTarget: v }),
             );
           }}
+          timestampFormat={timestampFormat}
+          onTimestampFormat={(v) => {
+            setTimestampFormat(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, timestampFormat: v }),
+            );
+          }}
+          sidebarSortOrder={sidebarSortOrder}
+          onSidebarSortOrder={(v) => {
+            setSidebarSortOrder(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, sidebarSortOrder: v }),
+            );
+          }}
+          wordWrap={wordWrap}
+          onWordWrap={(v) => {
+            setWordWrap(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, wordWrap: v }),
+            );
+          }}
+          diffIgnoreWhitespace={diffIgnoreWhitespace}
+          onDiffIgnoreWhitespace={(v) => {
+            setDiffIgnoreWhitespace(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, diffIgnoreWhitespace: v }),
+            );
+          }}
+          confirmDelete={confirmDelete}
+          onConfirmDelete={(v) => {
+            setConfirmDelete(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, confirmDelete: v }),
+            );
+          }}
+          confirmArchive={confirmArchive}
+          onConfirmArchive={(v) => {
+            setConfirmArchive(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, confirmArchive: v }),
+            );
+          }}
+          glassOpacity={glassOpacity}
+          onGlassOpacity={(v) => {
+            setGlassOpacity(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, glassOpacity: v }),
+            );
+          }}
+          sidebarThreadPreviewCount={sidebarThreadPreviewCount}
+          onSidebarThreadPreviewCount={(v) => {
+            setSidebarThreadPreviewCount(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, sidebarThreadPreviewCount: v }),
+            );
+          }}
+          threadAutoSettleDays={threadAutoSettleDays}
+          onThreadAutoSettleDays={(v) => {
+            setThreadAutoSettleDays(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, threadAutoSettleDays: v }),
+            );
+          }}
+          autoOpenTaskPanel={autoOpenTaskPanel}
+          onAutoOpenTaskPanel={(v) => {
+            setAutoOpenTaskPanel(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, autoOpenTaskPanel: v }),
+            );
+          }}
+          addProjectBaseDir={addProjectBaseDir}
+          onAddProjectBaseDir={(v) => {
+            setAddProjectBaseDir(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, addProjectBaseDir: v }),
+            );
+          }}
+          enableProviderUpdateChecks={enableProviderUpdateChecks}
+          onEnableProviderUpdateChecks={(v) => {
+            setEnableProviderUpdateChecks(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, enableProviderUpdateChecks: v }),
+            );
+          }}
+          binaryPath={binaryPath}
+          onBinaryPath={(v) => {
+            setBinaryPath(v);
+            api.settingsGet().then((s) => api.settingsSet({ ...s, binaryPath: v }));
+          }}
+          homePath={homePath}
+          onHomePath={(v) => {
+            setHomePath(v);
+            api.settingsGet().then((s) => api.settingsSet({ ...s, homePath: v }));
+          }}
+          customModels={customModels}
+          onCustomModels={(v) => {
+            setCustomModels(v);
+            api.settingsGet().then((s) => api.settingsSet({ ...s, customModels: v }));
+          }}
           archivedGroups={archivedGroups}
           onRestoreArchivedSessions={(ids) => {
             const rows = ids
@@ -6461,8 +6709,10 @@ export default function App() {
             "sidebar" +
             (layout.sidebarCollapsed ? " sidebar--hidden" : "") +
             (dragZone === "sidebar" ? " is-drop-target" : "") +
-            (dragZone === "main" ? " is-drop-idle" : "")
+            (dragZone === "main" ? " is-drop-idle" : "") +
+            (showingJumpHints ? " showing-jump-hints" : "")
           }
+          style={{ width: layout.sidebarCollapsed ? undefined : sidebarWidth }}
           aria-hidden={layout.sidebarCollapsed}
         >
           {dragZone === "sidebar" && (
@@ -6770,6 +7020,9 @@ export default function App() {
                             }
                             renderItem={(s) => {
                               const working = busySessionId === s.id;
+                              const isSettled = !!s.settledAt;
+                              const isSnoozed = !!s.snoozedUntil && new Date(s.snoozedUntil) > new Date();
+                              const checked = selectedThreadIds.has(s.id);
                               return (
                                 <div
                                   className={
@@ -6778,17 +7031,33 @@ export default function App() {
                                       ? " tree-l3--active"
                                       : "") +
                                     (s.archived ? " tree-l3--archived" : "") +
-                                    (working ? " tree-l3--working" : "")
+                                    (working ? " tree-l3--working" : "") +
+                                    (isSettled ? " tree-l3--settled" : "") +
+                                    (isSnoozed ? " tree-l3--snoozed" : "") +
+                                    (checked ? " tree-l3--checked" : "")
                                   }
                                   role="button"
                                   tabIndex={0}
-                                  onClick={() => void openSession(s, proj)}
+                                  onClick={(e) => handleThreadClick(e, s, proj)}
                                   onContextMenu={(e) => openSessionMenu(e, s)}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter")
                                       void openSession(s, proj);
                                   }}
                                 >
+                                  <span
+                                    className="tree-l3__checkbox"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleThreadClick(e, s, proj);
+                                    }}
+                                  >
+                                    {checked ? (
+                                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                        <path d="M2 5L4 7L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                      </svg>
+                                    ) : null}
+                                  </span>
                                   <span className="tree-l3__title">
                                     {s.pinned ? (
                                       <span
@@ -6815,6 +7084,23 @@ export default function App() {
                                       {s.title || "Untitled"}
                                     </span>
                                   </span>
+                                  {s.prRef ? (
+                                    <span
+                                      className={
+                                        "tree-l3__pr-badge" +
+                                        (s.prState === "open" ? " tree-l3__pr-badge--open" : "") +
+                                        (s.prState === "merged" ? " tree-l3__pr-badge--merged" : "") +
+                                        (s.prState === "closed" ? " tree-l3__pr-badge--closed" : "")
+                                      }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                      }}
+                                      title={`#${s.prRef} (${s.prState || "unknown"})`}
+                                    >
+                                      <span className="tree-l3__pr-dot" />
+                                      #{s.prRef}
+                                    </span>
+                                  ) : null}
                                   {working ? (
                                     <Tip label={tr("sidebar.sessionWorking")}>
                                       <span
@@ -6831,6 +7117,49 @@ export default function App() {
                                     </Tip>
                                   ) : (
                                     <span className="tree-l3__actions tree-l3__actions--triple">
+                                      <Tip
+                                        label={
+                                          isSettled
+                                            ? tr("session.unsettle")
+                                            : tr("session.settle")
+                                        }
+                                      >
+                                        <button
+                                          type="button"
+                                          className="tree-icon-btn"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void settleSession(s, !isSettled);
+                                          }}
+                                        >
+                                          {isSettled ? (
+                                            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                              <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
+                                              <path d="M4 6.5L6 8.5L9 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                                            </svg>
+                                          ) : (
+                                            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                              <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
+                                            </svg>
+                                          )}
+                                        </button>
+                                      </Tip>
+                                      <Tip label={tr("session.snooze")}>
+                                        <button
+                                          type="button"
+                                          className="tree-icon-btn"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const d = new Date(Date.now() + 3600000);
+                                            void snoozeSession(s, d.toISOString());
+                                          }}
+                                        >
+                                          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                            <path d="M6.5 3v3.5L9 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                                            <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
+                                          </svg>
+                                        </button>
+                                      </Tip>
                                       <Tip
                                         label={
                                           s.pinned
@@ -6935,6 +7264,9 @@ export default function App() {
                 }
                 renderItem={(s) => {
                   const working = busySessionId === s.id;
+                  const isSettled = !!s.settledAt;
+                  const isSnoozed = !!s.snoozedUntil && new Date(s.snoozedUntil) > new Date();
+                  const checked = selectedThreadIds.has(s.id);
                   return (
                     <div
                       className={
@@ -6942,16 +7274,32 @@ export default function App() {
                         (session.sessionId === s.id
                           ? " tree-l3--active"
                           : "") +
-                        (working ? " tree-l3--working" : "")
+                        (working ? " tree-l3--working" : "") +
+                        (isSettled ? " tree-l3--settled" : "") +
+                        (isSnoozed ? " tree-l3--snoozed" : "") +
+                        (checked ? " tree-l3--checked" : "")
                       }
                       role="button"
                       tabIndex={0}
-                      onClick={() => void openSession(s)}
+                      onClick={(e) => handleThreadClick(e, s, null)}
                       onContextMenu={(e) => openSessionMenu(e, s)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") void openSession(s);
                       }}
                     >
+                      <span
+                        className="tree-l3__checkbox"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleThreadClick(e, s, null);
+                        }}
+                      >
+                        {checked ? (
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                            <path d="M2 5L4 7L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        ) : null}
+                      </span>
                       <span className="tree-l3__title">
                         {s.pinned ? (
                           <span
@@ -6978,6 +7326,23 @@ export default function App() {
                           {s.title || "Untitled"}
                         </span>
                       </span>
+                      {s.prRef ? (
+                        <span
+                          className={
+                            "tree-l3__pr-badge" +
+                            (s.prState === "open" ? " tree-l3__pr-badge--open" : "") +
+                            (s.prState === "merged" ? " tree-l3__pr-badge--merged" : "") +
+                            (s.prState === "closed" ? " tree-l3__pr-badge--closed" : "")
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                          }}
+                          title={`#${s.prRef} (${s.prState || "unknown"})`}
+                        >
+                          <span className="tree-l3__pr-dot" />
+                          #{s.prRef}
+                        </span>
+                      ) : null}
                       {working ? (
                         <Tip label={tr("sidebar.sessionWorking")}>
                           <span
@@ -6992,6 +7357,49 @@ export default function App() {
                         </Tip>
                       ) : (
                         <span className="tree-l3__actions tree-l3__actions--triple">
+                          <Tip
+                            label={
+                              isSettled
+                                ? tr("session.unsettle")
+                                : tr("session.settle")
+                            }
+                          >
+                            <button
+                              type="button"
+                              className="tree-icon-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void settleSession(s, !isSettled);
+                              }}
+                            >
+                              {isSettled ? (
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                  <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
+                                  <path d="M4 6.5L6 8.5L9 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                                </svg>
+                              ) : (
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                  <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
+                                </svg>
+                              )}
+                            </button>
+                          </Tip>
+                          <Tip label={tr("session.snooze")}>
+                            <button
+                              type="button"
+                              className="tree-icon-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const d = new Date(Date.now() + 3600000);
+                                void snoozeSession(s, d.toISOString());
+                              }}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                <path d="M6.5 3v3.5L9 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                                <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
+                              </svg>
+                            </button>
+                          </Tip>
                           <Tip
                             label={
                               s.pinned
@@ -7026,13 +7434,15 @@ export default function App() {
                               <IconArchive size={13} />
                             </button>
                           </Tip>
-                          <button
-                            type="button"
-                            className="tree-icon-btn"
-                            onClick={(e) => openSessionMenu(e, s)}
-                          >
-                            <IconMore size={13} />
-                          </button>
+                          <Tip label={tr("sidebar.menu")}>
+                            <button
+                              type="button"
+                              className="tree-icon-btn"
+                              onClick={(e) => openSessionMenu(e, s)}
+                            >
+                              <IconMore size={13} />
+                            </button>
+                          </Tip>
                         </span>
                       )}
                     </div>
@@ -7041,6 +7451,65 @@ export default function App() {
               />
             ) : null}
           </OverlayScroll>
+
+          <div
+            className={"sidebar-rail" + (isDraggingRail ? " sidebar-rail--dragging" : "")}
+            onMouseDown={startRailDrag}
+          />
+
+          {selectedThreadIds.size > 0 ? (
+            <div className="sidebar-bulk-bar">
+              <span className="sidebar-bulk-bar__count">
+                {selectedThreadIds.size} selected
+              </span>
+              <button
+                type="button"
+                className="sidebar-bulk-bar__btn"
+                onClick={() => {
+                  selectedThreadIds.forEach((id) => {
+                    const s = sessions.find((x) => x.id === id);
+                    if (s) void settleSession(s, true);
+                  });
+                  clearSelection();
+                }}
+              >
+                Settle
+              </button>
+              <button
+                type="button"
+                className="sidebar-bulk-bar__btn"
+                onClick={() => {
+                  selectedThreadIds.forEach((id) => {
+                    const s = sessions.find((x) => x.id === id);
+                    if (s) void archiveSession(s, true);
+                  });
+                  clearSelection();
+                }}
+              >
+                Archive
+              </button>
+              <button
+                type="button"
+                className="sidebar-bulk-bar__btn sidebar-bulk-bar__btn--danger"
+                onClick={() => {
+                  selectedThreadIds.forEach((id) => {
+                    const s = sessions.find((x) => x.id === id);
+                    if (s) void deleteSessionConfirm(s);
+                  });
+                  clearSelection();
+                }}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="sidebar-bulk-bar__btn"
+                onClick={clearSelection}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
 
           <UserMenu
             open={showUserMenu}
@@ -7110,6 +7579,9 @@ export default function App() {
                   ) : null;
                 })()}
               </div>
+              <span className="sidebar-update-pill">
+                v{tr("app.versionFooter").split(" ")[0] || "?"}
+              </span>
             </button>
             </Tip>
           </UserMenu>
@@ -7582,6 +8054,13 @@ export default function App() {
                 />
               </div>
             ) : null}
+            {api.isTauri() && enableProviderUpdateChecks && !cliUpdateDismissed && (
+              <CliUpdateBanner
+                locale={locale}
+                enabled
+                onDismiss={() => setCliUpdateDismissed(true)}
+              />
+            )}
             {perm ? (
               <div
                 ref={permBarRef}
@@ -7657,7 +8136,8 @@ export default function App() {
               ref={composerShellRef}
               className={
                 "composer" +
-                (dragZone === "main" ? " composer--drop-ready" : "")
+                (dragZone === "main" ? " composer--drop-ready" : "") +
+                (voiceDictating ? " composer--dictating" : "")
               }
             >
               {sendQueue.activeQueue.length > 0 && (
@@ -7793,9 +8273,11 @@ export default function App() {
                 value={draft}
                 disabled={!canType(session.state)}
                 placeholder={
-                  goalMode
-                    ? tr("composer.goalPlaceholder")
-                    : tr("composer.placeholder")
+                  voiceDictating
+                    ? tr("voice.listening")
+                    : goalMode
+                      ? tr("composer.goalPlaceholder")
+                      : tr("composer.placeholder")
                 }
                 onChange={setDraft}
                 onPasteFiles={(files) => {
@@ -7876,6 +8358,14 @@ export default function App() {
                   if (e.key === "Escape") closeComposerMenu();
                 }}
               />
+              {voiceDictating && (
+                <div className="composer__waveform" aria-hidden>
+                  <span className="composer__waveform-bar" />
+                  <span className="composer__waveform-bar" />
+                  <span className="composer__waveform-bar" />
+                  <span className="composer__waveform-bar" />
+                </div>
+              )}
               <div className="composer__row">
                 <Tip label={tr("composer.add")}>
                   <button
@@ -8050,88 +8540,6 @@ export default function App() {
                   }}
                 />
                 <span className="composer__spacer" />
-                <Tip label={tr("voice.dictation")}>
-                  <button
-                    type="button"
-                    className={
-                      "icon-btn" + (voiceDictating ? " icon-btn--danger" : "")
-                    }
-                    disabled={!canType(session.state)}
-                    aria-label={
-                      voiceDictating
-                        ? tr("voice.dictationStop")
-                        : tr("voice.dictation")
-                    }
-                    onClick={() => {
-                      void (async () => {
-                        if (voiceDictating) {
-                          const rec = voiceRecorderRef.current;
-                          if (rec && rec.state !== "inactive") rec.stop();
-                          return;
-                        }
-                        try {
-                          const stream =
-                            await navigator.mediaDevices.getUserMedia({
-                              audio: true,
-                            });
-                          const mime = MediaRecorder.isTypeSupported(
-                            "audio/webm;codecs=opus",
-                          )
-                            ? "audio/webm;codecs=opus"
-                            : "audio/webm";
-                          const rec = new MediaRecorder(stream, {
-                            mimeType: mime,
-                          });
-                          voiceChunksRef.current = [];
-                          rec.ondataavailable = (e) => {
-                            if (e.data.size) voiceChunksRef.current.push(e.data);
-                          };
-                          rec.onstop = () => {
-                            stream.getTracks().forEach((t) => t.stop());
-                            setVoiceDictating(false);
-                            void (async () => {
-                              try {
-                                const blob = new Blob(voiceChunksRef.current, {
-                                  type: mime,
-                                });
-                                if (blob.size < 32) return;
-                                const b64 = await blobToBase64(blob);
-                                const result =
-                                  await api.voiceDictationTranscribe(
-                                    b64,
-                                    mime,
-                                    locale === "zh" || locale === "zh-TW"
-                                      ? "zh"
-                                      : "en",
-                                  );
-                                if (result.text?.trim()) {
-                                  setDraft((d) =>
-                                    d.trim()
-                                      ? `${d.trim()} ${result.text.trim()}`
-                                      : result.text.trim(),
-                                  );
-                                }
-                              } catch (e) {
-                                console.warn("dictation failed", e);
-                              }
-                            })();
-                          };
-                          voiceRecorderRef.current = rec;
-                          rec.start();
-                          setVoiceDictating(true);
-                        } catch {
-                          /* mic denied */
-                        }
-                      })();
-                    }}
-                  >
-                    {voiceDictating ? (
-                      <IconStop size={14} />
-                    ) : (
-                      <IconMic size={16} />
-                    )}
-                  </button>
-                </Tip>
                 <Tip label={tr("voice.start")}>
                   <button
                     type="button"
@@ -8166,7 +8574,7 @@ export default function App() {
                     <Tip label={tr("composer.stop")}>
                       <button
                         type="button"
-                        className="icon-btn icon-btn--danger"
+                        className="icon-btn icon-btn--trailing icon-btn--stop"
                         onClick={() => void stop()}
                         aria-label={tr("composer.stop")}
                       >
@@ -8174,22 +8582,101 @@ export default function App() {
                       </button>
                     </Tip>
                   </>
-                ) : (
+                ) : voiceDictating ? (
+                  <Tip label={tr("voice.dictationStop")}>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--trailing icon-btn--stop is-dictating"
+                      aria-label={tr("voice.dictationStop")}
+                      onClick={() => {
+                        const rec = voiceRecorderRef.current;
+                        if (rec && rec.state !== "inactive") rec.stop();
+                      }}
+                    >
+                      <IconStop size={14} />
+                    </button>
+                  </Tip>
+                ) : (!isDraftEmpty(parseStoredContent(draft)) ||
+                    attachments.length > 0) &&
+                  (canSend(session.state) ||
+                    shouldEnqueueSend(session.state, connecting)) ? (
                   <Tip label={tr("composer.send")}>
                     <button
                       type="button"
-                      className="icon-btn icon-btn--primary"
-                      disabled={
-                        (!canSend(session.state) &&
-                          !shouldEnqueueSend(session.state, connecting)) ||
-                        (isDraftEmpty(parseStoredContent(draft)) &&
-                          attachments.length === 0) ||
-                        session.state === "awaiting_permission"
-                      }
+                      className="icon-btn icon-btn--trailing icon-btn--send"
+                      disabled={session.state === "awaiting_permission"}
                       onClick={() => void send()}
                       aria-label={tr("composer.send")}
                     >
                       <IconSend size={16} />
+                    </button>
+                  </Tip>
+                ) : (
+                  <Tip label={tr("voice.dictation")}>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--trailing icon-btn--mic"
+                      disabled={!canType(session.state)}
+                      aria-label={tr("voice.dictation")}
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            const stream =
+                              await navigator.mediaDevices.getUserMedia({
+                                audio: true,
+                              });
+                            const mime = MediaRecorder.isTypeSupported(
+                              "audio/webm;codecs=opus",
+                            )
+                              ? "audio/webm;codecs=opus"
+                              : "audio/webm";
+                            const rec = new MediaRecorder(stream, {
+                              mimeType: mime,
+                            });
+                            voiceChunksRef.current = [];
+                            rec.ondataavailable = (e) => {
+                              if (e.data.size) voiceChunksRef.current.push(e.data);
+                            };
+                            rec.onstop = () => {
+                              stream.getTracks().forEach((t) => t.stop());
+                              setVoiceDictating(false);
+                              void (async () => {
+                                try {
+                                  const blob = new Blob(voiceChunksRef.current, {
+                                    type: mime,
+                                  });
+                                  if (blob.size < 32) return;
+                                  const b64 = await blobToBase64(blob);
+                                  const result =
+                                    await api.voiceDictationTranscribe(
+                                      b64,
+                                      mime,
+                                      locale === "zh" || locale === "zh-TW"
+                                        ? "zh"
+                                        : "en",
+                                    );
+                                  if (result.text?.trim()) {
+                                    setDraft((d) =>
+                                      d.trim()
+                                        ? `${d.trim()} ${result.text.trim()}`
+                                        : result.text.trim(),
+                                    );
+                                  }
+                                } catch (e) {
+                                  console.warn("dictation failed", e);
+                                }
+                              })();
+                            };
+                            voiceRecorderRef.current = rec;
+                            rec.start();
+                            setVoiceDictating(true);
+                          } catch {
+                            /* mic denied */
+                          }
+                        })();
+                      }}
+                    >
+                      <IconMic size={16} />
                     </button>
                   </Tip>
                 )}
@@ -8966,7 +9453,16 @@ export default function App() {
             const isOpen =
               session.sessionId === s.id ||
               viewingSessionIdRef.current === s.id;
+            const isSettled = !!s.settledAt;
             items = [
+              {
+                id: "settle",
+                label: isSettled ? tr("session.unsettle") : tr("session.settle"),
+                icon: <IconCheck size={16} />,
+                onClick: () => {
+                  void settleSession(s, !isSettled);
+                },
+              },
               {
                 id: "pin",
                 label: s.pinned ? tr("session.unpin") : tr("session.pin"),

@@ -119,6 +119,21 @@ pub struct SessionMeta {
     /// Created by shell scheduled automation (`runAutomation`).
     #[serde(default)]
     pub scheduled: bool,
+    /// ISO datetime when thread was settled (manually marked done). None = active.
+    #[serde(default)]
+    pub settled_at: Option<DateTime<Utc>>,
+    /// ISO datetime until which the thread is snoozed. None = not snoozed.
+    #[serde(default)]
+    pub snoozed_until: Option<DateTime<Utc>>,
+    /// Git branch name (populated from working directory).
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// PR reference number as string (e.g. "1234").
+    #[serde(default)]
+    pub pr_ref: Option<String>,
+    /// PR state: "open", "merged", "closed", or None.
+    #[serde(default)]
+    pub pr_state: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,6 +195,42 @@ pub struct AppSettings {
     /// Keep delegated agent sessions running after ending a live voice chat.
     #[serde(default = "default_true")]
     pub voice_keep_agents_on_end: bool,
+    /// Timestamp display format: locale | 12-hour | 24-hour.
+    #[serde(default = "default_timestamp_format")]
+    pub timestamp_format: String,
+    /// Sidebar sort order: updated_at | created_at | manual.
+    #[serde(default = "default_sidebar_sort_order")]
+    pub sidebar_sort_order: String,
+    /// Wrap long lines in code blocks, diffs, file previews.
+    #[serde(default = "default_true")]
+    pub word_wrap: bool,
+    /// Ignore whitespace-only changes in diff view.
+    #[serde(default = "default_true")]
+    pub diff_ignore_whitespace: bool,
+    /// Confirm before deleting sessions.
+    #[serde(default = "default_true")]
+    pub confirm_delete: bool,
+    /// Confirm before archiving sessions.
+    #[serde(default)]
+    pub confirm_archive: bool,
+    /// Glass surface opacity (40-100).
+    #[serde(default = "default_glass_opacity")]
+    pub glass_opacity: u32,
+    /// Sidebar message preview line count (1-15).
+    #[serde(default = "default_sidebar_preview_count")]
+    pub sidebar_thread_preview_count: u32,
+    /// Auto-archive idle threads after N days (null = off).
+    #[serde(default)]
+    pub thread_auto_settle_days: Option<u32>,
+    /// Auto-open task panel when steps appear.
+    #[serde(default)]
+    pub auto_open_task_panel: bool,
+    /// Default directory for Add Project browser.
+    #[serde(default)]
+    pub add_project_base_dir: String,
+    /// Check provider CLIs for updates on startup.
+    #[serde(default = "default_true")]
+    pub enable_provider_update_checks: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -210,6 +261,22 @@ fn default_voice_id() -> String {
     "eve".into()
 }
 
+fn default_timestamp_format() -> String {
+    "locale".into()
+}
+
+fn default_sidebar_sort_order() -> String {
+    "updated_at".into()
+}
+
+fn default_glass_opacity() -> u32 {
+    80
+}
+
+fn default_sidebar_preview_count() -> u32 {
+    6
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -237,6 +304,18 @@ impl Default for AppSettings {
             voice_id: default_voice_id(),
             voice_dictation_auto_send: false,
             voice_keep_agents_on_end: true,
+            timestamp_format: default_timestamp_format(),
+            sidebar_sort_order: default_sidebar_sort_order(),
+            word_wrap: true,
+            diff_ignore_whitespace: true,
+            confirm_delete: true,
+            confirm_archive: false,
+            glass_opacity: default_glass_opacity(),
+            sidebar_thread_preview_count: default_sidebar_preview_count(),
+            thread_auto_settle_days: None,
+            auto_open_task_panel: false,
+            add_project_base_dir: String::new(),
+            enable_provider_update_checks: true,
         }
     }
 }
@@ -636,10 +715,19 @@ pub fn reorder_spaces(ordered_ids: Vec<String>) -> Result<Vec<Space>, String> {
 
 /// Pinned first, then newest `updated_at` (mirrors project pin sort).
 pub fn sort_sessions_by_pin_then_updated(list: &mut [SessionMeta]) {
-    list.sort_by(|a, b| match (b.pinned, a.pinned) {
-        (true, false) => std::cmp::Ordering::Greater,
-        (false, true) => std::cmp::Ordering::Less,
-        _ => b.updated_at.cmp(&a.updated_at),
+    list.sort_by(|a, b| {
+        let a_active = a.settled_at.is_none() && a.snoozed_until.is_none();
+        let b_active = b.settled_at.is_none() && b.snoozed_until.is_none();
+        match (a_active, b_active) {
+            (true, false) => return std::cmp::Ordering::Less,
+            (false, true) => return std::cmp::Ordering::Greater,
+            _ => {}
+        }
+        match (b.pinned, a.pinned) {
+            (true, false) => return std::cmp::Ordering::Greater,
+            (false, true) => return std::cmp::Ordering::Less,
+            _ => b.updated_at.cmp(&a.updated_at),
+        }
     });
 }
 
@@ -676,6 +764,11 @@ pub fn create_session(
         mode: None,
         permission_policy: None,
         scheduled,
+        settled_at: None,
+        snoozed_until: None,
+        branch: None,
+        pr_ref: None,
+        pr_state: None,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -756,6 +849,46 @@ pub fn set_session_pinned(id: &str, pinned: bool) -> Result<SessionMeta, String>
         .ok_or_else(|| "session not found".to_string())?;
     s.pinned = pinned;
     // Do not bump updated_at — pin is organizational (same as project pin).
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+pub fn set_session_settled(id: &str, settled_at: Option<DateTime<Utc>>) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list.iter_mut().find(|s| s.id == id).ok_or_else(|| "session not found".to_string())?;
+    s.settled_at = settled_at;
+    if settled_at.is_some() {
+        s.snoozed_until = None;
+    }
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+pub fn set_session_snoozed(id: &str, snoozed_until: Option<DateTime<Utc>>) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list.iter_mut().find(|s| s.id == id).ok_or_else(|| "session not found".to_string())?;
+    s.snoozed_until = snoozed_until;
+    if snoozed_until.is_some() {
+        s.settled_at = None;
+    }
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+pub fn set_session_branch_pr(
+    id: &str,
+    branch: Option<String>,
+    pr_ref: Option<String>,
+    pr_state: Option<String>,
+) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list.iter_mut().find(|s| s.id == id).ok_or_else(|| "session not found".to_string())?;
+    s.branch = branch;
+    s.pr_ref = pr_ref;
+    s.pr_state = pr_state;
     let clone = s.clone();
     save_sessions_index(&list)?;
     Ok(clone)

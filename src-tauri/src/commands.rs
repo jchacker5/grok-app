@@ -219,6 +219,65 @@ pub async fn app_check_update() -> Result<crate::app_update::AppUpdateCheck, Str
     crate::app_update::check_app_update().await
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliUpdateCheck {
+    pub current_version: Option<String>,
+    pub latest_version: Option<String>,
+    pub update_available: bool,
+    pub error: Option<String>,
+}
+
+/// Extract the first semver-like pattern (x.y.z) from a raw version string
+/// (e.g. "grok 0.2.5 (abc1234)" -> Some("0.2.5")).
+fn extract_semver(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    let start = s.find(|c: char| c.is_ascii_digit())?;
+    let tail = &s[start..];
+    let ver: String = tail
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    if ver.is_empty() { None } else { Some(ver) }
+}
+
+/// Check whether the installed Grok Build CLI has a newer version available.
+/// Used by the frontend to show a one-click update banner.
+#[tauri::command]
+pub async fn cli_check_update(app: tauri::AppHandle) -> Result<CliUpdateCheck, String> {
+    // 1. Probe current CLI version
+    let probe = cli_probe::probe_cli(None);
+    let current_raw = probe.version.as_deref();
+    let current_ver = current_raw.and_then(extract_semver);
+
+    // 2. Resolve latest version from mirrors
+    let client = crate::cli_install::http_client()?;
+    let latest_ver = match crate::cli_install::resolve_version(&app, &client).await {
+        Ok((v, _)) => Some(v),
+        Err(e) => {
+            return Ok(CliUpdateCheck {
+                current_version: current_ver,
+                latest_version: None,
+                update_available: false,
+                error: Some(format!("resolve failed: {e}")),
+            });
+        }
+    };
+
+    // 3. Compare versions
+    let update_available = match (&current_ver, &latest_ver) {
+        (Some(cur), Some(latest)) => crate::app_update::is_remote_newer(cur, latest),
+        _ => false,
+    };
+
+    Ok(CliUpdateCheck {
+        current_version: current_ver,
+        latest_version: latest_ver,
+        update_available,
+        error: None,
+    })
+}
+
 /// Open a URL in the system browser (docs, install pages).
 #[tauri::command]
 pub async fn open_external_url(url: String) -> Result<(), String> {
@@ -451,6 +510,40 @@ pub async fn session_set_archived(id: String, archived: bool) -> Result<SessionM
 #[tauri::command]
 pub async fn session_set_pinned(id: String, pinned: bool) -> Result<SessionMeta, String> {
     store::set_session_pinned(&id, pinned)
+}
+
+#[tauri::command]
+pub async fn session_set_settled(id: String, settled_at: Option<String>) -> Result<SessionMeta, String> {
+    let parsed = settled_at
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        })
+        .transpose()
+        .map_err(|e| format!("invalid datetime: {e}"))?;
+    store::set_session_settled(&id, parsed)
+}
+
+#[tauri::command]
+pub async fn session_set_snoozed(id: String, snoozed_until: Option<String>) -> Result<SessionMeta, String> {
+    let parsed = snoozed_until
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        })
+        .transpose()
+        .map_err(|e| format!("invalid datetime: {e}"))?;
+    store::set_session_snoozed(&id, parsed)
+}
+
+#[tauri::command]
+pub async fn session_set_branch_pr(
+    id: String,
+    branch: Option<String>,
+    pr_ref: Option<String>,
+    pr_state: Option<String>,
+) -> Result<SessionMeta, String> {
+    store::set_session_branch_pr(&id, branch, pr_ref, pr_state)
 }
 
 /// Move session under a project (or clear project → orphan / "Other" group).

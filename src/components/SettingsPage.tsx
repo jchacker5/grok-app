@@ -46,6 +46,7 @@ import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
+import { getUserOverrides } from "@/lib/keybindings";
 import {
   createT,
   resolveLocale,
@@ -170,6 +171,51 @@ export interface SettingsPageProps {
   /** Keep delegated agents running when live voice ends. */
   voiceKeepAgentsOnEnd?: boolean;
   onVoiceKeepAgentsOnEnd?: (v: boolean) => void;
+  /** Timestamp display format. */
+  timestampFormat?: string;
+  onTimestampFormat?: (v: string) => void;
+  /** Sidebar sort order. */
+  sidebarSortOrder?: string;
+  onSidebarSortOrder?: (v: string) => void;
+  /** Wrap long lines in code blocks, diffs, etc. */
+  wordWrap?: boolean;
+  onWordWrap?: (v: boolean) => void;
+  /** Ignore whitespace in diff view. */
+  diffIgnoreWhitespace?: boolean;
+  onDiffIgnoreWhitespace?: (v: boolean) => void;
+  /** Confirm before deleting sessions. */
+  confirmDelete?: boolean;
+  onConfirmDelete?: (v: boolean) => void;
+  /** Confirm before archiving sessions. */
+  confirmArchive?: boolean;
+  onConfirmArchive?: (v: boolean) => void;
+  /** Glass surface opacity (40-100). */
+  glassOpacity?: number;
+  onGlassOpacity?: (v: number) => void;
+  /** Sidebar message preview line count (1-15). */
+  sidebarThreadPreviewCount?: number;
+  onSidebarThreadPreviewCount?: (v: number) => void;
+  /** Auto-archive idle threads after N days (null = off). */
+  threadAutoSettleDays?: number | null;
+  onThreadAutoSettleDays?: (v: number | null) => void;
+  /** Auto-open task panel when steps appear. */
+  autoOpenTaskPanel?: boolean;
+  onAutoOpenTaskPanel?: (v: boolean) => void;
+  /** Default directory for Add Project browser. */
+  addProjectBaseDir?: string;
+  onAddProjectBaseDir?: (v: string) => void;
+  /** Check provider CLIs for updates. */
+  enableProviderUpdateChecks?: boolean;
+  onEnableProviderUpdateChecks?: (v: boolean) => void;
+  /** Override binary path for CLI agent harness. */
+  binaryPath?: string;
+  onBinaryPath?: (v: string) => void;
+  /** Override Grok home directory. */
+  homePath?: string;
+  onHomePath?: (v: string) => void;
+  /** Additional model slugs to recognize, comma-separated. */
+  customModels?: string;
+  onCustomModels?: (v: string) => void;
 }
 
 const NAV: {
@@ -467,6 +513,36 @@ export function SettingsPage({
   onVoiceDictationAutoSend,
   voiceKeepAgentsOnEnd = true,
   onVoiceKeepAgentsOnEnd,
+  timestampFormat = "locale",
+  onTimestampFormat,
+  sidebarSortOrder = "updated_at",
+  onSidebarSortOrder,
+  wordWrap = true,
+  onWordWrap,
+  diffIgnoreWhitespace = true,
+  onDiffIgnoreWhitespace,
+  confirmDelete = true,
+  onConfirmDelete,
+  confirmArchive = false,
+  onConfirmArchive,
+  glassOpacity = 80,
+  onGlassOpacity,
+  sidebarThreadPreviewCount = 6,
+  onSidebarThreadPreviewCount,
+  threadAutoSettleDays = null,
+  onThreadAutoSettleDays,
+  autoOpenTaskPanel = false,
+  onAutoOpenTaskPanel,
+  addProjectBaseDir = "",
+  onAddProjectBaseDir,
+  enableProviderUpdateChecks = true,
+  onEnableProviderUpdateChecks,
+  binaryPath = "",
+  onBinaryPath,
+  homePath = "",
+  onHomePath,
+  customModels = "",
+  onCustomModels,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [voiceOptions, setVoiceOptions] = useState<api.VoiceOption[]>([]);
@@ -1014,6 +1090,199 @@ export function SettingsPage({
                   />
                 </div>
               )}
+              {onSidebarSortOrder ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.sidebar.sort")}</div>
+                    <div className="settings-row__desc">{t("settings.sidebar.sortDesc")}</div>
+                  </div>
+                  <Select
+                    value={sidebarSortOrder}
+                    onChange={(v) => onSidebarSortOrder(v)}
+                    options={[
+                      { value: "updated_at", label: t("settings.sidebar.sortUpdated") },
+                      { value: "created_at", label: t("settings.sidebar.sortCreated") },
+                      { value: "manual", label: t("settings.sidebar.sortManual") },
+                    ]}
+                    aria-label={t("settings.sidebar.sort")}
+                  />
+                </div>
+              ) : null}
+              {onSidebarThreadPreviewCount ? (
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.sidebar.previewCount")}</div>
+                    <div className="settings-row__desc">{t("settings.sidebar.previewCountDesc")}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="range"
+                      min={1}
+                      max={15}
+                      value={sidebarThreadPreviewCount}
+                      onChange={(e) => onSidebarThreadPreviewCount(Number(e.target.value))}
+                      style={{ flex: 1, maxWidth: 200, accentColor: 'var(--accent)' }}
+                      aria-label={t("settings.sidebar.previewCount")}
+                    />
+                    <output style={{ minWidth: 24, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
+                      {sidebarThreadPreviewCount}
+                    </output>
+                  </div>
+                </div>
+              ) : null}
+              {onThreadAutoSettleDays !== undefined ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.threadAutoSettle")}</div>
+                    <div className="settings-row__desc">{t("settings.threadAutoSettleDesc")}</div>
+                  </div>
+                  <Select
+                    value={String(threadAutoSettleDays ?? "")}
+                    onChange={(v) => onThreadAutoSettleDays(v ? Number(v) : null)}
+                    options={[
+                      { value: "", label: t("settings.threadAutoSettleOff") },
+                      { value: "1", label: "1" },
+                      { value: "3", label: "3" },
+                      { value: "7", label: "7" },
+                      { value: "14", label: "14" },
+                      { value: "30", label: "30" },
+                      { value: "60", label: "60" },
+                      { value: "90", label: "90" },
+                    ]}
+                    aria-label={t("settings.threadAutoSettle")}
+                  />
+                </div>
+              ) : null}
+              {onAutoOpenTaskPanel ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.autoOpenTaskPanel")}</div>
+                    <div className="settings-row__desc">{t("settings.autoOpenTaskPanelDesc")}</div>
+                  </div>
+                  <UiCheck
+                    checked={autoOpenTaskPanel}
+                    onChange={() => onAutoOpenTaskPanel(!autoOpenTaskPanel)}
+                    ariaLabel={t("settings.autoOpenTaskPanel")}
+                  />
+                </div>
+              ) : null}
+              {onConfirmDelete ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.confirmDelete")}</div>
+                    <div className="settings-row__desc">{t("settings.confirmDeleteDesc")}</div>
+                  </div>
+                  <UiCheck
+                    checked={confirmDelete}
+                    onChange={() => onConfirmDelete(!confirmDelete)}
+                    ariaLabel={t("settings.confirmDelete")}
+                  />
+                </div>
+              ) : null}
+              {onConfirmArchive ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.confirmArchive")}</div>
+                    <div className="settings-row__desc">{t("settings.confirmArchiveDesc")}</div>
+                  </div>
+                  <UiCheck
+                    checked={confirmArchive}
+                    onChange={() => onConfirmArchive(!confirmArchive)}
+                    ariaLabel={t("settings.confirmArchive")}
+                  />
+                </div>
+              ) : null}
+              {onEnableProviderUpdateChecks ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.providerUpdateChecks")}</div>
+                    <div className="settings-row__desc">{t("settings.providerUpdateChecksDesc")}</div>
+                  </div>
+                  <UiCheck
+                    checked={enableProviderUpdateChecks}
+                    onChange={() => onEnableProviderUpdateChecks(!enableProviderUpdateChecks)}
+                    ariaLabel={t("settings.providerUpdateChecks")}
+                  />
+                </div>
+              ) : null}
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.keybindings")}</div>
+                  <div className="settings-row__desc">{t("settings.keybindingsDesc")}</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => {
+                    const overrides = JSON.stringify(getUserOverrides(), null, 2);
+                    const blob = new Blob([overrides], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, "_blank");
+                  }}
+                >
+                  {t("settings.keybindingsOpen")}
+                </button>
+              </div>
+              {onAddProjectBaseDir ? (
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.addProjectBaseDir")}</div>
+                    <div className="settings-row__desc">{t("settings.addProjectBaseDirDesc")}</div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    value={addProjectBaseDir}
+                    placeholder="~/"
+                    onChange={(e) => onAddProjectBaseDir(e.target.value)}
+                    aria-label={t("settings.addProjectBaseDir")}
+                  />
+                </div>
+              ) : null}
+              {onBinaryPath ? (
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.binaryPath")}</div>
+                    <div className="settings-row__desc">{t("settings.binaryPathDesc")}</div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    value={binaryPath ?? ""}
+                    placeholder={t("settings.binaryPathPh")}
+                    onChange={(e) => onBinaryPath(e.target.value)}
+                    aria-label={t("settings.binaryPath")}
+                  />
+                </div>
+              ) : null}
+              {onHomePath ? (
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.homePath")}</div>
+                    <div className="settings-row__desc">{t("settings.homePathDesc")}</div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    value={homePath ?? ""}
+                    placeholder={t("settings.homePathPh")}
+                    onChange={(e) => onHomePath(e.target.value)}
+                    aria-label={t("settings.homePath")}
+                  />
+                </div>
+              ) : null}
+              {onCustomModels ? (
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">{t("settings.customModels")}</div>
+                    <div className="settings-row__desc">{t("settings.customModelsDesc")}</div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    value={customModels ?? ""}
+                    placeholder={t("settings.customModelsPh")}
+                    onChange={(e) => onCustomModels(e.target.value)}
+                    aria-label={t("settings.customModels")}
+                  />
+                </div>
+              ) : null}
             </div>
           </>
         )}
@@ -1051,6 +1320,73 @@ export function SettingsPage({
                 </button>
               </div>
             </div>
+            {onGlassOpacity ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.glassOpacity")}</div>
+                  <div className="settings-row__desc">{t("settings.glassOpacityDesc")}</div>
+                </div>
+                <div className="settings-row__control" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <output style={{ minWidth: 40, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
+                    {glassOpacity}%
+                  </output>
+                  <input
+                    type="range"
+                    min={40}
+                    max={100}
+                    step={5}
+                    value={glassOpacity}
+                    onChange={(e) => onGlassOpacity(Number(e.target.value))}
+                    style={{ flex: 1, accentColor: 'var(--accent)' }}
+                    aria-label={t("settings.glassOpacity")}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {onTimestampFormat ? (
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.format.timestamp")}</div>
+                  <div className="settings-row__desc">{t("settings.format.timestampDesc")}</div>
+                </div>
+                <Select
+                  value={timestampFormat}
+                  onChange={(v) => onTimestampFormat(v)}
+                  options={[
+                    { value: "locale", label: t("settings.format.timestampLocale") },
+                    { value: "12-hour", label: t("settings.format.timestamp12h") },
+                    { value: "24-hour", label: t("settings.format.timestamp24h") },
+                  ]}
+                  aria-label={t("settings.format.timestamp")}
+                />
+              </div>
+            ) : null}
+            {onWordWrap ? (
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.wordWrap")}</div>
+                  <div className="settings-row__desc">{t("settings.wordWrapDesc")}</div>
+                </div>
+                <UiCheck
+                  checked={wordWrap}
+                  onChange={() => onWordWrap(!wordWrap)}
+                  ariaLabel={t("settings.wordWrap")}
+                />
+              </div>
+            ) : null}
+            {onDiffIgnoreWhitespace ? (
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.diffWhitespace")}</div>
+                  <div className="settings-row__desc">{t("settings.diffWhitespaceDesc")}</div>
+                </div>
+                <UiCheck
+                  checked={diffIgnoreWhitespace}
+                  onChange={() => onDiffIgnoreWhitespace(!diffIgnoreWhitespace)}
+                  ariaLabel={t("settings.diffWhitespace")}
+                />
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -1577,6 +1913,39 @@ export function SettingsPage({
             <AboutUpdateRow t={t} />
           </div>
         )}
+
+        {section !== "account" && section !== "extensions" && section !== "archived" ? (
+          <div className="settings-card" style={{ marginTop: 24 }}>
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">{t("settings.restoreDefaults")}</div>
+                <div className="settings-row__desc">{t("settings.restoreDefaultsDesc")}</div>
+              </div>
+              <button
+                type="button"
+                className="btn btn--ghost btn--danger"
+                onClick={() => {
+                  if (window.confirm(t("settings.restoreDefaultsConfirm"))) {
+                    onTimestampFormat?.("locale");
+                    onSidebarSortOrder?.("updated_at");
+                    onWordWrap?.(true);
+                    onDiffIgnoreWhitespace?.(true);
+                    onConfirmDelete?.(true);
+                    onConfirmArchive?.(false);
+                    onGlassOpacity?.(80);
+                    onSidebarThreadPreviewCount?.(6);
+                    onThreadAutoSettleDays?.(null);
+                    onAutoOpenTaskPanel?.(false);
+                    onAddProjectBaseDir?.("");
+                    onEnableProviderUpdateChecks?.(true);
+                  }
+                }}
+              >
+                {t("settings.restoreDefaultsBtn")}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </main>
       </div>
     </div>
