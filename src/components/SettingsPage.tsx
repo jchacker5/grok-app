@@ -1515,28 +1515,28 @@ export function SettingsPage({
               </div>
             ) : null}
 
-            {onVoiceSensitivity ? (
-              <div className="settings-row settings-row--stack">
-                <div className="settings-row__text">
-                  <div className="settings-row__label">{t("voice.sensitivity")}</div>
-                  <div className="settings-row__desc">{t("voice.sensitivityDesc")}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    type="range"
-                    min={1}
-                    max={100}
-                    value={voiceSensitivity}
-                    onChange={(e) => onVoiceSensitivity(Number(e.target.value))}
-                    style={{ flex: 1, maxWidth: 200, accentColor: 'var(--accent)' }}
-                    aria-label={t("voice.sensitivity")}
-                  />
-                  <output style={{ minWidth: 28, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
-                    {voiceSensitivity}%
-                  </output>
-                </div>
+          {onVoiceSensitivity ? (
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__text">
+                <div className="settings-row__label">{t("voice.sensitivity")}</div>
+                <div className="settings-row__desc">{t("voice.sensitivityDesc")}</div>
               </div>
-            ) : null}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="range"
+                  min={1}
+                  max={100}
+                  value={Math.round(voiceSensitivity * 100)}
+                  onChange={(e) => onVoiceSensitivity(Number(e.target.value) / 100)}
+                  style={{ flex: 1, maxWidth: 200, accentColor: 'var(--accent)' }}
+                  aria-label={t("voice.sensitivity")}
+                />
+                <output style={{ minWidth: 28, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
+                  {Math.round(voiceSensitivity * 100)}%
+                </output>
+              </div>
+            </div>
+          ) : null}
           </div>
 
           <h2 className="settings-page__h2">{t("voice.settingsDictation")}</h2>

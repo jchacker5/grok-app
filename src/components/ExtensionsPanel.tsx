@@ -81,6 +81,73 @@ export function ExtensionsPanel({
   const [pluginFilter, setPluginFilter] = useState<PluginFilter>("all");
   const [installSource, setInstallSource] = useState("");
 
+  // Marketplace catalog
+  const [mpPlugins, setMpPlugins] = useState<api.MarketplacePluginDto[]>([]);
+  const [mpSources, setMpSources] = useState<api.MarketplaceSourceDto[]>([]);
+  const [mpLoading, setMpLoading] = useState(false);
+  const [mpError, setMpError] = useState<string | null>(null);
+  const [mpSearch, setMpSearch] = useState("");
+  const [mpSourceFilter, setMpSourceFilter] = useState<string | null>(null);
+  const [installTarget, setInstallTarget] = useState<api.MarketplacePluginDto | null>(null);
+
+  const installedPluginNames = useMemo(
+    () => new Set(plugins.map((p) => p.name)),
+    [plugins],
+  );
+
+  const refreshMarketplace = useCallback(async () => {
+    if (!api.isTauri()) return;
+    setMpLoading(true);
+    setMpError(null);
+    try {
+      const result = await api.pluginsMarketplaceCatalog();
+      setMpPlugins(result.plugins || []);
+      setMpSources(result.sources || []);
+    } catch (e) {
+      setMpError(String(e));
+      setMpPlugins([]);
+      setMpSources([]);
+    } finally {
+      setMpLoading(false);
+    }
+  }, []);
+
+  const filteredMpPlugins = useMemo(() => {
+    let list = mpPlugins;
+    if (mpSourceFilter) {
+      list = list.filter((p) => p.marketplaceName === mpSourceFilter);
+    }
+    if (mpSearch.trim()) {
+      const q = mpSearch.trim().toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          (p.description ?? "").toLowerCase().includes(q),
+      );
+    }
+    // Sort: available first (not installed), then alphabetically
+    return [...list].sort((a, b) => {
+      const aInst = installedPluginNames.has(a.name) ? 1 : 0;
+      const bInst = installedPluginNames.has(b.name) ? 1 : 0;
+      if (aInst !== bInst) return aInst - bInst;
+      return a.name.localeCompare(b.name);
+    });
+  }, [mpPlugins, mpSourceFilter, mpSearch, installedPluginNames]);
+
+  const confirmInstall = async () => {
+    const target = installTarget;
+    if (!target) return;
+    setInstallTarget(null);
+    const sourceUrl =
+      typeof target.source === "object" && target.source
+        ? target.source.url ?? target.source.path ?? target.name
+        : target.name;
+    await runPluginAction("marketplace-install", async () => {
+      await api.pluginInstall(sourceUrl);
+      await refreshMarketplace();
+    });
+  };
+
   const refresh = useCallback(async () => {
     if (!api.isTauri()) {
       setSkills([]);
@@ -129,6 +196,11 @@ export function ExtensionsPanel({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Load marketplace catalog on mount
+  useEffect(() => {
+    void refreshMarketplace();
+  }, [refreshMarketplace]);
 
   const bannerError = useMemo(
     () => mergeInspectErrors(skillsError, mcpError, pluginsError),
@@ -415,6 +487,147 @@ export function ExtensionsPanel({
           ) : null}
         </div>
       )}
+
+      {/* Marketplace — browse available plugins from configured sources */}
+      <h2 className="settings-page__h2">
+        <IconPuzzle size={15} />
+        {tr("ext.marketplace.title")}
+        {!mpLoading ? (
+          <span className="ext-count">{mpPlugins.length}</span>
+        ) : null}
+        {!mpLoading && mpPlugins.length > 0 ? (
+          <button
+            type="button"
+            className="btn btn--ghost ext-bulk-btn"
+            disabled={!!actionBusy}
+            onClick={() => void refreshMarketplace()}
+          >
+            <IconRefresh size={14} />
+          </button>
+        ) : null}
+      </h2>
+      <div className="settings-card ext-card">
+        {mpLoading && <p className="ext-empty">{tr("ext.marketplace.loading")}</p>}
+        {!mpLoading && mpError && (
+          <p className="ext-alert ext-alert--warn">{mpError}</p>
+        )}
+        {!mpLoading && !mpError && mpPlugins.length === 0 && (
+          <p className="ext-empty">
+            {cliMissing ? tr("ext.marketplace.emptyCli") : tr("ext.marketplace.empty")}
+          </p>
+        )}
+        {!mpLoading && mpPlugins.length > 0 && (
+          <>
+            <div className="ext-marketplace-controls">
+              <input
+                type="text"
+                className="settings-input ext-marketplace-search"
+                value={mpSearch}
+                placeholder={`Search ${mpPlugins.length} plugins…`}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(e) => setMpSearch(e.target.value)}
+              />
+              <div className="ext-marketplace-sources" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mpSourceFilter === null}
+                  className={"ext-plugin-filter" + (mpSourceFilter === null ? " is-active" : "")}
+                  onClick={() => setMpSourceFilter(null)}
+                >
+                  All
+                </button>
+                {mpSources.map((s) => (
+                  <button
+                    key={s.name}
+                    type="button"
+                    role="tab"
+                    aria-selected={mpSourceFilter === s.name}
+                    className={"ext-plugin-filter" + (mpSourceFilter === s.name ? " is-active" : "")}
+                    onClick={() => setMpSourceFilter(s.name)}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {filteredMpPlugins.length === 0 && (
+              <p className="ext-empty">No plugins match your search.</p>
+            )}
+            {filteredMpPlugins.length > 0 && (
+              <ul className="ext-list ext-marketplace-list">
+                {filteredMpPlugins.map((p) => {
+                  const installed = installedPluginNames.has(p.name);
+                  const cat = p.category || "";
+                  return (
+                    <li
+                      key={`${p.marketplaceName ?? ""}:${p.name}`}
+                      className={"ext-item" + (installed ? " ext-item--installed" : "")}
+                    >
+                      <div className="ext-item__head">
+                        <strong className="ext-item__name">{p.name}</strong>
+                        {p.version ? (
+                          <span className="ext-badge ext-badge--muted">
+                            v{p.version.replace(/^v/i, "")}
+                          </span>
+                        ) : null}
+                        {cat ? (
+                          <span className="ext-badge ext-badge--muted">
+                            {cat}
+                          </span>
+                        ) : null}
+                        {installed ? (
+                          <span className="ext-badge ext-badge--plugin-enabled">
+                            Installed
+                          </span>
+                        ) : null}
+                      </div>
+                      {p.description ? (
+                        <p className="ext-item__desc">{p.description}</p>
+                      ) : null}
+                      <div className="ext-item__meta">
+                        {p.marketplaceName ? (
+                          <span>{tr("ext.marketplace.from", { name: p.marketplaceName })}</span>
+                        ) : null}
+                        {p.author && typeof p.author === "object" && "name" in p.author ? (
+                          <span>{tr("ext.marketplace.author", { name: (p.author as { name?: string }).name ?? "" })}</span>
+                        ) : null}
+                      </div>
+                      <div className="ext-item__actions">
+                        <button
+                          type="button"
+                          className="btn btn--solid btn--sm"
+                          disabled={!!actionBusy || installed}
+                          onClick={() => setInstallTarget(p)}
+                        >
+                          {installed
+                            ? tr("ext.plugins.status.enabled")
+                            : actionBusy === "marketplace-install"
+                              ? tr("ext.marketplace.installing")
+                              : tr("ext.plugins.install")}
+                        </button>
+                        {p.homepage ? (
+                          <span className="ext-item__homepage">
+                            <a
+                              href={p.homepage}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ext-link"
+                            >
+                              {p.homepage.replace(/^https?:\/\//, "").replace(/\/+$/, "").slice(0, 36)}
+                            </a>
+                          </span>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Plugins — same inventory as Grok Build `plugin list` / Plugins tab */}
       <h2 className="settings-page__h2">
@@ -821,6 +1034,45 @@ export function ExtensionsPanel({
         <p className="app-dialog__msg">
           {tr("ext.plugins.uninstallConfirm", {
             name: uninstallTarget?.name ?? "",
+          })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!installTarget}
+        onClose={() => {
+          if (!actionBusy) setInstallTarget(null);
+        }}
+        title={tr("ext.plugins.install")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={!!actionBusy}
+              onClick={() => setInstallTarget(null)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={!!actionBusy}
+              onClick={() => void confirmInstall()}
+            >
+              {actionBusy === "marketplace-install"
+                ? tr("ext.marketplace.installing")
+                : tr("ext.plugins.install")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">
+          {tr("ext.marketplace.installConfirm", {
+            name: installTarget?.name ?? "",
+            marketplace: installTarget?.marketplaceName ?? "",
           })}
         </p>
       </GlassModal>

@@ -367,6 +367,7 @@ export default function App() {
   const dictationLevelIntervalRef = useRef<number | null>(null);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceCaptureStopRef = useRef<(() => void) | null>(null);
   const [goalMode, setGoalMode] = useState(false);
   /** Prevent overlapping executeSend / queue auto-flush races. */
   const sendInFlightRef = useRef(false);
@@ -7545,10 +7546,12 @@ export default function App() {
                 type="button"
                 className="sidebar-bulk-bar__btn"
                 onClick={() => {
-                  selectedThreadIds.forEach((id) => {
-                    const s = sessions.find((x) => x.id === id);
-                    if (s) void archiveSession(s, true);
-                  });
+                  const rows = Array.from(selectedThreadIds)
+                    .map((id) => sessions.find((x) => x.id === id))
+                    .filter((s): s is SessionRow => !!s);
+                  Promise.all(rows.map((s) => api.sessionSetArchived(s.id, true)))
+                    .then(() => refreshSessions())
+                    .catch(() => {});
                   clearSelection();
                 }}
               >
@@ -7558,10 +7561,10 @@ export default function App() {
                 type="button"
                 className="sidebar-bulk-bar__btn sidebar-bulk-bar__btn--danger"
                 onClick={() => {
-                  selectedThreadIds.forEach((id) => {
-                    const s = sessions.find((x) => x.id === id);
-                    if (s) void deleteSessionConfirm(s);
-                  });
+                  const rows = Array.from(selectedThreadIds)
+                    .map((id) => sessions.find((x) => x.id === id))
+                    .filter((s): s is SessionRow => !!s);
+                  deleteSessionsConfirm(rows);
                   clearSelection();
                 }}
               >
@@ -8718,6 +8721,7 @@ export default function App() {
                                 deviceId: voiceMicDeviceId || undefined,
                               },
                             );
+                            voiceCaptureStopRef.current = capture.stop;
                             const stream = capture.stream;
                             const mime = MediaRecorder.isTypeSupported(
                               "audio/webm;codecs=opus",
@@ -8732,7 +8736,8 @@ export default function App() {
                               if (e.data.size) voiceChunksRef.current.push(e.data);
                             };
                             rec.onstop = () => {
-                              stream.getTracks().forEach((t) => t.stop());
+                              voiceCaptureStopRef.current?.();
+                              voiceCaptureStopRef.current = null;
                               setVoiceDictating(false);
                               setDictationLevel(0);
                               void (async () => {

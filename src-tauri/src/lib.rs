@@ -217,6 +217,7 @@ pub fn run() {
             commands::plugin_details,
             commands::plugin_install,
             commands::plugin_update,
+            commands::plugins_marketplace_catalog,
             commands::pick_directory,
             commands::pick_attach_files,
             commands::pick_attach_folder,

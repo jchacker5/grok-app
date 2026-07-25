@@ -3033,6 +3033,122 @@ pub async fn plugin_update(
     }))
 }
 
+// ── Marketplace catalog (read local cache) ──────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplacePluginDto {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub author: Option<serde_json::Value>,
+    #[serde(default)]
+    pub category: Option<String>,
+    pub source: serde_json::Value,
+    #[serde(default)]
+    pub homepage: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub marketplace_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplaceCatalogResult {
+    pub plugins: Vec<MarketplacePluginDto>,
+    pub sources: Vec<serde_json::Value>,
+}
+
+/// Read marketplace cache and return all available plugins + marketplace sources.
+/// Falls back to calling `grok plugin marketplace list --json` when cache is empty.
+#[tauri::command]
+pub async fn plugins_marketplace_catalog() -> Result<MarketplaceCatalogResult, String> {
+    let home = crate::process_util::user_home();
+    let cache_dir = home.join(".grok").join("marketplace-cache");
+
+    let mut sources: Vec<serde_json::Value> = Vec::new();
+    let mut all_plugins: Vec<MarketplacePluginDto> = Vec::new();
+
+    // Try to list marketplace sources via CLI
+    if let Ok((stdout, _, ok)) = run_grok_cli_args(&["plugin", "marketplace", "list", "--json"], PLUGIN_CMD_TIMEOUT_SECS) {
+        if ok {
+            if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
+                sources = arr;
+            }
+        }
+    }
+
+    // Read marketplace cache directories
+    if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() { continue; }
+
+            // Try both naming conventions
+            let paths_to_try = [
+                path.join(".claude-plugin").join("marketplace.json"),
+                path.join(".grok-plugin").join("marketplace.json"),
+            ];
+
+            for mp_path in &paths_to_try {
+                let json_str = match std::fs::read_to_string(mp_path) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+
+                let val: serde_json::Value = match serde_json::from_str(&json_str) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                let marketplace_name = val.get("name").and_then(|n| n.as_str()).unwrap_or("");
+
+                // Try { plugins: [...] } object form, then flat array
+                let entries: Vec<serde_json::Value> = if let Some(arr) = val.get("plugins").and_then(|p| p.as_array()) {
+                    arr.clone()
+                } else if let Some(arr) = val.as_array() {
+                    arr.clone()
+                } else {
+                    continue;
+                };
+
+                for plugin_val in entries {
+                    let name = plugin_val.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                    if name.is_empty() { continue; }
+
+                    let source = plugin_val.get("source").cloned().unwrap_or(serde_json::Value::Null);
+                    let description = plugin_val.get("description").and_then(|d| d.as_str()).map(|s| s.to_string());
+                    let author = plugin_val.get("author").cloned();
+                    let category = plugin_val.get("category").and_then(|c| c.as_str()).map(|s| s.to_string());
+                    let homepage = plugin_val.get("homepage").and_then(|h| h.as_str()).map(|s| s.to_string());
+                    let version = plugin_val.get("version").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                    all_plugins.push(MarketplacePluginDto {
+                        name,
+                        description,
+                        author,
+                        category,
+                        source,
+                        homepage,
+                        version,
+                        marketplace_name: Some(marketplace_name.to_string()),
+                    });
+                }
+
+                // Only process first match per cache dir
+                break;
+            }
+        }
+    }
+
+    Ok(MarketplaceCatalogResult {
+        plugins: all_plugins,
+        sources,
+    })
+}
+
 #[cfg(test)]
 mod plugin_config_tests {
     use super::*;

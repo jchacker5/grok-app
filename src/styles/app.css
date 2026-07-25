@@ -12555,6 +12555,48 @@ div.composer__input:empty::before {
   border: 1px solid var(--border-subtle);
 }
 
+/* Marketplace browse */
+.ext-marketplace-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 0;
+}
+
+.ext-marketplace-search {
+  width: 100%;
+}
+
+.ext-marketplace-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ext-marketplace-list .ext-item--installed {
+  opacity: 0.72;
+}
+
+.ext-marketplace-list .ext-item--installed .ext-item__actions .btn--solid {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ext-item__homepage {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-left: 8px;
+}
+
+.ext-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.ext-link:hover {
+  text-decoration: underline;
+}
+
 .ext-footnote {
   display: flex;
   align-items: flex-start;

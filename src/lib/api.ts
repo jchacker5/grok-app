@@ -1362,6 +1362,34 @@ export async function pluginInstall(source: string) {
   return invoke<PluginActionResult>("plugin_install", { source });
 }
 
+/** Plugin entry from marketplace catalog cache. */
+export interface MarketplacePluginDto {
+  name: string;
+  description?: string | null;
+  author?: { name?: string } | null;
+  category?: string | null;
+  source: { source?: string; url?: string; path?: string };
+  homepage?: string | null;
+  version?: string | null;
+  marketplaceName?: string | null;
+}
+
+export interface MarketplaceSourceDto {
+  name: string;
+  kind: string;
+  source: { url: string; branch?: string | null };
+}
+
+export interface MarketplaceCatalogResult {
+  plugins: MarketplacePluginDto[];
+  sources: MarketplaceSourceDto[];
+}
+
+/** Read marketplace catalog from local cache (`~/.grok/marketplace-cache/`). */
+export async function pluginsMarketplaceCatalog() {
+  return invoke<MarketplaceCatalogResult>("plugins_marketplace_catalog");
+}
+
 /**
  * Update one plugin by name, or all when name is omitted/null/empty.
  * Soft-respawns agent on success.
