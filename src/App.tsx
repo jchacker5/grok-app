@@ -100,6 +100,7 @@ import { DoctorModal } from "@/components/DoctorModal";
 import {
   filterSessionSearch,
   mergeSessionSearchHits,
+  splitSnippetForHighlight,
   type SessionContentHit,
 } from "@/lib/sessionSearch";
 import {
@@ -489,6 +490,9 @@ export default function App() {
   >([]);
   const [contentSearchLoading, setContentSearchLoading] = useState(false);
   const contentSearchSeq = useRef(0);
+  /** Keyboard-selected row in the search palette (↑↓ + Enter). */
+  const [searchActiveIndex, setSearchActiveIndex] = useState(0);
+  const searchResultsRef = useRef<HTMLDivElement | null>(null);
   const [showComposerPlus, setShowComposerPlus] = useState(false);
   showComposerPlusRef.current = showComposerPlus;
   const composerPlusTriggerRef = useRef<HTMLButtonElement>(null);
@@ -611,6 +615,21 @@ export default function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [showSearch]);
+
+  // Reset ↑↓ selection whenever the palette opens or the query changes so
+  // stale indices from a previous search don't linger.
+  useEffect(() => {
+    setSearchActiveIndex(0);
+  }, [showSearch, searchQuery]);
+
+  // Keep the keyboard-selected search row scrolled into view.
+  useEffect(() => {
+    if (!showSearch) return;
+    const el = searchResultsRef.current?.querySelector<HTMLElement>(
+      `[data-search-idx="${searchActiveIndex}"]`,
+    );
+    el?.scrollIntoView({ block: "nearest" });
+  }, [searchActiveIndex, showSearch]);
 
   // Debounced content search over App journals (title filter stays instant).
   useEffect(() => {
@@ -9403,6 +9422,50 @@ export default function App() {
                 }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  const totalProjects = searchHits.matchedProjects.length;
+                  const total = totalProjects + mergedSessionHits.length;
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    if (!total) return;
+                    setSearchActiveIndex((i) => (i + 1) % total);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    if (!total) return;
+                    setSearchActiveIndex((i) => (i - 1 + total) % total);
+                    return;
+                  }
+                  if (e.key === "Enter") {
+                    if (!total) return;
+                    e.preventDefault();
+                    const idx = Math.min(
+                      Math.max(0, searchActiveIndex),
+                      total - 1,
+                    );
+                    if (idx < totalProjects) {
+                      const p = searchHits.matchedProjects[idx]!;
+                      setShowSearch(false);
+                      setProjectsOpen(true);
+                      setExpandedProjects((e2) => ({ ...e2, [p.id]: true }));
+                      return;
+                    }
+                    const hit = mergedSessionHits[idx - totalProjects]!;
+                    const s = sessions.find((x) => x.id === hit.id);
+                    const row: SessionRow = s ?? {
+                      id: hit.id,
+                      title: hit.title,
+                      projectId: hit.projectId ?? null,
+                      updatedAt: "",
+                    };
+                    const proj = projects.find(
+                      (p) => p.id === (row.projectId ?? hit.projectId),
+                    );
+                    setShowSearch(false);
+                    void openSession(row, proj ?? null);
+                  }
+                }}
               />
               <button
                 type="button"
@@ -9413,88 +9476,110 @@ export default function App() {
                 <IconClose size={16} />
               </button>
             </div>
-            {searchHits.matchedProjects.length > 0 && (
-              <>
-                <div className="search-panel__section">
-                  {tr("sidebar.projects")}
+            <div className="search-panel__results" ref={searchResultsRef}>
+              {searchHits.matchedProjects.length > 0 && (
+                <>
+                  <div className="search-panel__section">
+                    {tr("sidebar.projects")}
+                  </div>
+                  {searchHits.matchedProjects.map((p, i) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      data-search-idx={i}
+                      className={
+                        "search-panel__row" +
+                        (i === searchActiveIndex ? " is-active" : "")
+                      }
+                      onMouseEnter={() => setSearchActiveIndex(i)}
+                      onClick={() => {
+                        setShowSearch(false);
+                        // Project is a folder: expand only; selection is for sessions.
+                        setProjectsOpen(true);
+                        setExpandedProjects((e) => ({ ...e, [p.id]: true }));
+                      }}
+                    >
+                      <IconFolder size={15} />
+                      <span className="search-panel__title">{p.name}</span>
+                      <span className="search-panel__meta">{p.path}</span>
+                    </button>
+                  ))}
+                </>
+              )}
+              <div className="search-panel__section">
+                {tr("search.chats")}
+                {contentSearchLoading && searchQuery.trim()
+                  ? ` · ${tr("search.searchingContent")}`
+                  : null}
+              </div>
+              {mergedSessionHits.length === 0 && !contentSearchLoading && (
+                <div className="sidebar-empty" style={{ padding: 12 }}>
+                  {tr("search.noMatches")}
                 </div>
-                {searchHits.matchedProjects.map((p) => (
+              )}
+              {mergedSessionHits.map((hit, i) => {
+                const s = sessions.find((x) => x.id === hit.id);
+                // Content-only hits may lack a live row if the list is stale; still open by id.
+                const row: SessionRow = s ?? {
+                  id: hit.id,
+                  title: hit.title,
+                  projectId: hit.projectId ?? null,
+                  updatedAt: "",
+                };
+                const proj = projects.find(
+                  (p) => p.id === (row.projectId ?? hit.projectId),
+                );
+                const metaParts: string[] = [];
+                if (proj?.name) metaParts.push(proj.name);
+                if (hit.contentMatch && hit.matchCount && hit.matchCount > 0) {
+                  metaParts.push(
+                    tr("search.matchCount", { n: String(hit.matchCount) }),
+                  );
+                }
+                if (i < 9) metaParts.push(`⌘${i + 1}`);
+                const flatIdx = searchHits.matchedProjects.length + i;
+                return (
                   <button
-                    key={p.id}
+                    key={hit.id}
                     type="button"
-                    className="search-panel__row"
+                    data-search-idx={flatIdx}
+                    className={
+                      "search-panel__row" +
+                      (flatIdx === searchActiveIndex ? " is-active" : "")
+                    }
+                    onMouseEnter={() => setSearchActiveIndex(flatIdx)}
                     onClick={() => {
                       setShowSearch(false);
-                      // Project is a folder: expand only; selection is for sessions.
-                      setProjectsOpen(true);
-                      setExpandedProjects((e) => ({ ...e, [p.id]: true }));
+                      void openSession(row, proj ?? null);
                     }}
                   >
-                    <IconFolder size={15} />
-                    <span className="search-panel__title">{p.name}</span>
-                    <span className="search-panel__meta">{p.path}</span>
-                  </button>
-                ))}
-              </>
-            )}
-            <div className="search-panel__section">
-              {tr("search.chats")}
-              {contentSearchLoading && searchQuery.trim()
-                ? ` · ${tr("search.searchingContent")}`
-                : null}
-            </div>
-            {mergedSessionHits.length === 0 && !contentSearchLoading && (
-              <div className="sidebar-empty" style={{ padding: 12 }}>
-                {tr("search.noMatches")}
-              </div>
-            )}
-            {mergedSessionHits.map((hit, i) => {
-              const s = sessions.find((x) => x.id === hit.id);
-              // Content-only hits may lack a live row if the list is stale; still open by id.
-              const row: SessionRow = s ?? {
-                id: hit.id,
-                title: hit.title,
-                projectId: hit.projectId ?? null,
-                updatedAt: "",
-              };
-              const proj = projects.find(
-                (p) => p.id === (row.projectId ?? hit.projectId),
-              );
-              const metaParts: string[] = [];
-              if (proj?.name) metaParts.push(proj.name);
-              if (hit.contentMatch && hit.matchCount && hit.matchCount > 0) {
-                metaParts.push(
-                  tr("search.matchCount", { n: String(hit.matchCount) }),
-                );
-              }
-              if (i < 9) metaParts.push(`⌘${i + 1}`);
-              return (
-                <button
-                  key={hit.id}
-                  type="button"
-                  className="search-panel__row"
-                  onClick={() => {
-                    setShowSearch(false);
-                    void openSession(row, proj ?? null);
-                  }}
-                >
-                  <IconSquarePen size={15} />
-                  <span className="search-panel__body">
-                    <span className="search-panel__title">
-                      {hit.title || s?.title || "Untitled"}
-                    </span>
-                    {hit.snippet ? (
-                      <span className="search-panel__snippet">
-                        {hit.snippet}
+                    <IconSquarePen size={15} />
+                    <span className="search-panel__body">
+                      <span className="search-panel__title">
+                        {hit.title || s?.title || "Untitled"}
                       </span>
-                    ) : null}
-                  </span>
-                  <span className="search-panel__meta">
-                    {metaParts.join(" · ") || "—"}
-                  </span>
-                </button>
-              );
-            })}
+                      {hit.snippet ? (
+                        <span className="search-panel__snippet">
+                          {splitSnippetForHighlight(
+                            hit.snippet,
+                            searchQuery,
+                          ).map((part, pi) =>
+                            part.match ? (
+                              <mark key={pi}>{part.text}</mark>
+                            ) : (
+                              <span key={pi}>{part.text}</span>
+                            ),
+                          )}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="search-panel__meta">
+                      {metaParts.join(" · ") || "—"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="search-panel__foot">
               <button
                 type="button"

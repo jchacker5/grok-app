@@ -3,6 +3,7 @@ import {
   filterSessionSearch,
   matchMessageContent,
   mergeSessionSearchHits,
+  splitSnippetForHighlight,
 } from "./sessionSearch";
 
 const projects = [
@@ -118,5 +119,34 @@ describe("mergeSessionSearchHits", () => {
     ];
     const merged = mergeSessionSearchHits("", title, content);
     expect(merged.map((h) => h.id)).toEqual(["s1"]);
+  });
+});
+
+describe("splitSnippetForHighlight", () => {
+  it("returns the whole snippet unmatched when query is empty", () => {
+    expect(splitSnippetForHighlight("fix the doctor reset", "")).toEqual([
+      { text: "fix the doctor reset", match: false },
+    ]);
+  });
+
+  it("splits around a single case-insensitive match", () => {
+    const parts = splitSnippetForHighlight("fix the Doctor reset", "doctor");
+    expect(parts).toEqual([
+      { text: "fix the ", match: false },
+      { text: "Doctor", match: true },
+      { text: " reset", match: false },
+    ]);
+  });
+
+  it("splits around multiple occurrences", () => {
+    const parts = splitSnippetForHighlight("doctor said doctor is fine", "doctor");
+    expect(parts.filter((p) => p.match)).toHaveLength(2);
+    expect(parts.map((p) => p.text).join("")).toBe("doctor said doctor is fine");
+  });
+
+  it("returns the whole snippet unmatched when query is absent", () => {
+    expect(splitSnippetForHighlight("nothing relevant here", "doctor")).toEqual([
+      { text: "nothing relevant here", match: false },
+    ]);
   });
 });

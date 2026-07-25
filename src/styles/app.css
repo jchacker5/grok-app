@@ -1398,6 +1398,12 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   box-shadow: none;
 }
 
+.search-panel__results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .search-panel__section {
   padding: 10px 14px 4px;
   font-size: 11px;
@@ -1420,7 +1426,8 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   box-sizing: border-box;
 }
 
-.search-panel__row:hover {
+.search-panel__row:hover,
+.search-panel__row.is-active {
   background: var(--menu-hover);
   color: var(--text-primary);
 }
@@ -1449,6 +1456,13 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.search-panel__snippet mark {
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 .search-panel__meta {

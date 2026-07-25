@@ -157,6 +157,40 @@ export function makeContentSnippet(
   return `${collapsed.slice(0, Math.max(0, maxLen - 1))}…`;
 }
 
+/** One piece of a snippet, split around the search query for highlighting. */
+export type SnippetPart = { text: string; match: boolean };
+
+/**
+ * Split a content snippet into plain/matched segments (case-insensitive) so
+ * the UI can wrap matches in `<mark>`. Returns the whole snippet as one
+ * non-matching part when the query is empty or absent from the snippet.
+ */
+export function splitSnippetForHighlight(
+  snippet: string,
+  query: string,
+): SnippetPart[] {
+  const q = query.trim();
+  if (!q || !snippet) return [{ text: snippet, match: false }];
+
+  const lower = snippet.toLowerCase();
+  const lowerQ = q.toLowerCase();
+  const parts: SnippetPart[] = [];
+  let i = 0;
+  let found = false;
+  while (i < snippet.length) {
+    const idx = lower.indexOf(lowerQ, i);
+    if (idx === -1) {
+      parts.push({ text: snippet.slice(i), match: false });
+      break;
+    }
+    found = true;
+    if (idx > i) parts.push({ text: snippet.slice(i, idx), match: false });
+    parts.push({ text: snippet.slice(idx, idx + q.length), match: true });
+    i = idx + q.length;
+  }
+  return found ? parts : [{ text: snippet, match: false }];
+}
+
 /**
  * Merge title/project hits with journal content hits for the palette.
  * Title matches first; content-only rows append. Empty query → title list only.
