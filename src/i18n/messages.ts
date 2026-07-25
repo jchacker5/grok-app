@@ -566,6 +566,7 @@ const en = {
   "planBar.fraction": "{n}",
   "planBar.current": "Now",
   "planBar.expand": "Open in resources",
+  "planBar.goalTag": "Goal",
 
   // Settings / onboarding
   "settings.title": "Settings",
@@ -2011,6 +2012,7 @@ const zh: Record<MessageKey, string> = {
   "planBar.fraction": "{n}",
   "planBar.current": "当前",
   "planBar.expand": "在资源中打开",
+  "planBar.goalTag": "目标",
 
   "settings.title": "设置",
   "settings.backToApp": "返回应用",

@@ -5306,6 +5306,18 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   font-variant-numeric: tabular-nums;
 }
 
+.plan-bar__goal-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-muted);
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, transparent);
+}
+
 .plan-bar__current {
   display: flex;
   align-items: baseline;
@@ -5370,6 +5382,10 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   width: 26px;
   height: 26px;
   color: var(--text-tertiary);
+}
+
+.plan-bar__cancel-goal:hover {
+  color: var(--danger, var(--text-primary));
 }
 
 /* Plan review workbench (resource pane) */

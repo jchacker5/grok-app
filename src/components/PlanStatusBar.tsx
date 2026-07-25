@@ -22,6 +22,10 @@ export type PlanStatusBarLabels = {
   dismiss: string;
   expand: string;
   aria: string;
+  /** Short "Goal" badge shown alongside plan progress/review during a goal run. */
+  goalTag: string;
+  /** aria-label / title for the goal-run exit control. */
+  cancelGoal: string;
 };
 
 export type PlanStatusBarProps = {
@@ -37,6 +41,8 @@ export type PlanStatusBarProps = {
   onDismiss?: () => void;
   /** Scroll / focus the in-thread plan card when present. */
   onOpenDetails?: () => void;
+  /** Exit goal mode entirely (distinct from `onDismiss`, which only hides the plan card). */
+  onCancelGoal?: () => void;
 };
 
 function headlineFor(model: PlanBarModel, labels: PlanStatusBarLabels): string {
@@ -68,6 +74,7 @@ export function PlanStatusBar({
   onRequestChanges,
   onDismiss,
   onOpenDetails,
+  onCancelGoal,
 }: PlanStatusBarProps) {
   const model = useMemo(
     () =>
@@ -114,6 +121,10 @@ export function PlanStatusBar({
         <div className="plan-bar__text">
           <div className="plan-bar__headline">
             <strong>{headline}</strong>
+            {/* Keep goal context visible once the headline shifts to plan progress/review. */}
+            {model.isGoalRun && model.kind !== "goal" ? (
+              <span className="plan-bar__goal-tag">{labels.goalTag}</span>
+            ) : null}
             {fraction ? (
               <span className="plan-bar__fraction">
                 {labels.fraction.replace("{n}", fraction)}
@@ -183,6 +194,17 @@ export function PlanStatusBar({
             onClick={onDismiss}
             aria-label={labels.dismiss}
             title={labels.dismiss}
+          >
+            <IconClose size={14} />
+          </button>
+        ) : null}
+        {model.isGoalRun && onCancelGoal ? (
+          <button
+            type="button"
+            className="icon-btn plan-bar__close plan-bar__cancel-goal"
+            onClick={onCancelGoal}
+            aria-label={labels.cancelGoal}
+            title={labels.cancelGoal}
           >
             <IconClose size={14} />
           </button>

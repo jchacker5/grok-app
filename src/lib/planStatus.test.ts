@@ -97,6 +97,35 @@ describe("resolvePlanBarModel", () => {
     });
     expect(m.kind).toBe("goal");
     expect(m.headlineKey).toBe("planBar.goal");
+    expect(m.isGoalRun).toBe(true);
+  });
+
+  it("keeps isGoalRun true once a goal-mode run surfaces plan progress", () => {
+    const m = resolvePlanBarModel({
+      goalMode: true,
+      mode: "agent",
+      planVisible: true,
+      planWaiting: true,
+      planRpcId: null,
+      entries: [
+        { content: "a", status: "completed" },
+        { content: "b", status: "in_progress" },
+      ],
+    });
+    expect(m.kind).toBe("plan_progress");
+    expect(m.isGoalRun).toBe(true);
+  });
+
+  it("isGoalRun is false for a plain (non-goal) plan run", () => {
+    const m = resolvePlanBarModel({
+      goalMode: false,
+      mode: "agent",
+      planVisible: true,
+      planWaiting: true,
+      planRpcId: null,
+      entries: [{ content: "a", status: "pending" }],
+    });
+    expect(m.isGoalRun).toBe(false);
   });
 
   it("shows plan mode before entries arrive", () => {

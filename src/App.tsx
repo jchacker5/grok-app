@@ -8180,11 +8180,14 @@ export default function App() {
                 dismiss: tr("plan.dismiss"),
                 expand: tr("planBar.expand"),
                 aria: tr("planBar.aria"),
+                goalTag: tr("planBar.goalTag"),
+                cancelGoal: tr("composer.goalClear"),
               }}
               onApprove={() => void approvePlan()}
               onRequestChanges={() => void requestPlanChanges()}
               onDismiss={() => void dismissPlan()}
               onOpenDetails={() => openPlanInResource()}
+              onCancelGoal={() => setGoalMode(false)}
             />
           )}
 

@@ -540,6 +540,7 @@ export const zhTW: Record<MessageKey, string> = {
   "planBar.fraction": "{n}",
   "planBar.current": "目前",
   "planBar.expand": "在資源中開啟",
+  "planBar.goalTag": "目標",
 
   "settings.title": "設定",
   "settings.backToApp": "返回應用程式",

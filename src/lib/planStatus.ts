@@ -44,6 +44,13 @@ export type PlanBarModel = {
     | "planBar.done";
   currentLabel: string;
   showActions: boolean;
+  /**
+   * True whenever goal mode is the reason the bar is visible — including
+   * once a plan/todo list starts streaming and `kind` shifts away from
+   * "goal" to "plan_progress"/"plan_review". Lets the bar keep a persistent
+   * "Goal" badge + exit control instead of losing that context mid-run.
+   */
+  isGoalRun: boolean;
 };
 
 const COMPLETED = new Set(["completed", "complete", "done", "success"]);
@@ -165,6 +172,7 @@ export function resolvePlanBarModel(input: {
       headlineKey: "planBar.review",
       currentLabel: progress.current?.content ?? "",
       showActions: true,
+      isGoalRun: input.goalMode,
     };
   }
 
@@ -182,6 +190,7 @@ export function resolvePlanBarModel(input: {
       headlineKey: allDone ? "planBar.done" : "planBar.progress",
       currentLabel: progress.current?.content ?? "",
       showActions: false,
+      isGoalRun: input.goalMode,
     };
   }
 
@@ -193,6 +202,7 @@ export function resolvePlanBarModel(input: {
       headlineKey: input.planWaiting ? "planBar.planMode" : "planBar.review",
       currentLabel: "",
       showActions: false,
+      isGoalRun: input.goalMode,
     };
   }
 
@@ -203,6 +213,7 @@ export function resolvePlanBarModel(input: {
       headlineKey: "planBar.planMode",
       currentLabel: "",
       showActions: false,
+      isGoalRun: input.goalMode,
     };
   }
 
@@ -213,6 +224,7 @@ export function resolvePlanBarModel(input: {
       headlineKey: "planBar.goal",
       currentLabel: "",
       showActions: false,
+      isGoalRun: true,
     };
   }
 
@@ -222,6 +234,7 @@ export function resolvePlanBarModel(input: {
     headlineKey: "planBar.planMode",
     currentLabel: "",
     showActions: false,
+    isGoalRun: false,
   };
 }
 
