@@ -20,9 +20,12 @@ import {
   IconZoomOut,
   IconZoomReset,
   IconDevtools,
+  IconCrosshair,
 } from "@/components/icons";
 
 const WEBVIEW_LABEL = "resource-browser";
+/** Poll interval for the element picker's `eval_with_callback` round-trip. */
+const PICKER_POLL_MS = 200;
 
 export interface EmbeddedBrowserProps {
   url: string;
@@ -31,6 +34,8 @@ export interface EmbeddedBrowserProps {
   /** When false, native webview is hidden (inactive tab / collapsed pane). */
   active?: boolean;
   className?: string;
+  /** Fired when the user picks an element via the crosshair toolbar toggle. */
+  onElementPicked?: (info: api.PickedElementInfo) => void;
 }
 
 function sanitizeLabel(s: string): string {
@@ -56,6 +61,7 @@ export function EmbeddedBrowser({
   locale = "en",
   active = true,
   className = "",
+  onElementPicked,
 }: EmbeddedBrowserProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   // Dynamic import type — keep loose to avoid hard coupling on Tauri version.
@@ -111,6 +117,78 @@ export function EmbeddedBrowser({
       })
       .finally(() => setDevtoolsBusy(false));
   };
+
+  // Element picker: hover-highlight + click-capture runs entirely inside the
+  // (untrusted, arbitrary-origin) page via injected JS — no Tauri bridge
+  // access is granted to that page. The host polls for a result on an
+  // interval since eval_with_callback is a one-shot request/response, not a
+  // push channel. See PICKER_* JS + eval_resource_webview_json in commands.rs
+  // for why (capability ACL doesn't extend to non-local/remote content).
+  const [picking, setPicking] = useState(false);
+  const pickPollRef = useRef<number | null>(null);
+
+  const stopPickPoll = () => {
+    if (pickPollRef.current != null) {
+      window.clearInterval(pickPollRef.current);
+      pickPollRef.current = null;
+    }
+  };
+
+  const stopPicking = (opts?: { notifyWebview?: boolean }) => {
+    stopPickPoll();
+    setPicking(false);
+    if (opts?.notifyWebview !== false && isTauri()) {
+      void api.stopResourceElementPicker().catch(() => undefined);
+    }
+  };
+
+  const startPicking = () => {
+    if (!isTauri() || !ready) return;
+    setPicking(true);
+    void api
+      .startResourceElementPicker()
+      .then(() => {
+        stopPickPoll();
+        pickPollRef.current = window.setInterval(() => {
+          void api
+            .pollResourceElementPick()
+            .then((res) => {
+              if (res.picked) {
+                stopPicking({ notifyWebview: false });
+                onElementPicked?.(res.picked);
+              } else if (res.cancelled) {
+                stopPicking({ notifyWebview: false });
+              }
+            })
+            .catch((e) => {
+              console.error("[EmbeddedBrowser] pollElementPick", e);
+              stopPicking({ notifyWebview: false });
+            });
+        }, PICKER_POLL_MS);
+      })
+      .catch((e) => {
+        console.error("[EmbeddedBrowser] startElementPicker", e);
+        setError(String(e));
+        setPicking(false);
+      });
+  };
+
+  const togglePicking = () => {
+    if (picking) stopPicking();
+    else startPicking();
+  };
+
+  // Tear down an in-flight pick when the webview goes away (URL change,
+  // reload, unmount, tab hidden) — the injected page state won't survive
+  // navigation anyway, and we don't want a dangling poll interval.
+  useEffect(() => {
+    return () => stopPickPoll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (picking) stopPicking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, active]);
 
   // Layout → native webview bounds
   const syncBounds = async () => {
@@ -447,6 +525,15 @@ export function EmbeddedBrowser({
           title={devtoolsOpen ? tr("resources.devtoolsClose") : tr("resources.devtoolsOpen")}
         >
           <IconDevtools size={14} />
+        </button>
+        <button
+          type="button"
+          className={"chrome-btn" + (picking ? " is-active" : "")}
+          onClick={togglePicking}
+          disabled={!ready}
+          title={picking ? tr("resources.pickElementActive") : tr("resources.pickElement")}
+        >
+          <IconCrosshair size={14} />
         </button>
       </div>
       {/* Host rectangle — native webview is painted on top of this area */}

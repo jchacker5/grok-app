@@ -252,6 +252,47 @@ export async function toggleResourceDevtools() {
   return invoke<boolean>("resource_webview_toggle_devtools");
 }
 
+/** Rect of an element picked in the resource-pane embedded browser. */
+export interface PickedElementRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Element picked in the resource-pane embedded browser (see picker poll). */
+export interface PickedElementInfo {
+  selector: string;
+  outerHtmlSnippet: string;
+  rect: PickedElementRect;
+}
+
+export interface PickPollResult {
+  picked: PickedElementInfo | null;
+  cancelled: boolean;
+}
+
+/**
+ * Start the hover-highlight + click-capture element picker in the
+ * resource-pane embedded browser's child webview. Idempotent.
+ */
+export async function startResourceElementPicker() {
+  return invoke<void>("resource_webview_start_picker");
+}
+
+/** Stop the element picker (host-initiated cancel, e.g. toolbar toggled off). */
+export async function stopResourceElementPicker() {
+  return invoke<void>("resource_webview_stop_picker");
+}
+
+/**
+ * Poll for a pending element-picker result. Call on an interval while picker
+ * mode is active; stop once `picked` or `cancelled` comes back set.
+ */
+export async function pollResourceElementPick() {
+  return invoke<PickPollResult>("resource_webview_poll_pick");
+}
+
 /** GitHub Releases check (Settings → About). Does not auto-install. */
 export type AppUpdateCheck = {
   currentVersion: string;

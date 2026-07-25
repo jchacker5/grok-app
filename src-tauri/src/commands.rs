@@ -277,6 +277,270 @@ pub async fn resource_webview_toggle_devtools(app: tauri::AppHandle) -> Result<b
     Ok(!is_open)
 }
 
+// ---------------------------------------------------------------------------
+// Resource-pane element picker (Live Preview Panel v2, Stage 2).
+//
+// SPIKE FINDING (see plan): the "resource-browser" child webview renders
+// arbitrary *remote* content chosen by the user (any URL — GitHub, a local
+// dev server, etc). Tauri's capability/ACL system only grants a capability's
+// permissions to "local" app-origin content by default; a capability needs an
+// explicit `remote.urls` allowlist to extend IPC access to non-local origins,
+// which is impossible here since the whole point of this pane is to browse
+// arbitrary URLs. So even though the `__TAURI__` bridge script is present in
+// every webview's page context, an untrusted remote page invoking
+// `window.__TAURI__.event.emit(...)` would be rejected by the ACL (and it
+// would be a serious security hole to allowlist it — any site opened in the
+// preview pane could then call whatever commands the `default` capability
+// exposes). Granting IPC to arbitrary browsed pages was therefore ruled out.
+//
+// Instead this uses `Webview::eval_with_callback` (Rust-only API, not exposed
+// on the JS `Webview` object) as a one-shot "evaluate an expression, get its
+// JSON-serialized result back" channel: the injected script stores pick
+// results in a page-local `window.__grokPicker` object, and the host polls it
+// every ~200ms while picker mode is active. No bridge/ACL grant needed for
+// the browsed page at all — it never touches Tauri APIs.
+// ---------------------------------------------------------------------------
+
+/// Installs mouseover-highlight + capture-phase click/Escape listeners in the
+/// resource-browser webview. Idempotent: re-running while already active is a
+/// no-op (checked via `window.__grokPicker.active`).
+const PICKER_INSTALL_JS: &str = r#"(function(){
+  if (window.__grokPicker && window.__grokPicker.active) return true;
+  var state = window.__grokPicker || (window.__grokPicker = {});
+  state.active = true;
+  state.result = null;
+  state.cancelled = false;
+
+  var overlay = document.getElementById('__grok_pick_overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = '__grok_pick_overlay';
+    overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;' +
+      'background:rgba(99,140,255,0.25);border:2px solid rgba(66,133,244,0.9);' +
+      'border-radius:2px;display:none;box-sizing:border-box;';
+    (document.body || document.documentElement).appendChild(overlay);
+  }
+
+  function cssEscape(s) {
+    return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\\\$&');
+  }
+
+  function selectorFor(el) {
+    if (!el || el.nodeType !== 1) return '';
+    var parts = [];
+    var node = el;
+    var depth = 0;
+    while (node && node.nodeType === 1 && depth < 6) {
+      if (node.id) {
+        parts.unshift(node.tagName.toLowerCase() + '#' + cssEscape(node.id));
+        break;
+      }
+      var part = node.tagName.toLowerCase();
+      if (node.classList && node.classList.length) {
+        var cls = Array.prototype.slice.call(node.classList).slice(0, 2).map(cssEscape).join('.');
+        if (cls) part += '.' + cls;
+      }
+      var parent = node.parentElement;
+      if (parent) {
+        var siblings = Array.prototype.filter.call(parent.children, function (c) {
+          return c.tagName === node.tagName;
+        });
+        if (siblings.length > 1) part += ':nth-of-type(' + (siblings.indexOf(node) + 1) + ')';
+      }
+      parts.unshift(part);
+      node = parent;
+      depth++;
+    }
+    return parts.join(' > ');
+  }
+
+  function onOver(e) {
+    var r = e.target.getBoundingClientRect();
+    overlay.style.left = r.left + 'px';
+    overlay.style.top = r.top + 'px';
+    overlay.style.width = r.width + 'px';
+    overlay.style.height = r.height + 'px';
+    overlay.style.display = 'block';
+  }
+  function onOut() {
+    overlay.style.display = 'none';
+  }
+  function onClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var el = e.target;
+    var r = el.getBoundingClientRect();
+    var html = el.outerHTML || '';
+    if (html.length > 2000) html = html.slice(0, 2000) + '…';
+    state.result = {
+      selector: selectorFor(el),
+      outerHtmlSnippet: html,
+      rect: { x: r.left, y: r.top, width: r.width, height: r.height }
+    };
+    teardown();
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      state.cancelled = true;
+      teardown();
+    }
+  }
+  function teardown() {
+    state.active = false;
+    overlay.style.display = 'none';
+    document.removeEventListener('mouseover', onOver, true);
+    document.removeEventListener('mouseout', onOut, true);
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keydown', onKey, true);
+  }
+  state.teardown = teardown;
+  document.addEventListener('mouseover', onOver, true);
+  document.addEventListener('mouseout', onOut, true);
+  document.addEventListener('click', onClick, true);
+  document.addEventListener('keydown', onKey, true);
+  return true;
+})()"#;
+
+/// Removes the picker's listeners/overlay (host-initiated cancel, e.g. the
+/// toolbar toggle turned off before any click happened).
+const PICKER_STOP_JS: &str = r#"(function(){
+  if (window.__grokPicker && typeof window.__grokPicker.teardown === 'function') {
+    window.__grokPicker.teardown();
+  }
+  return true;
+})()"#;
+
+/// Reads and clears any pending pick result / cancellation flag.
+const PICKER_POLL_JS: &str = r#"(function(){
+  var s = window.__grokPicker;
+  if (!s) return { picked: null, cancelled: false };
+  var picked = s.result || null;
+  var cancelled = !!s.cancelled;
+  s.result = null;
+  s.cancelled = false;
+  return { picked: picked, cancelled: cancelled };
+})()"#;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedElementRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickedElementInfo {
+    pub selector: String,
+    pub outer_html_snippet: String,
+    pub rect: PickedElementRect,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickPollResult {
+    pub picked: Option<PickedElementInfo>,
+    pub cancelled: bool,
+}
+
+/// Evaluate `script` in the resource-browser webview and await its
+/// JSON-serialized result via `eval_with_callback` (fire-and-forget `eval`
+/// can't return a value; this is the request/response variant).
+async fn eval_resource_webview_json(
+    app: &tauri::AppHandle,
+    script: &'static str,
+) -> Result<String, String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+    let tx = std::sync::Mutex::new(Some(tx));
+    webview
+        .eval_with_callback(script, move |result_json: String| {
+            if let Some(tx) = tx.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                let _ = tx.send(result_json);
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    rx.await
+        .map_err(|_| "resource browser: no eval response".to_string())
+}
+
+/// Start (or no-op if already active) the hover-highlight + click-capture
+/// element picker in the resource-browser webview.
+#[tauri::command]
+pub async fn resource_webview_start_picker(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    webview.eval(PICKER_INSTALL_JS).map_err(|e| e.to_string())
+}
+
+/// Stop the element picker (host-initiated cancel).
+#[tauri::command]
+pub async fn resource_webview_stop_picker(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let webview = app
+        .get_webview(RESOURCE_WEBVIEW_LABEL)
+        .ok_or_else(|| "resource browser is not open".to_string())?;
+    webview.eval(PICKER_STOP_JS).map_err(|e| e.to_string())
+}
+
+/// Poll for a pending pick result. Frontend calls this on an interval while
+/// picker mode is active; stops polling once `picked` or `cancelled` is set.
+#[tauri::command]
+pub async fn resource_webview_poll_pick(app: tauri::AppHandle) -> Result<PickPollResult, String> {
+    let raw = eval_resource_webview_json(&app, PICKER_POLL_JS).await?;
+    serde_json::from_str(&raw).map_err(|e| format!("picker poll decode: {e}"))
+}
+
+#[cfg(test)]
+mod picker_tests {
+    use super::PickPollResult;
+
+    /// Exact shape `PICKER_POLL_JS` produces when nothing has happened yet.
+    #[test]
+    fn decodes_empty_poll() {
+        let r: PickPollResult =
+            serde_json::from_str(r#"{"picked":null,"cancelled":false}"#).unwrap();
+        assert!(r.picked.is_none());
+        assert!(!r.cancelled);
+    }
+
+    /// Exact shape produced after a click — field names must match the JS
+    /// object literal in PICKER_INSTALL_JS's `onClick` handler exactly
+    /// (camelCase), or this silently fails to decode at runtime.
+    #[test]
+    fn decodes_picked_result() {
+        let json = r#"{
+            "picked": {
+                "selector": "div#app > button.btn:nth-of-type(2)",
+                "outerHtmlSnippet": "<button class=\"btn\">Go</button>",
+                "rect": { "x": 10.5, "y": 20.0, "width": 100.0, "height": 32.0 }
+            },
+            "cancelled": false
+        }"#;
+        let r: PickPollResult = serde_json::from_str(json).unwrap();
+        let picked = r.picked.expect("picked");
+        assert_eq!(picked.selector, "div#app > button.btn:nth-of-type(2)");
+        assert_eq!(picked.outer_html_snippet, "<button class=\"btn\">Go</button>");
+        assert_eq!(picked.rect.width, 100.0);
+        assert!(!r.cancelled);
+    }
+
+    #[test]
+    fn decodes_cancelled_poll() {
+        let r: PickPollResult =
+            serde_json::from_str(r#"{"picked":null,"cancelled":true}"#).unwrap();
+        assert!(r.picked.is_none());
+        assert!(r.cancelled);
+    }
+}
+
 #[tauri::command]
 pub async fn projects_list() -> Result<Vec<Project>, String> {
     Ok(store::load_projects())

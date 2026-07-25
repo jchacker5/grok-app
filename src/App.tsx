@@ -123,6 +123,7 @@ import {
   parseAttachmentsFromContent,
   type Attachment,
 } from "@/lib/attachments";
+import { buildElementPickSummary } from "@/lib/elementPickSummary";
 import {
   applySkillAtSlash,
   isDraftEmpty,
@@ -3743,6 +3744,45 @@ export default function App() {
       }
     },
     [addAttachmentsFromPaths, tr],
+  );
+
+  /**
+   * Element picked in the resource pane's embedded browser (crosshair
+   * toolbar toggle). No structured "text context card" mechanism exists in
+   * this composer yet, so — matching the existing clipboard-paste-image
+   * pattern (api.saveTempAttachment → mergeAttachments) — the pick is saved
+   * as a small `.txt` attachment carrying the selector/rect/outerHTML
+   * snippet; the agent reads it like any other `@path` file attachment.
+   */
+  const handleElementPicked = useCallback(
+    (info: api.PickedElementInfo, sourceUrl: string) => {
+      if (!api.isTauri()) return;
+      void (async () => {
+        try {
+          const text = buildElementPickSummary(info, sourceUrl);
+          const b64 = btoa(unescape(encodeURIComponent(text)));
+          const entry = await api.saveTempAttachment(
+            b64,
+            "picked-element.txt",
+            "text/plain",
+          );
+          setAttachments((prev) =>
+            mergeAttachments(prev, [
+              { path: entry.path, name: entry.name, isDir: entry.isDir },
+            ]),
+          );
+          const msg = tr("resources.pickElementSent");
+          setToast(msg);
+          window.setTimeout(
+            () => setToast((cur) => (cur === msg ? null : cur)),
+            2200,
+          );
+        } catch (e) {
+          setLocalError(String(e) || tr("resources.pickElementFailed"));
+        }
+      })();
+    },
+    [tr],
   );
 
   const closeComposerMenu = useCallback(() => {
@@ -8247,6 +8287,7 @@ export default function App() {
               onApprovePlan={() => void approvePlan()}
               onRequestPlanChanges={() => void requestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}
+              onElementPicked={handleElementPicked}
               onClose={() =>
                 setLayout((l) => {
                   const n = { ...l, asideCollapsed: true };
