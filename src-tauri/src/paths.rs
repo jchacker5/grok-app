@@ -107,6 +107,11 @@ pub fn extensions_file() -> PathBuf {
     app_data_root().join("extensions.json")
 }
 
+/// User-created Prompt Library entries (built-ins live in the frontend only).
+pub fn custom_prompts_file() -> PathBuf {
+    app_data_root().join("custom_prompts.json")
+}
+
 /// Percent-encode a path the way Grok Build names session folders under
 /// `GROK_HOME/sessions/` (encodeURIComponent of the absolute cwd).
 pub fn percent_encode_path_component(s: &str) -> String {

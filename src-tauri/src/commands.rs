@@ -1820,6 +1820,33 @@ pub async fn preset_delete(id: String) -> Result<(), String> {
     store::delete_preset(&id)
 }
 
+// ─── Prompt Library (custom prompts) ────────────────────────────────────────
+
+#[tauri::command]
+pub async fn custom_prompts_list() -> Result<Vec<store::CustomPrompt>, String> {
+    Ok(store::load_custom_prompts())
+}
+
+#[tauri::command]
+pub async fn custom_prompt_create(
+    input: store::CustomPromptInput,
+) -> Result<store::CustomPrompt, String> {
+    store::create_custom_prompt(input)
+}
+
+#[tauri::command]
+pub async fn custom_prompt_update(
+    id: String,
+    input: store::CustomPromptInput,
+) -> Result<store::CustomPrompt, String> {
+    store::update_custom_prompt(&id, input)
+}
+
+#[tauri::command]
+pub async fn custom_prompt_delete(id: String) -> Result<(), String> {
+    store::delete_custom_prompt(&id)
+}
+
 // ─── Spaces ────────────────────────────────────────────────────────────────
 
 #[tauri::command]

@@ -2433,6 +2433,100 @@ export async function presetDelete(id: string): Promise<void> {
   return invoke<void>("preset_delete", { id });
 }
 
+// ─── Prompt Library (custom prompts) ────────────────────────────────────────
+
+export interface CustomPromptDto {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  category: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomPromptInputDto {
+  name: string;
+  description?: string;
+  content: string;
+  category?: string;
+}
+
+export async function customPromptsList(): Promise<CustomPromptDto[]> {
+  if (!isTauri()) {
+    const { loadCustomPromptsLocal } = await import("./promptLibrary");
+    return loadCustomPromptsLocal() as CustomPromptDto[];
+  }
+  return invoke<CustomPromptDto[]>("custom_prompts_list");
+}
+
+export async function customPromptCreate(
+  input: CustomPromptInputDto,
+): Promise<CustomPromptDto> {
+  if (!isTauri()) {
+    const { loadCustomPromptsLocal, saveCustomPromptsLocal } = await import(
+      "./promptLibrary"
+    );
+    const list = loadCustomPromptsLocal();
+    const now = new Date().toISOString();
+    const draft: CustomPromptDto = {
+      id: crypto.randomUUID(),
+      name: input.name.trim(),
+      description: (input.description ?? "").trim(),
+      content: input.content.trim(),
+      category: input.category ?? "custom",
+      createdAt: now,
+      updatedAt: now,
+    };
+    list.unshift(draft);
+    saveCustomPromptsLocal(list);
+    return draft;
+  }
+  return invoke<CustomPromptDto>("custom_prompt_create", { input });
+}
+
+export async function customPromptUpdate(
+  id: string,
+  input: CustomPromptInputDto,
+): Promise<CustomPromptDto> {
+  if (!isTauri()) {
+    const { loadCustomPromptsLocal, saveCustomPromptsLocal } = await import(
+      "./promptLibrary"
+    );
+    const list = loadCustomPromptsLocal();
+    const idx = list.findIndex((p) => p.id === id);
+    if (idx < 0) throw new Error("custom prompt not found");
+    const prev = list[idx]!;
+    const next: CustomPromptDto = {
+      ...prev,
+      name: input.name.trim(),
+      content: input.content.trim(),
+      description:
+        input.description !== undefined
+          ? input.description.trim()
+          : prev.description,
+      category: input.category ?? prev.category,
+      updatedAt: new Date().toISOString(),
+    };
+    list[idx] = next;
+    saveCustomPromptsLocal(list);
+    return next;
+  }
+  return invoke<CustomPromptDto>("custom_prompt_update", { id, input });
+}
+
+export async function customPromptDelete(id: string): Promise<void> {
+  if (!isTauri()) {
+    const { loadCustomPromptsLocal, saveCustomPromptsLocal } = await import(
+      "./promptLibrary"
+    );
+    const list = loadCustomPromptsLocal().filter((p) => p.id !== id);
+    saveCustomPromptsLocal(list);
+    return;
+  }
+  return invoke<void>("custom_prompt_delete", { id });
+}
+
 // ─── Spaces ────────────────────────────────────────────────────────────────
 
 export interface SpaceDto {

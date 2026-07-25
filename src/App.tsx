@@ -209,8 +209,11 @@ import {
   IconRewind,
   IconShield,
   IconCheck,
+  IconPromptLibrary,
 } from "@/components/icons";
 import { AutomationsPage } from "@/components/AutomationsPage";
+import { PromptLibraryPanel } from "@/components/PromptLibraryPanel";
+import type { LibraryPrompt } from "@/lib/promptLibrary";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import {
@@ -430,6 +433,7 @@ export default function App() {
   const [mcpLoading, setMcpLoading] = useState(false);
   const [showCompactModal, setShowCompactModal] = useState(false);
   const [compactNote, setCompactNote] = useState("");
+  const [showPromptLibrary, setShowPromptLibrary] = useState(false);
   const compactNoteRef = useRef<HTMLInputElement>(null);
   /** Rewind timeline picker (session menu / status). */
   const [rewindTimeline, setRewindTimeline] = useState<{
@@ -4725,6 +4729,21 @@ export default function App() {
       setToast((cur) => (cur === msg ? null : cur));
     }, ms);
   }, []);
+
+  /**
+   * Prompt Library "Apply" — loads the prompt's content into the composer
+   * draft. This app has no separate system-prompt slot, so the prompt text
+   * becomes the message the agent will receive once sent.
+   */
+  const applyLibraryPrompt = useCallback(
+    (prompt: LibraryPrompt) => {
+      setDraft(prompt.content);
+      setShowPromptLibrary(false);
+      showToast(tr("promptLibrary.applied", { name: prompt.name }));
+      window.setTimeout(() => composerInputRef.current?.focus(), 0);
+    },
+    [tr, showToast],
+  );
 
   const approvePlan = useCallback(async () => {
     try {
@@ -9107,6 +9126,16 @@ export default function App() {
                     applyPermissionPolicy(v);
                   }}
                 />
+                <Tip label={tr("promptLibrary.trigger")}>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label={tr("promptLibrary.trigger")}
+                    onClick={() => setShowPromptLibrary(true)}
+                  >
+                    <IconPromptLibrary size={16} />
+                  </button>
+                </Tip>
                 <ContextUsageChip
                   display={contextUsageDisplay}
                   labels={{
@@ -9668,6 +9697,27 @@ export default function App() {
           </form>
         </div>
       )}
+
+      <GlassModal
+        open={showPromptLibrary}
+        onClose={() => setShowPromptLibrary(false)}
+        title={
+          <>
+            <IconPromptLibrary size={16} /> {tr("promptLibrary.title")}
+          </>
+        }
+        size="lg"
+        closeLabel={tr("common.close")}
+        wrapBody
+      >
+        <PromptLibraryPanel
+          t={(k, vars) =>
+            tr(k as Parameters<typeof tr>[0], vars as Record<string, string | number>)
+          }
+          currentDraft={draft}
+          onApply={applyLibraryPrompt}
+        />
+      </GlassModal>
 
       {/* Search / command palette (Codex-style) */}
       {showSearch && (

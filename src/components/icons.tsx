@@ -13,12 +13,14 @@ import {
   IconArrowsMinimize as TbArrowsMinimize,
   IconBell as TbBell,
   IconBolt as TbBolt,
+  IconBook as TbBook,
   IconGitBranch as TbGitBranch,
   IconBox as TbBox,
   IconBrandWindows as TbBrandWindows,
   IconBrush as TbBrush,
   IconCalendarTime as TbCalendarTime,
   IconCamera as TbCamera,
+  IconChartBar as TbChartBar,
   IconCheck as TbCheck,
   IconClipboardList as TbClipboardList,
   IconClock as TbClock,
@@ -216,6 +218,14 @@ export const IconAutomations = wrap(TbBolt);
 export const IconScheduled = wrap(TbCalendarTime);
 export const IconClock = wrap(TbClock);
 export const IconSkills = wrap(TbTool);
+/** Prompt Library — composer toolbar + panel header. */
+export const IconPromptLibrary = wrap(TbBook);
+/** Prompt Library category badges. */
+export const IconPromptGeneral = wrap(TbSparkles);
+export const IconPromptCoding = wrap(TbCode);
+export const IconPromptWriting = wrap(TbPencil);
+export const IconPromptAnalysis = wrap(TbChartBar);
+export const IconPromptCustom = wrap(TbEdit);
 export const IconChevronDown = wrap(TbChevronDown);
 export const IconChevronLeft = wrap(TbChevronLeft);
 export const IconChevronRight = wrap(TbChevronRight);

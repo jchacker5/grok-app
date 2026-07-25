@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::paths::{
-    automations_file, ensure_app_dirs, presets_file, projects_file, session_dir,
-    sessions_index_file, settings_file, spaces_file,
+    automations_file, custom_prompts_file, ensure_app_dirs, presets_file, projects_file,
+    session_dir, sessions_index_file, settings_file, spaces_file,
 };
 
 /// Where composer model / effort / mode / permission choices are remembered.
@@ -1453,6 +1453,120 @@ pub fn delete_preset(id: &str) -> Result<(), String> {
         return Err("preset not found".into());
     }
     save_presets(&list)
+}
+
+// ─── Prompt Library (user-created custom prompts) ──────────────────────────
+
+/// Built-in prompts ship hardcoded in the frontend (`src/lib/promptLibrary.ts`);
+/// this store only holds prompts the user creates/edits themselves.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomPrompt {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    /// `general` | `coding` | `writing` | `analysis` | `custom`
+    #[serde(default = "default_prompt_category")]
+    pub category: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+fn default_prompt_category() -> String {
+    "custom".into()
+}
+
+// Soft cap for the "you have a lot of custom prompts" UI warning lives in
+// the frontend (`CUSTOM_PROMPTS_WARN_LIMIT` in `src/lib/promptLibrary.ts`) —
+// the host stores/returns however many the user has created, unbounded.
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomPromptInput {
+    pub name: String,
+    pub description: Option<String>,
+    pub content: String,
+    pub category: Option<String>,
+}
+
+pub fn load_custom_prompts() -> Vec<CustomPrompt> {
+    let _ = ensure_app_dirs();
+    let mut list: Vec<CustomPrompt> = read_json(&custom_prompts_file());
+    list.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    list
+}
+
+pub fn save_custom_prompts(list: &[CustomPrompt]) -> Result<(), String> {
+    let _ = ensure_app_dirs();
+    write_json(&custom_prompts_file(), &list)
+}
+
+pub fn create_custom_prompt(input: CustomPromptInput) -> Result<CustomPrompt, String> {
+    let name = input.name.trim().to_string();
+    if name.is_empty() {
+        return Err("name empty".into());
+    }
+    let content = input.content.trim().to_string();
+    if content.is_empty() {
+        return Err("content empty".into());
+    }
+    let now = Utc::now();
+    let prompt = CustomPrompt {
+        id: Uuid::new_v4().to_string(),
+        name,
+        description: input.description.unwrap_or_default().trim().to_string(),
+        content,
+        category: input
+            .category
+            .unwrap_or_else(default_prompt_category)
+            .trim()
+            .to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+    let mut list = load_custom_prompts();
+    list.insert(0, prompt.clone());
+    save_custom_prompts(&list)?;
+    Ok(prompt)
+}
+
+pub fn update_custom_prompt(id: &str, input: CustomPromptInput) -> Result<CustomPrompt, String> {
+    let mut list = load_custom_prompts();
+    let prompt = list
+        .iter_mut()
+        .find(|p| p.id == id)
+        .ok_or_else(|| "custom prompt not found".to_string())?;
+    let name = input.name.trim();
+    if name.is_empty() {
+        return Err("name empty".into());
+    }
+    let content = input.content.trim();
+    if content.is_empty() {
+        return Err("content empty".into());
+    }
+    prompt.name = name.to_string();
+    prompt.content = content.to_string();
+    if let Some(d) = input.description {
+        prompt.description = d.trim().to_string();
+    }
+    if let Some(c) = input.category {
+        prompt.category = c.trim().to_string();
+    }
+    prompt.updated_at = Utc::now();
+    let clone = prompt.clone();
+    save_custom_prompts(&list)?;
+    Ok(clone)
+}
+
+pub fn delete_custom_prompt(id: &str) -> Result<(), String> {
+    let mut list = load_custom_prompts();
+    let before = list.len();
+    list.retain(|p| p.id != id);
+    if list.len() == before {
+        return Err("custom prompt not found".into());
+    }
+    save_custom_prompts(&list)
 }
 
 /// Load app secrets (API keys). Backend-agnostic: OS keychain preferred, file fallback.
