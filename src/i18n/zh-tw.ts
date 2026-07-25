@@ -1207,6 +1207,8 @@ export const zhTW: Record<MessageKey, string> = {
   "slash.newChatDesc": "開始全新對話",
   "slash.automations": "已排程任務",
   "slash.automationsDesc": "開啟自動化任務清單",
+  "slash.github": "GitHub",
+  "slash.githubDesc": "透過連結取得 Issue、PR 或提交",
   "slash.settings": "設定",
   "slash.settingsDesc": "開啟設定",
   "slash.commands": "管理命令",
@@ -1249,6 +1251,11 @@ export const zhTW: Record<MessageKey, string> = {
   "commands.shellNote": "不支援 shell 命令——僅支援插入文字、切換設定或開啟面板。",
   "commands.errName": "名稱只能包含字母、數字或底線",
   "commands.errValue": "此欄位為必填",
+
+  "github.dialogTitle": "取得 GitHub Issue、PR 或提交",
+  "github.placeholder": "https://github.com/owner/repo/issues/42",
+  "github.fetchOk": "已加入輸入框",
+  "github.fetchError": "無法取得 GitHub 連結",
 
   "statusModal.title": "對話狀態",
   "statusModal.sessionId": "對話 ID",

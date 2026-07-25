@@ -1277,6 +1277,8 @@ const en = {
   "slash.newChatDesc": "Start a fresh conversation",
   "slash.automations": "Automations",
   "slash.automationsDesc": "Open scheduled tasks",
+  "slash.github": "GitHub",
+  "slash.githubDesc": "Fetch an issue, PR, or commit by URL",
   "slash.settings": "Settings",
   "slash.settingsDesc": "Open settings",
   "slash.commands": "Manage commands",
@@ -1321,6 +1323,11 @@ const en = {
     "Shell commands aren’t supported — only insert text, toggle a setting, or open a panel.",
   "commands.errName": "Name must be letters, numbers, or underscore only",
   "commands.errValue": "This field is required",
+
+  "github.dialogTitle": "Fetch GitHub issue, PR, or commit",
+  "github.placeholder": "https://github.com/owner/repo/issues/42",
+  "github.fetchOk": "Added to composer",
+  "github.fetchError": "Couldn’t fetch GitHub link",
 
   "statusModal.title": "Session status",
   "statusModal.sessionId": "Session ID",
@@ -2845,6 +2852,8 @@ const zh: Record<MessageKey, string> = {
   "slash.newChatDesc": "开始全新对话",
   "slash.automations": "已安排任务",
   "slash.automationsDesc": "打开自动化任务列表",
+  "slash.github": "GitHub",
+  "slash.githubDesc": "通过链接获取 Issue、PR 或提交",
   "slash.settings": "设置",
   "slash.settingsDesc": "打开设置",
   "slash.commands": "管理命令",
@@ -2887,6 +2896,11 @@ const zh: Record<MessageKey, string> = {
   "commands.shellNote": "不支持 shell 命令——仅支持插入文本、切换设置或打开面板。",
   "commands.errName": "名称只能包含字母、数字或下划线",
   "commands.errValue": "此字段为必填项",
+
+  "github.dialogTitle": "获取 GitHub Issue、PR 或提交",
+  "github.placeholder": "https://github.com/owner/repo/issues/42",
+  "github.fetchOk": "已添加到输入框",
+  "github.fetchError": "无法获取 GitHub 链接",
 
   "statusModal.title": "会话状态",
   "statusModal.sessionId": "会话 ID",

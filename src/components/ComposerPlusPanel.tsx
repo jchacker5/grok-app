@@ -24,6 +24,7 @@ import {
   IconCircleDashed,
   IconClipboardList,
   IconDoctor,
+  IconGitPullRequest,
   IconNewChat,
   IconPlug,
   IconPuzzle,
@@ -67,6 +68,8 @@ function slashItemIcon(item: SlashItem): ReactNode {
       return <IconSettings size={ICON_SIZE} />;
     case "automations":
       return <IconAutomations size={ICON_SIZE} />;
+    case "github":
+      return <IconGitPullRequest size={ICON_SIZE} />;
     case "newChat":
     case "new":
       return <IconNewChat size={ICON_SIZE} />;

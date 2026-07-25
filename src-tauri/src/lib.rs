@@ -260,6 +260,7 @@ pub fn run() {
             commands::git_push,
             commands::git_gh_cli_available,
             commands::git_pr_open,
+            commands::github_fetch,
             commands::acp_ephemeral_prompt,
             commands::fs_list_dir,
             commands::fs_read_file,

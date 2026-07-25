@@ -689,6 +689,26 @@ export async function gitPrOpen(
   });
 }
 
+export interface GithubFetchResult {
+  kind: "issue" | "pull" | "commit" | string;
+  owner: string;
+  repo: string;
+  id: string;
+  title: string;
+  state?: string | null;
+  url: string;
+  markdown: string;
+}
+
+/**
+ * Fetch a GitHub issue / pull request / commit by URL and return a
+ * ready-to-insert markdown summary. Shells out to the GitHub CLI (`gh`) —
+ * auth is whatever the user already set up via `gh auth login`.
+ */
+export async function githubFetch(url: string) {
+  return invoke<GithubFetchResult>("github_fetch", { url });
+}
+
 /**
  * Silent, ephemeral AI text draft (e.g. a commit message). Runs a single
  * prompt turn in a brand-new throwaway agent process — never touches the

@@ -23,6 +23,7 @@ describe("builtinSlashItems", () => {
       "doctor",
       "new",
       "automations",
+      "gh",
       "settings",
       "commands",
       "yolo",
@@ -49,6 +50,12 @@ describe("builtinSlashItems", () => {
     const yolo = items.find((i) => i.name === "yolo")!;
     expect(yolo.kind).toBe("action");
     expect(yolo.action).toBe("yolo");
+
+    const gh = items.find((i) => i.name === "gh")!;
+    expect(gh.kind).toBe("action");
+    expect(gh.action).toBe("github");
+    expect(gh.titleKey).toBe("slash.github");
+    expect(gh.descriptionKey).toBe("slash.githubDesc");
   });
 });
 

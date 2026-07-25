@@ -109,6 +109,14 @@ export function builtinSlashItems(): SlashItem[] {
       action: "automations",
     },
     {
+      id: "github",
+      kind: "action",
+      name: "gh",
+      titleKey: "slash.github",
+      descriptionKey: "slash.githubDesc",
+      action: "github",
+    },
+    {
       id: "settings",
       kind: "action",
       name: "settings",

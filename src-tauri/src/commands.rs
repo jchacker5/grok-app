@@ -6373,6 +6373,302 @@ pub async fn git_pr_open(
     })
 }
 
+/// Parse a GitHub issue / pull-request / commit URL into
+/// `(owner, repo, kind, id)`, where `kind` is `"issue" | "pull" | "commit"`.
+/// Pure + unit-tested — accepts optional scheme, a bare `github.com/...`
+/// form, and strips trailing slash / query / fragment from the id.
+fn parse_github_url(url: &str) -> Option<(String, String, String, String)> {
+    let s = url.trim();
+    let rest = s
+        .strip_prefix("https://github.com/")
+        .or_else(|| s.strip_prefix("http://github.com/"))
+        .or_else(|| s.strip_prefix("github.com/"))?;
+
+    let mut parts = rest.splitn(4, '/');
+    let owner = parts.next()?.trim();
+    let repo = parts.next()?.trim();
+    let kind_raw = parts.next()?.trim();
+    let id_raw = parts.next()?.trim();
+    if owner.is_empty() || repo.is_empty() || id_raw.is_empty() {
+        return None;
+    }
+
+    let kind = match kind_raw {
+        "issues" => "issue",
+        "pull" => "pull",
+        "commit" => "commit",
+        _ => return None,
+    };
+
+    let id = id_raw
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(id_raw)
+        .trim_end_matches('/')
+        .to_string();
+    if id.is_empty() {
+        return None;
+    }
+    match kind {
+        "issue" | "pull" if !id.chars().all(|c| c.is_ascii_digit()) => return None,
+        "commit" if id.len() < 7 || !id.chars().all(|c| c.is_ascii_hexdigit()) => return None,
+        _ => {}
+    }
+
+    Some((owner.to_string(), repo.to_string(), kind.to_string(), id))
+}
+
+/// Result of fetching a GitHub issue/PR/commit — includes a ready-to-insert
+/// markdown summary so the frontend can drop it straight into the composer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubFetchResult {
+    pub kind: String,
+    pub owner: String,
+    pub repo: String,
+    pub id: String,
+    pub title: String,
+    pub state: Option<String>,
+    pub url: String,
+    pub markdown: String,
+}
+
+/// Fetch a GitHub issue, pull request, or commit by URL and format it as
+/// markdown context. Shells out to the GitHub CLI (`gh`) — same approach as
+/// `git_pr_open` above — so auth is whatever the user already set up via
+/// `gh auth login`; no token handling lives in this app.
+#[tauri::command]
+pub async fn github_fetch(url: String) -> Result<GithubFetchResult, String> {
+    let (owner, repo, kind, id) = parse_github_url(&url)
+        .ok_or_else(|| "not a GitHub issue, pull request, or commit URL".to_string())?;
+
+    let gh_ok = std::process::Command::new("gh")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !gh_ok {
+        return Err(
+            "GitHub CLI (\"gh\") not found on PATH. Install it and run `gh auth login`.".into(),
+        );
+    }
+
+    let repo_slug = format!("{owner}/{repo}");
+
+    match kind.as_str() {
+        "issue" | "pull" => {
+            let sub = if kind == "issue" { "issue" } else { "pr" };
+            let noun = if kind == "issue" { "Issue" } else { "Pull Request" };
+            let out = std::process::Command::new("gh")
+                .args([
+                    sub,
+                    "view",
+                    &id,
+                    "--repo",
+                    &repo_slug,
+                    "--json",
+                    "number,title,body,state,url,author,createdAt,labels",
+                ])
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                return Err(if err.is_empty() {
+                    format!("gh {sub} view failed")
+                } else {
+                    err.chars().take(400).collect()
+                });
+            }
+            let raw = String::from_utf8_lossy(&out.stdout);
+            let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+            let number = v.get("number").and_then(|x| x.as_u64()).unwrap_or(0);
+            let title = v.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let state = v
+                .get("state")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_ascii_lowercase());
+            let issue_body = v
+                .get("body")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let author = v
+                .get("author")
+                .and_then(|a| a.get("login"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("unknown");
+            let created = v.get("createdAt").and_then(|x| x.as_str()).unwrap_or("");
+            let labels: Vec<String> = v
+                .get("labels")
+                .and_then(|l| l.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|l| l.get("name").and_then(|n| n.as_str()).map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let html_url = v
+                .get("url")
+                .and_then(|x| x.as_str())
+                .unwrap_or(&url)
+                .to_string();
+
+            let mut md = format!("**GitHub {noun} #{number}: {title}**\n");
+            md.push_str(&format!("- Repo: {repo_slug}\n"));
+            md.push_str(&format!(
+                "- State: {}\n",
+                state.clone().unwrap_or_else(|| "unknown".into())
+            ));
+            md.push_str(&format!("- Author: {author}\n"));
+            if !created.is_empty() {
+                md.push_str(&format!("- Created: {created}\n"));
+            }
+            if !labels.is_empty() {
+                md.push_str(&format!("- Labels: {}\n", labels.join(", ")));
+            }
+            md.push_str(&format!("- URL: {html_url}\n\n"));
+            if !issue_body.is_empty() {
+                md.push_str(&issue_body);
+                md.push('\n');
+            }
+
+            Ok(GithubFetchResult {
+                kind,
+                owner,
+                repo,
+                id: number.to_string(),
+                title,
+                state,
+                url: html_url,
+                markdown: md,
+            })
+        }
+        "commit" => {
+            let endpoint = format!("repos/{repo_slug}/commits/{id}");
+            let out = std::process::Command::new("gh")
+                .args(["api", &endpoint])
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                return Err(if err.is_empty() {
+                    "gh api commit lookup failed".into()
+                } else {
+                    err.chars().take(400).collect()
+                });
+            }
+            let raw = String::from_utf8_lossy(&out.stdout);
+            let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+            let sha = v.get("sha").and_then(|x| x.as_str()).unwrap_or(&id).to_string();
+            let short_sha: String = sha.chars().take(7).collect();
+            let message = v
+                .get("commit")
+                .and_then(|c| c.get("message"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            let title = message.lines().next().unwrap_or("").to_string();
+            let author = v
+                .get("commit")
+                .and_then(|c| c.get("author"))
+                .and_then(|a| a.get("name"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("unknown");
+            let date = v
+                .get("commit")
+                .and_then(|c| c.get("author"))
+                .and_then(|a| a.get("date"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("");
+            let html_url = v
+                .get("html_url")
+                .and_then(|x| x.as_str())
+                .unwrap_or(&url)
+                .to_string();
+
+            let mut md = format!("**GitHub Commit {short_sha}: {title}**\n");
+            md.push_str(&format!("- Repo: {repo_slug}\n"));
+            md.push_str(&format!("- Author: {author}\n"));
+            if !date.is_empty() {
+                md.push_str(&format!("- Date: {date}\n"));
+            }
+            md.push_str(&format!("- URL: {html_url}\n\n"));
+            if message.lines().count() > 1 {
+                md.push_str(&message);
+                md.push('\n');
+            }
+
+            Ok(GithubFetchResult {
+                kind,
+                owner,
+                repo,
+                id: short_sha,
+                title,
+                state: None,
+                url: html_url,
+                markdown: md,
+            })
+        }
+        _ => Err("unsupported GitHub URL type".into()),
+    }
+}
+
+#[cfg(test)]
+mod github_fetch_tests {
+    use super::*;
+
+    #[test]
+    fn parses_issue_url() {
+        let (owner, repo, kind, id) =
+            parse_github_url("https://github.com/owner/repo/issues/42").expect("parsed");
+        assert_eq!(owner, "owner");
+        assert_eq!(repo, "repo");
+        assert_eq!(kind, "issue");
+        assert_eq!(id, "42");
+    }
+
+    #[test]
+    fn parses_pull_url_with_trailing_slash_and_query() {
+        let (_, _, kind, id) =
+            parse_github_url("https://github.com/owner/repo/pull/7/?tab=files#diff")
+                .expect("parsed");
+        assert_eq!(kind, "pull");
+        assert_eq!(id, "7");
+    }
+
+    #[test]
+    fn parses_commit_url_bare_host() {
+        let (owner, repo, kind, id) =
+            parse_github_url("github.com/owner/repo/commit/abc1234def5678901234567890123456789012a")
+                .expect("parsed");
+        assert_eq!(owner, "owner");
+        assert_eq!(repo, "repo");
+        assert_eq!(kind, "commit");
+        assert_eq!(id, "abc1234def5678901234567890123456789012a");
+    }
+
+    #[test]
+    fn rejects_non_numeric_issue_id() {
+        assert!(parse_github_url("https://github.com/owner/repo/issues/abc").is_none());
+    }
+
+    #[test]
+    fn rejects_short_commit_sha() {
+        assert!(parse_github_url("https://github.com/owner/repo/commit/abc12").is_none());
+    }
+
+    #[test]
+    fn rejects_unrelated_host() {
+        assert!(parse_github_url("https://gitlab.com/owner/repo/issues/1").is_none());
+    }
+
+    #[test]
+    fn rejects_unknown_kind() {
+        assert!(parse_github_url("https://github.com/owner/repo/wiki/1").is_none());
+    }
+}
+
 /// Silent, ephemeral AI commit-message draft. Runs a single prompt turn in a
 /// brand-new throwaway agent process (`ephemeral_acp`) — never touches the
 /// user's live chat session or its transcript.

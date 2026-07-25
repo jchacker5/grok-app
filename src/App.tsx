@@ -5497,6 +5497,28 @@ export default function App() {
           case "automations":
             navigateAutomations();
             return;
+          case "github":
+            setAppDialog({
+              kind: "prompt",
+              title: tr("github.dialogTitle"),
+              initial: "",
+              placeholder: tr("github.placeholder"),
+              onSubmit: async (value) => {
+                const url = value.trim();
+                if (!url) return;
+                try {
+                  const result = await api.githubFetch(url);
+                  setDraft((d) => {
+                    const sep = d.length === 0 ? "" : d.endsWith("\n\n") ? "" : d.endsWith("\n") ? "\n" : "\n\n";
+                    return `${d}${sep}${result.markdown}`;
+                  });
+                  showToast(tr("github.fetchOk"), 2200);
+                } catch (e) {
+                  showToast(`${tr("github.fetchError")}: ${String(e)}`, 4500);
+                }
+              },
+            });
+            return;
           case "settings":
             navigateSettings("general");
             return;
