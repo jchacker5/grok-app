@@ -11,6 +11,8 @@ mod cli_probe;
 mod cli_install;
 mod commands;
 mod support_bundle;
+#[cfg(test)]
+mod test_env_lock;
 mod editors;
 mod error;
 mod fs_browser;

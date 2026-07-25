@@ -1547,10 +1547,8 @@ pub fn save_composer_prefs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_env_lock::ENV_LOCK;
     use chrono::TimeZone;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn delete_space_clears_membership_on_member_projects() {
@@ -1645,6 +1643,11 @@ mod tests {
             mode: None,
             permission_policy: None,
             scheduled: false,
+            settled_at: None,
+            snoozed_until: None,
+            branch: None,
+            pr_ref: None,
+            pr_state: None,
         }
     }
 
