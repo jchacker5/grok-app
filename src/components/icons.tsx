@@ -42,6 +42,7 @@ import {
   IconFolder as TbFolder,
   IconFolderPlus as TbFolderPlus,
   IconGitCommit as TbGitCommit,
+  IconGitCompare as TbGitCompare,
   IconGitPullRequest as TbGitPullRequest,
   IconSquareCheck as TbSquareCheck,
   IconHandStop as TbHandStop,
@@ -262,6 +263,8 @@ export const IconHistory = wrap(TbRefresh);
 export const IconRewind = wrap(TbArrowBackUp);
 /** Session fork / branch. */
 export const IconFork = wrap(TbGitBranch);
+/** Compare with a different model (fork + swap model). */
+export const IconCompareModel = wrap(TbGitCompare);
 export const IconUpload = wrap(TbUpload);
 export const IconFiles = wrap(TbFiles);
 /** Session changes / diff panel (resource viewer). */

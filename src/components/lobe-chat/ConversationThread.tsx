@@ -3,7 +3,7 @@
  * Replaces AI Elements / previous ConversationThread.
  */
 
-import { memo, useMemo } from "react";
+import { memo, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
@@ -24,6 +24,7 @@ import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import {
   IconArrowsMinimize,
   IconClock,
+  IconCompareModel,
   IconExportMd,
   IconFork,
   IconRename,
@@ -225,6 +226,11 @@ export interface ConversationThreadProps {
   canRewindSession?: boolean;
   onRewindToUserMessage?: (message: ChatMessage) => void;
   onForkFromUserMessage?: (message: ChatMessage) => void;
+  /** Fork from here into a new chat with a different model (opens a model picker). */
+  onCompareFromUserMessage?: (
+    message: ChatMessage,
+    e: ReactMouseEvent<HTMLButtonElement>,
+  ) => void;
   onOpenResource?: (
     target: import("@/components/ResourceViewer").ResourceOpenTarget,
   ) => void;
@@ -263,6 +269,7 @@ export function ConversationThread({
   canRewindSession = false,
   onRewindToUserMessage,
   onForkFromUserMessage,
+  onCompareFromUserMessage,
   onOpenResource,
   onAddAttachmentToComposer,
   attachLabels,
@@ -532,6 +539,18 @@ export function ConversationThread({
                             }}
                           >
                             <IconFork size={15} />
+                          </MessageActionButton>
+                        ) : null}
+                        {onCompareFromUserMessage ? (
+                          <MessageActionButton
+                            label={tr("message.compareModel")}
+                            disabled={!canRewindSession}
+                            onClick={(e: ReactMouseEvent<HTMLButtonElement>) => {
+                              if (!canRewindSession) return;
+                              onCompareFromUserMessage(m, e);
+                            }}
+                          >
+                            <IconCompareModel size={15} />
                           </MessageActionButton>
                         ) : null}
                       </>

@@ -2,7 +2,13 @@
  * Compact chat hover action — Codex tip + optional copy→check feedback.
  */
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { IconCheck, IconCopy } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -17,7 +23,7 @@ export function MessageActionButton({
 }: {
   label: string;
   ariaLabel?: string;
-  onClick?: () => void;
+  onClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   children: ReactNode;
   className?: string;

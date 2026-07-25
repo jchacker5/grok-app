@@ -214,6 +214,7 @@ import {
   IconCheck,
   IconPromptLibrary,
   IconFileDiff,
+  IconCompareModel,
 } from "@/components/icons";
 import { AutomationsPage } from "@/components/AutomationsPage";
 import { PromptLibraryPanel } from "@/components/PromptLibraryPanel";
@@ -325,6 +326,14 @@ type ContextMenuState =
   | { kind: "project-space"; id: string; x: number; y: number }
   | { kind: "space"; id: string; x: number; y: number }
   | { kind: "session"; id: string; x: number; y: number }
+  | {
+      kind: "compare-model";
+      msgId: string;
+      sourceId: string;
+      promptIndex: number;
+      x: number;
+      y: number;
+    }
   | null;
 
 /** In-app dialogs — window.prompt/confirm are unreliable in Tauri WebView. */
@@ -5237,6 +5246,91 @@ export default function App() {
   );
 
   /**
+   * "Compare with model" — open a model-picker menu anchored on the clicked
+   * action button. Selecting a model runs `runCompareWithModel` below.
+   */
+  const onCompareFromUserMessage = useCallback(
+    (msg: ChatMessage, e: ReactMouseEvent) => {
+      const sid = session.sessionId ?? viewingSessionIdRef.current;
+      if (!sid) {
+        showToast(tr("session.forkFailed"));
+        return;
+      }
+      const idx = userPromptIndexOf(messages, msg.id);
+      if (idx < 0) return;
+      const others = availableModels.filter((m) => m.id !== modelId);
+      if (!others.length) {
+        showToast(tr("message.compareNoModels"), 3600);
+        return;
+      }
+      setCtxMenu({
+        kind: "compare-model",
+        msgId: msg.id,
+        sourceId: sid,
+        promptIndex: idx,
+        x: e.clientX,
+        y: e.clientY,
+      });
+    },
+    [availableModels, messages, modelId, session.sessionId, showToast, tr],
+  );
+
+  /**
+   * Fork `sourceId` through `promptIndex` (same turn cut as a normal fork,
+   * keeping the original reply), pin the new chat to `chosenModel`, and open
+   * it. The original session is untouched — flip between the two chats in
+   * the sidebar to compare answers side by side. The forked chat's last
+   * message is still the *original* model's reply; edit + resend that user
+   * bubble (existing affordance) to get the new model's answer.
+   */
+  const runCompareWithModel = useCallback(
+    async (sourceId: string, promptIndex: number, chosenModel: ModelOption) => {
+      if (!api.isTauri()) {
+        showToast(tr("error.needTauri"));
+        return;
+      }
+      const sourceRow = sessions.find((s) => s.id === sourceId);
+      const base = (sourceRow?.title || session.title || tr("session.untitled")).trim();
+      const title = tr("compare.forkTitle", { model: chosenModel.label, name: base });
+      try {
+        const meta = await api.sessionFork(sourceId, {
+          throughUserPromptIndex: promptIndex,
+          title,
+        });
+        await api.composerPrefsSet({
+          sessionId: meta.id,
+          modelId: chosenModel.id,
+        });
+        await refreshSessions();
+        const row: SessionRow = {
+          id: meta.id,
+          title: meta.title || title,
+          projectId: meta.projectId ?? sourceRow?.projectId ?? null,
+          updatedAt: meta.updatedAt || new Date().toISOString(),
+          archived: meta.archived,
+          pinned: false,
+          scheduled: meta.scheduled,
+        };
+        const proj = row.projectId
+          ? projects.find((p) => p.id === row.projectId) ?? null
+          : null;
+        if (row.projectId) {
+          setExpandedProjects((e) => ({ ...e, [row.projectId!]: true }));
+        } else {
+          setHistoryOpen(true);
+        }
+        await openSession(row, proj);
+        showToast(tr("compare.forkOk", { model: chosenModel.label }), 4400);
+      } catch (e) {
+        showToast(tr("compare.forkFailed") + ": " + String(e), 4500);
+      }
+    },
+    // openSession / refreshSessions via closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects, session.title, sessions, showToast, tr],
+  );
+
+  /**
    * Apply permission policy (incl. YOLO). Never use window.confirm in Tauri —
    * it is unreliable in the WebView and blocks YOLO enable/disable.
    */
@@ -8733,6 +8827,7 @@ export default function App() {
             canRewindSession={canRewindSession && !!session.sessionId}
             onRewindToUserMessage={onRewindToUserMessage}
             onForkFromUserMessage={onForkFromUserMessage}
+            onCompareFromUserMessage={onCompareFromUserMessage}
             turnStartedAt={turnStartedAt}
             onOpenResource={(target) => {
               setLayout((l) => {
@@ -10491,6 +10586,18 @@ export default function App() {
               },
             ];
           }
+        } else if (ctxMenu?.kind === "compare-model") {
+          const { sourceId, promptIndex } = ctxMenu;
+          items = availableModels
+            .filter((m) => m.id !== modelId)
+            .map((m) => ({
+              id: `compare-${m.id}`,
+              label: m.label,
+              icon: <IconCompareModel size={16} />,
+              onClick: () => {
+                void runCompareWithModel(sourceId, promptIndex, m);
+              },
+            }));
         }
         return (
           <ContextMenu
@@ -10504,7 +10611,9 @@ export default function App() {
                 ? 280
                 : ctxMenu?.kind === "project-space"
                   ? 240 + spaces.length * 32
-                  : 240
+                  : ctxMenu?.kind === "compare-model"
+                    ? 40 + availableModels.length * 32
+                    : 240
             }
           />
         );

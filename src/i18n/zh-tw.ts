@@ -130,6 +130,11 @@ export const zhTW: Record<MessageKey, string> = {
   "session.rewindNoop": "已在此位置，沒有可捨棄的內容",
   "message.rewindHere": "回退到此處",
   "message.forkHere": "從此處分叉",
+  "message.compareModel": "用其他模型對比",
+  "message.compareNoModels": "請在「服務商/設定」中新增另一個模型以進行對比。",
+  "compare.forkTitle": "對比（{model}）：{name}",
+  "compare.forkOk": "已分叉用於對比 {model}。編輯最後一則訊息並重新傳送即可查看其回答。",
+  "compare.forkFailed": "無法建立對比會話",
 
   "main.rightPane": "檔案欄",
   "main.leftPane": "側邊欄",

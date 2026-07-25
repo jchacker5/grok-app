@@ -141,6 +141,13 @@ const en = {
   "session.rewindNoop": "Already at this point — nothing to discard",
   "message.rewindHere": "Rewind to here",
   "message.forkHere": "Fork from here",
+  "message.compareModel": "Compare with a different model",
+  "message.compareNoModels":
+    "Add another model in Providers/Settings to compare answers.",
+  "compare.forkTitle": "Compare ({model}): {name}",
+  "compare.forkOk":
+    "Forked for comparison with {model}. Edit the last message and resend to see its answer.",
+  "compare.forkFailed": "Could not create comparison chat",
 
   // Main
   "main.rightPane": "Files pane",
@@ -1786,6 +1793,11 @@ const zh: Record<MessageKey, string> = {
   "session.rewindNoop": "已在此位置，没有可丢弃的内容",
   "message.rewindHere": "回退到此处",
   "message.forkHere": "从此处分叉",
+  "message.compareModel": "用其他模型对比",
+  "message.compareNoModels": "请在“服务商/设置”中添加另一个模型以进行对比。",
+  "compare.forkTitle": "对比（{model}）：{name}",
+  "compare.forkOk": "已分叉用于对比 {model}。编辑最后一条消息并重新发送即可查看其回答。",
+  "compare.forkFailed": "无法创建对比会话",
 
   "main.rightPane": "文件栏",
   "main.leftPane": "侧栏",
