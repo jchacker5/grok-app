@@ -3,7 +3,7 @@
  * StickToBottom for stream-follow; Reasoning auto open/close.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
@@ -45,10 +45,18 @@ import {
   IconCopy,
   IconExportMd,
   IconPlan,
+  IconSpeak,
+  IconStop,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { SkillChip } from "@/components/SkillChip";
 import { hydrateDisplayContent, parseStoredContent } from "@/lib/draftDoc";
+import {
+  isSpeaking,
+  speakText,
+  stopSpeaking,
+  stripMarkdownForSpeech,
+} from "@/lib/chatTts";
 
 /** Render user message text with inline skill chips. */
 function UserMessageBody({ content }: { content: string }) {
@@ -147,6 +155,20 @@ export function ConversationThread({
   attachLabels,
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
+
+  // Which assistant message (by id) is currently being read aloud via the
+  // "speak this reply" button — at most one at a time (chatTts.speakText
+  // always cancels any in-progress utterance before starting a new one).
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!speakingId) return;
+    const id = window.setInterval(() => {
+      if (!isSpeaking()) setSpeakingId(null);
+    }, 300);
+    return () => window.clearInterval(id);
+  }, [speakingId]);
+  // Stop any in-flight speech when the thread unmounts (e.g. switching sessions).
+  useEffect(() => () => stopSpeaking(), []);
 
   const showWorking =
     sessionState === "streaming" &&
@@ -315,6 +337,39 @@ export function ConversationThread({
                             }
                           >
                             <IconCopy size={15} />
+                          </Button>
+                        </Tip>
+                        <Tip
+                          label={
+                            speakingId === m.id
+                              ? tr("chat.stopSpeaking")
+                              : tr("chat.speakReply")
+                          }
+                        >
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={
+                              speakingId === m.id
+                                ? tr("chat.stopSpeaking")
+                                : tr("chat.speakReply")
+                            }
+                            onClick={() => {
+                              if (speakingId === m.id) {
+                                stopSpeaking();
+                                setSpeakingId(null);
+                                return;
+                              }
+                              speakText(stripMarkdownForSpeech(m.content));
+                              setSpeakingId(m.id);
+                            }}
+                          >
+                            {speakingId === m.id ? (
+                              <IconStop size={14} />
+                            ) : (
+                              <IconSpeak size={15} />
+                            )}
                           </Button>
                         </Tip>
                         <Tip label={tr("message.exportMd")}>

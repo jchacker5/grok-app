@@ -134,6 +134,8 @@ import {
   ensureNotifyPermission,
   showDesktopNotification,
 } from "@/lib/desktopNotify";
+import { speakText, stopSpeaking, stripMarkdownForSpeech } from "@/lib/chatTts";
+import { matchVoiceCommand } from "@/lib/voiceCommands";
 import { GlassModal } from "@/components/GlassModal";
 import {
   applyResolvedSessionMedia,
@@ -1153,6 +1155,14 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const notificationsEnabledRef = useRef(notificationsEnabled);
   notificationsEnabledRef.current = notificationsEnabled;
+  /** Opt-in: speak new assistant replies aloud (regular chat, not Live Voice). */
+  const [autoReadReplies, setAutoReadReplies] = useState(false);
+  const autoReadRepliesRef = useRef(autoReadReplies);
+  autoReadRepliesRef.current = autoReadReplies;
+  /** Opt-in: interpret a small fixed set of spoken phrases during dictation as app actions. */
+  const [voiceCommandsEnabled, setVoiceCommandsEnabled] = useState(false);
+  const voiceCommandsEnabledRef = useRef(voiceCommandsEnabled);
+  voiceCommandsEnabledRef.current = voiceCommandsEnabled;
   /** User-authored CSS injected into this window's renderer (Settings → Appearance). */
   const [customCss, setCustomCss] = useState("");
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
@@ -1432,6 +1442,8 @@ export default function App() {
       setVoiceSensitivity(typeof settings.voiceSensitivity === "number" ? settings.voiceSensitivity : 0.5);
       setVoiceMicDeviceId(settings.voiceMicDeviceId || "");
       setVoiceFeedbackChime(!!settings.voiceFeedbackChime);
+      setAutoReadReplies(!!settings.autoReadReplies);
+      setVoiceCommandsEnabled(!!settings.voiceCommandsEnabled);
       setNotificationsEnabled(settings.notificationsEnabled !== false);
       setCustomCss(settings.customCss || "");
       setCliInfo({
@@ -1715,6 +1727,19 @@ export default function App() {
                     body: trRef.current("notify.turnDoneBody"),
                     tag: `turn-${s.sessionId || "x"}`,
                   });
+                }
+                // Opt-in: read the just-completed assistant reply aloud via the
+                // browser SpeechSynthesis API (regular chat, not a Live Voice
+                // session — see chatTts.ts). Mirrors the notification hook above.
+                if (s.state === "ready" && autoReadRepliesRef.current) {
+                  const lastAssistant = [...messagesRef.current]
+                    .reverse()
+                    .find(
+                      (m) => m.role === "assistant" && !m.isError && !!m.content?.trim(),
+                    );
+                  if (lastAssistant) {
+                    speakText(stripMarkdownForSpeech(lastAssistant.content));
+                  }
                 }
               } else if (
                 (s.state === "streaming" || s.state === "awaiting_permission") &&
@@ -8117,6 +8142,21 @@ export default function App() {
               api.settingsSet({ ...s, voiceFeedbackChime: v }),
             );
           }}
+          autoReadReplies={autoReadReplies}
+          onAutoReadReplies={(v) => {
+            setAutoReadReplies(v);
+            if (!v) stopSpeaking();
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, autoReadReplies: v }),
+            );
+          }}
+          voiceCommandsEnabled={voiceCommandsEnabled}
+          onVoiceCommandsEnabled={(v) => {
+            setVoiceCommandsEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceCommandsEnabled: v }),
+            );
+          }}
           notificationsEnabled={notificationsEnabled}
           onNotificationsEnabled={(v) => {
             setNotificationsEnabled(v);
@@ -10221,11 +10261,32 @@ export default function App() {
                                       .replace(/\bopen quote\b/gi, "\u201c")
                                       .replace(/\bclose quote\b/gi, "\u201d");
                                     text = text.replace(/(\.\s+)([a-z])/g, (_, p, l) => p + (l as string).toUpperCase());
-                                    setDraft((d) =>
-                                      d.trim()
-                                        ? `${d.trim()} ${text}`
-                                        : text.charAt(0).toUpperCase() + text.slice(1),
-                                    );
+
+                                    // Voice command hotkeys (v1 starter set, opt-in — see
+                                    // voiceCommands.ts). Only fires when the trigger phrase
+                                    // is the WHOLE dictated transcript, so a sentence that
+                                    // merely mentions "new session" etc. is never hijacked.
+                                    const cmd = voiceCommandsEnabledRef.current
+                                      ? matchVoiceCommand(text.trim())
+                                      : null;
+                                    if (cmd) {
+                                      if (cmd.command === "send") {
+                                        void send();
+                                      } else if (cmd.command === "newSession") {
+                                        void newChat(null);
+                                      }
+                                      // "stopDictation": recording has already ended by the
+                                      // time this final transcript is available (dictation
+                                      // here is single-shot, ended via the stop button before
+                                      // transcription runs) — recognizing the phrase and
+                                      // skipping insertion below is the whole action.
+                                    } else {
+                                      setDraft((d) =>
+                                        d.trim()
+                                          ? `${d.trim()} ${text}`
+                                          : text.charAt(0).toUpperCase() + text.slice(1),
+                                      );
+                                    }
                                   }
                                 } catch (e) {
                                   console.warn("dictation failed", e);

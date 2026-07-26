@@ -1824,11 +1824,7 @@ dependencies = [
 
 [[package]]
 name = "grok-app"
-<<<<<<< HEAD
 version = "0.1.16"
-=======
-version = "0.1.14"
->>>>>>> worktree-agent-af077aada4c150769
 dependencies = [
  "arboard",
  "base64 0.22.1",
