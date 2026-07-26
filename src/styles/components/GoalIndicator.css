@@ -1,0 +1,80 @@
+.goal-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: var(--c-bg-tertiary, rgba(255, 255, 255, 0.05));
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--c-accent, #3794ff);
+  color: var(--c-text-primary, #ffffff);
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.15s ease;
+  user-select: none;
+  max-height: 36px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.goal-indicator:hover {
+  background: var(--c-bg-hover, rgba(255, 255, 255, 0.1));
+  transform: translateY(-1px);
+}
+
+.goal-indicator--complete {
+  border-color: var(--c-success, #22c55e);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.goal-indicator__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-accent, #3794ff);
+}
+
+.goal-indicator--complete .goal-indicator__icon {
+  color: var(--c-success, #22c55e);
+}
+
+.goal-indicator__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.goal-indicator__title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.goal-indicator__progress {
+  font-size: 11px;
+  opacity: 0.85;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.goal-indicator__cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--c-text-secondary, #94a3b8);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  margin-left: 2px;
+}
+
+.goal-indicator__cancel:hover {
+  color: var(--c-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.15);
+}

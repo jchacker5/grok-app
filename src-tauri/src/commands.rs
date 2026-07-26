@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::cli_probe::{self, CliProbeResult};
 use crate::session_manager::{SessionManager, SessionSnapshot};
@@ -6904,6 +6904,407 @@ pub async fn open_in_editor(
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| settings.default_open_target.clone());
     crate::editors::open_in_editor(&path, line, Some(target.as_str()))
+}
+
+/// Install a plugin with real-time CLI output progress emitted via Tauri window events.
+#[tauri::command]
+pub async fn plugin_install_with_progress(
+    window: tauri::Window,
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    name: String,
+    source: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("plugin name required".into());
+    }
+    let source = source.unwrap_or_default();
+
+    let name_for_cmd = name.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+
+        let mut cmd_args = vec!["plugin", "install", &name_for_cmd];
+        if !source.is_empty() {
+            cmd_args.push("--from");
+            cmd_args.push(&source);
+        }
+
+        let mut child = Command::new("grok")
+            .args(&cmd_args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn grok CLI: {e}"))?;
+
+        let mut full_output = String::new();
+
+        if let Some(stdout) = child.stdout.take() {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                let _ = window.emit("plugin-install-progress", &line);
+                full_output.push_str(&line);
+                full_output.push('\n');
+            }
+        }
+
+        if let Some(stderr) = child.stderr.take() {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().flatten() {
+                let _ = window.emit("plugin-install-progress", &line);
+                full_output.push_str(&line);
+                full_output.push('\n');
+            }
+        }
+
+        let status = child.wait().map_err(|e| format!("Failed to wait on grok CLI: {e}"))?;
+        Ok::<(bool, String), String>((status.success(), full_output))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let (ok, output) = result;
+    if ok {
+        mgr.soft_respawn(&app).await;
+    }
+    Ok(serde_json::json!({
+        "ok": ok,
+        "name": name,
+        "output": output,
+    }))
+}
+
+#[tauri::command]
+pub async fn get_call_logs(
+    limit: Option<usize>,
+    offset: Option<usize>,
+) -> Result<Vec<crate::store::CallLogEntry>, String> {
+    let logs = crate::store::load_call_logs();
+    let off = offset.unwrap_or(0);
+    let lim = limit.unwrap_or(logs.len());
+    let sliced = logs.into_iter().rev().skip(off).take(lim).collect();
+    Ok(sliced)
+}
+
+#[tauri::command]
+pub async fn clear_call_logs() -> Result<(), String> {
+    crate::store::clear_all_call_logs()
+}
+
+#[tauri::command]
+pub async fn append_call_log(entry: crate::store::CallLogEntry) -> Result<(), String> {
+    crate::store::append_call_log_entry(entry)
+}
+
+#[tauri::command]
+pub async fn export_session(
+    session_id: String,
+    format: String,
+) -> Result<String, String> {
+    let sessions = crate::store::load_sessions_index();
+    let meta = sessions.into_iter().find(|s| s.id == session_id);
+    let messages = crate::store::load_messages(&session_id);
+
+    let title = meta.map(|m| m.title).unwrap_or_else(|| "Exported Session".into());
+
+    let fmt = format.to_lowercase();
+    if fmt == "json" {
+        let export_obj = serde_json::json!({
+            "title": title,
+            "sessionId": session_id,
+            "messages": messages,
+        });
+        serde_json::to_string_pretty(&export_obj).map_err(|e| e.to_string())
+    } else {
+        let mut md = format!("# {}\n\n", title);
+        for msg in messages {
+            let role = msg.role.to_uppercase();
+            let header = format!("## {}\n\n", role);
+            md.push_str(&header);
+            md.push_str(&msg.content);
+            md.push_str("\n\n---\n\n");
+        }
+        Ok(md)
+    }
+}
+
+#[tauri::command]
+pub async fn load_session_presets() -> Result<Vec<crate::store::SessionPreset>, String> {
+    let settings = store::load_settings();
+    Ok(settings.presets)
+}
+
+#[tauri::command]
+pub async fn save_session_preset(
+    preset: crate::store::SessionPreset,
+) -> Result<Vec<crate::store::SessionPreset>, String> {
+    let mut settings = store::load_settings();
+    if settings.presets.len() >= 50 {
+        return Err("Preset limit reached (max 50 presets)".to_string());
+    }
+    if let Some(pos) = settings.presets.iter().position(|p| p.id == preset.id || p.name == preset.name) {
+        settings.presets[pos] = preset;
+    } else {
+        settings.presets.push(preset);
+    }
+    store::save_settings(&settings)?;
+    Ok(settings.presets)
+}
+
+#[tauri::command]
+pub async fn delete_session_preset(id: String) -> Result<Vec<crate::store::SessionPreset>, String> {
+    let mut settings = store::load_settings();
+    settings.presets.retain(|p| p.id != id);
+    store::save_settings(&settings)?;
+    Ok(settings.presets)
+}
+
+#[tauri::command]
+pub async fn apply_session_preset(id: String) -> Result<crate::store::SessionPreset, String> {
+    let settings = store::load_settings();
+    settings
+        .presets
+        .into_iter()
+        .find(|p| p.id == id)
+        .ok_or_else(|| format!("Preset {id} not found"))
+}
+
+// ─── Custom Prompts ─────────────
+
+#[tauri::command]
+pub async fn load_custom_prompts() -> Result<Vec<crate::store::CustomPrompt>, String> {
+    let settings = store::load_settings();
+    Ok(settings.custom_prompts)
+}
+
+#[tauri::command]
+pub async fn save_custom_prompt(
+    prompt: crate::store::CustomPrompt,
+) -> Result<Vec<crate::store::CustomPrompt>, String> {
+    let mut settings = store::load_settings();
+    if settings.custom_prompts.len() >= 100 {
+        return Err("Custom prompt limit reached (max 100 prompts)".to_string());
+    }
+    if let Some(pos) = settings.custom_prompts.iter().position(|p| p.id == prompt.id) {
+        settings.custom_prompts[pos] = prompt;
+    } else {
+        settings.custom_prompts.push(prompt);
+    }
+    store::save_settings(&settings)?;
+    Ok(settings.custom_prompts)
+}
+
+#[tauri::command]
+pub async fn delete_custom_prompt(id: String) -> Result<Vec<crate::store::CustomPrompt>, String> {
+    let mut settings = store::load_settings();
+    settings.custom_prompts.retain(|p| p.id != id);
+    store::save_settings(&settings)?;
+    Ok(settings.custom_prompts)
+}
+
+// ─── Custom Slash Commands ─────────────
+
+#[tauri::command]
+pub async fn load_custom_commands() -> Result<Vec<crate::store::CustomCommand>, String> {
+    let settings = store::load_settings();
+    Ok(settings.custom_commands)
+}
+
+#[tauri::command]
+pub async fn save_custom_command(
+    cmd: crate::store::CustomCommand,
+) -> Result<Vec<crate::store::CustomCommand>, String> {
+    let mut settings = store::load_settings();
+    if settings.custom_commands.len() >= 50 {
+        return Err("Custom command limit reached (max 50 commands)".to_string());
+    }
+    if let Some(pos) = settings.custom_commands.iter().position(|c| c.id == cmd.id) {
+        settings.custom_commands[pos] = cmd;
+    } else {
+        settings.custom_commands.push(cmd);
+    }
+    store::save_settings(&settings)?;
+    Ok(settings.custom_commands)
+}
+
+#[tauri::command]
+pub async fn delete_custom_command(id: String) -> Result<Vec<crate::store::CustomCommand>, String> {
+    let mut settings = store::load_settings();
+    settings.custom_commands.retain(|c| c.id != id);
+    store::save_settings(&settings)?;
+    Ok(settings.custom_commands)
+}
+
+#[tauri::command]
+pub async fn execute_custom_command(
+    id: String,
+    project_path: Option<String>,
+) -> Result<String, String> {
+    let settings = store::load_settings();
+    let cmd = settings
+        .custom_commands
+        .into_iter()
+        .find(|c| c.id == id)
+        .ok_or_else(|| format!("Command {id} not found"))?;
+
+    match cmd.action_type.as_str() {
+        "insert_text" => Ok(cmd.action_value),
+        "run_shell" => {
+            let cwd = project_path.unwrap_or_else(|| std::env::current_dir().unwrap_or_default().to_string_lossy().to_string());
+            let output = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&cmd.action_value)
+                .current_dir(&cwd)
+                .output()
+                .map_err(|e| format!("Failed to run command: {e}"))?;
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if output.status.success() {
+                Ok(stdout)
+            } else {
+                Err(format!("Command failed: {stderr}"))
+            }
+        }
+        _ => Ok(cmd.action_value),
+    }
+}
+
+// ─── Browser Cookies ─────────────
+
+#[tauri::command]
+pub async fn set_browser_cookies(
+    cookies: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    let mut settings = store::load_settings();
+    settings.browser_cookies.extend(cookies);
+    store::save_settings(&settings)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_browser_cookies() -> Result<std::collections::HashMap<String, String>, String> {
+    let settings = store::load_settings();
+    Ok(settings.browser_cookies)
+}
+
+#[tauri::command]
+pub async fn clear_browser_cookies() -> Result<(), String> {
+    let mut settings = store::load_settings();
+    settings.browser_cookies.clear();
+    store::save_settings(&settings)?;
+    Ok(())
+}
+
+// ─── Agents Files (AGENTS.md / CLAUDE.md) ─────────────
+
+#[tauri::command]
+pub async fn find_agents_files(project_path: String) -> Result<Vec<String>, String> {
+    let mut found = Vec::new();
+    let root = std::path::Path::new(&project_path);
+    let candidates = vec![
+        "AGENTS.md",
+        "CLAUDE.md",
+        "COPILOT_INSTRUCTIONS.md",
+        ".grok/AGENTS.md",
+        ".claude/CLAUDE.md",
+    ];
+
+    for rel in candidates {
+        let p = root.join(rel);
+        if p.exists() && p.is_file() {
+            if let Some(s) = p.to_str() {
+                found.push(s.to_string());
+            }
+        }
+    }
+    Ok(found)
+}
+
+#[tauri::command]
+pub async fn read_agents_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn write_agents_file(path: String, content: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
+// ─── Git Staging & Commit ─────────────
+
+#[tauri::command]
+pub async fn git_stage_file(project_path: String, path: String) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(&["add", &path])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run git add: {e}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn git_unstage_file(project_path: String, path: String) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(&["reset", "HEAD", &path])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run git reset: {e}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn git_stage_hunk(project_path: String, patch_content: String) -> Result<(), String> {
+    let mut child = std::process::Command::new("git")
+        .args(&["apply", "--cached", "--unidiff-zero"])
+        .current_dir(&project_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn git apply: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin.write_all(patch_content.as_bytes()).map_err(|e| e.to_string())?;
+    }
+
+    let output = child.wait_with_output().map_err(|e| e.to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn git_get_staged_diff(project_path: String) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args(&["diff", "--staged"])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run git diff: {e}"))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
 }
 
 #[cfg(test)]

@@ -2393,3 +2393,162 @@ export async function projectSetSpace(
   if (!isTauri()) return;
   await invoke("project_set_space", { id, spaceId });
 }
+
+// ─── Call Logs, Presets, Export, Plugin Install with Progress ─────────────
+import type { SessionPreset } from "./types";
+
+export async function installGrokPluginWithProgress(
+  name: string,
+  source?: string,
+  onProgress?: (line: string) => void
+): Promise<{ ok: boolean; name: string; output: string }> {
+  let unlisten: (() => void) | undefined;
+  if (onProgress && isTauri()) {
+    const { listen } = await import("@tauri-apps/api/event");
+    unlisten = await listen<string>("plugin-install-progress", (event) => {
+      onProgress(event.payload);
+    });
+  }
+  try {
+    return await invoke<{ ok: boolean; name: string; output: string }>(
+      "plugin_install_with_progress",
+      { name, source: source || null }
+    );
+  } finally {
+    if (unlisten) {
+      unlisten();
+    }
+  }
+}
+
+export async function getCallLogs(limit?: number, offset?: number): Promise<CallLogEntry[]> {
+  if (!isTauri()) return [];
+  return invoke<CallLogEntry[]>("get_call_logs", { limit, offset });
+}
+
+export async function clearCallLogs(): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("clear_call_logs");
+}
+
+export async function appendCallLog(entry: CallLogEntry): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("append_call_log", { entry });
+}
+
+export async function exportSession(sessionId: string, format: "markdown" | "json"): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("export_session", { sessionId, format });
+}
+
+export async function loadSessionPresets(): Promise<SessionPreset[]> {
+  if (!isTauri()) return [];
+  return invoke<SessionPreset[]>("load_session_presets");
+}
+
+export async function saveSessionPreset(preset: SessionPreset): Promise<SessionPreset[]> {
+  if (!isTauri()) return [];
+  return invoke<SessionPreset[]>("save_session_preset", { preset });
+}
+
+export async function deleteSessionPreset(id: string): Promise<SessionPreset[]> {
+  if (!isTauri()) return [];
+  return invoke<SessionPreset[]>("delete_session_preset", { id });
+}
+
+export async function applySessionPreset(id: string): Promise<SessionPreset> {
+  if (!isTauri()) throw new Error("Not supported in web preview");
+  return invoke<SessionPreset>("apply_session_preset", { id });
+}
+
+import type { LibraryPrompt, CustomCommand } from "./types";
+
+export async function loadCustomPrompts(): Promise<LibraryPrompt[]> {
+  if (!isTauri()) return [];
+  return invoke<LibraryPrompt[]>("load_custom_prompts");
+}
+
+export async function saveCustomPrompt(prompt: LibraryPrompt): Promise<LibraryPrompt[]> {
+  if (!isTauri()) return [];
+  return invoke<LibraryPrompt[]>("save_custom_prompt", { prompt });
+}
+
+export async function deleteCustomPrompt(id: string): Promise<LibraryPrompt[]> {
+  if (!isTauri()) return [];
+  return invoke<LibraryPrompt[]>("delete_custom_prompt", { id });
+}
+
+export async function loadCustomCommands(): Promise<CustomCommand[]> {
+  if (!isTauri()) return [];
+  return invoke<CustomCommand[]>("load_custom_commands");
+}
+
+export async function saveCustomCommand(cmd: CustomCommand): Promise<CustomCommand[]> {
+  if (!isTauri()) return [];
+  return invoke<CustomCommand[]>("save_custom_command", { cmd });
+}
+
+export async function deleteCustomCommand(id: string): Promise<CustomCommand[]> {
+  if (!isTauri()) return [];
+  return invoke<CustomCommand[]>("delete_custom_command", { id });
+}
+
+export async function executeCustomCommand(id: string, projectPath?: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("execute_custom_command", { id, projectPath: projectPath || null });
+}
+
+export async function setBrowserCookies(cookies: Record<string, string>): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("set_browser_cookies", { cookies });
+}
+
+export async function getBrowserCookies(): Promise<Record<string, string>> {
+  if (!isTauri()) return {};
+  return invoke<Record<string, string>>("get_browser_cookies");
+}
+
+export async function clearBrowserCookies(): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("clear_browser_cookies");
+}
+
+export async function findAgentsFiles(projectPath: string): Promise<string[]> {
+  if (!isTauri()) return [];
+  return invoke<string[]>("find_agents_files", { projectPath });
+}
+
+export async function readAgentsFile(path: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("read_agents_file", { path });
+}
+
+export async function writeAgentsFile(path: string, content: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("write_agents_file", { path, content });
+}
+
+export async function gitStageFile(projectPath: string, path: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("git_stage_file", { projectPath, path });
+}
+
+export async function gitUnstageFile(projectPath: string, path: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("git_unstage_file", { projectPath, path });
+}
+
+export async function gitStageHunk(projectPath: string, patchContent: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("git_stage_hunk", { projectPath, patchContent });
+}
+
+export async function gitCommitMessage(projectPath: string, message: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("git_commit", { projectPath, message });
+}
+
+export async function gitGetStagedDiff(projectPath: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("git_get_staged_diff", { projectPath });
+}

@@ -282,6 +282,18 @@ pub struct AppSettings {
     /// Check provider CLIs for updates on startup.
     #[serde(default = "default_true")]
     pub enable_provider_update_checks: bool,
+    /// User saved session presets.
+    #[serde(default)]
+    pub presets: Vec<SessionPreset>,
+    /// User custom system prompts.
+    #[serde(default)]
+    pub custom_prompts: Vec<CustomPrompt>,
+    /// User custom slash commands.
+    #[serde(default)]
+    pub custom_commands: Vec<CustomCommand>,
+    /// Saved browser domain cookies.
+    #[serde(default)]
+    pub browser_cookies: std::collections::HashMap<String, String>,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -386,6 +398,10 @@ impl Default for AppSettings {
             auto_open_task_panel: false,
             add_project_base_dir: String::new(),
             enable_provider_update_checks: true,
+            presets: Vec::new(),
+            custom_prompts: Vec::new(),
+            custom_commands: Vec::new(),
+            browser_cookies: std::collections::HashMap::new(),
         }
     }
 }
@@ -1612,6 +1628,96 @@ pub fn save_composer_prefs(
     }
 
     Ok(resolve_composer_prefs(project_id, session_id))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallLogEntry {
+    pub id: String,
+    pub timestamp: i64,
+    pub model: String,
+    pub tokens_prompt: u64,
+    pub tokens_completion: u64,
+    pub cost_usd: f64,
+    pub duration_ms: u64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPreset {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub system_prompt: String,
+    pub model: String,
+    pub effort: String,
+    pub yolo: bool,
+    pub temperature: f64,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomPrompt {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    pub category: String,
+    #[serde(default)]
+    pub is_built_in: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomCommand {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub action_type: String,
+    pub action_value: String,
+    pub shortcut: Option<String>,
+}
+
+pub fn load_call_logs() -> Vec<CallLogEntry> {
+    let path = crate::paths::call_logs_file();
+    if !path.exists() {
+        return Vec::new();
+    }
+    match fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
+pub fn save_call_logs(logs: &[CallLogEntry]) -> Result<(), String> {
+    let path = crate::paths::call_logs_file();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let to_save = if logs.len() > 10000 {
+        &logs[logs.len() - 10000..]
+    } else {
+        logs
+    };
+    let content = serde_json::to_string_pretty(to_save).map_err(|e| e.to_string())?;
+    fs::write(path, content).map_err(|e| e.to_string())
+}
+
+pub fn append_call_log_entry(entry: CallLogEntry) -> Result<(), String> {
+    let mut logs = load_call_logs();
+    logs.push(entry);
+    save_call_logs(&logs)
+}
+
+pub fn clear_all_call_logs() -> Result<(), String> {
+    let path = crate::paths::call_logs_file();
+    if path.exists() {
+        let _ = fs::remove_file(path);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

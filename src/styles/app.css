@@ -7315,10 +7315,13 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-wrap: nowrap;
+  /* Wrap to a second line instead of overflowing when many controls are
+     present (project, preset, model, access, voice…). overflow-x:auto is
+     avoided on purpose — it clips absolute/portaled popovers (was hiding the
+     model menu, leaving only a bottom shadow). */
+  flex-wrap: wrap;
+  row-gap: 6px;
   min-height: 32px;
-  /* Do not use overflow-x:auto here — it clips absolute/portaled popovers
-     and was hiding the model menu (only a bottom shadow was visible). */
   overflow: visible;
 }
 

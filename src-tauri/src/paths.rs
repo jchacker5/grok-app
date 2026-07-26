@@ -56,6 +56,10 @@ pub fn agent_config_toml() -> PathBuf {
     agent_home_dir().join("config.toml")
 }
 
+pub fn call_logs_file() -> PathBuf {
+    app_data_root().join("call_logs.json")
+}
+
 /// Resolve GROK_HOME for a spawned agent process.
 pub fn resolve_agent_grok_home(session_data_mode: &str) -> PathBuf {
     if session_data_mode == "shared" {

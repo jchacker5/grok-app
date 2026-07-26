@@ -36,8 +36,10 @@ import {
 import {
   ensureNotifyPermission,
   getNotifyPermission,
+  showDesktopNotification,
   type NotifyPermission,
 } from "@/lib/desktopNotify";
+import type { SessionPreset } from "@/lib/types";
 import {
   formatLoopbackAcpAddr,
   isLoopbackAcpAddr,
@@ -726,6 +728,99 @@ function NotificationsField({
           </button>
         </div>
       )}
+      {enabled && permission === "granted" && (
+        <div style={{ marginTop: "6px" }}>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => {
+              void showDesktopNotification({
+                title: "Grok Desktop",
+                body: "Desktop notifications are active!",
+                force: true,
+              });
+            }}
+          >
+            {t("settings.testNotification")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PresetsSettingsSection({ t }: { t: (k: string, vars?: Vars) => string }) {
+  const [presets, setPresets] = useState<SessionPreset[]>([]);
+
+  const refresh = async () => {
+    try {
+      const list = await api.loadSessionPresets();
+      setPresets(list || []);
+    } catch {
+      setPresets([]);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const handleDelete = async (id: string) => {
+    try {
+      const updated = await api.deleteSessionPreset(id);
+      setPresets(updated);
+    } catch {
+      setPresets((prev) => prev.filter((p) => p.id !== id));
+    }
+  };
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">
+          <IconSettings size={16} />
+          {t("settings.sessionPresets")}
+        </div>
+        <div className="settings-row__desc">
+          {t("settings.sessionPresetsDesc")}
+        </div>
+      </div>
+
+      <div className="presets-settings-list" style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", marginTop: "8px" }}>
+        {presets.length === 0 ? (
+          <div className="settings-row__hint">{t("settings.noPresetsSaved")}</div>
+        ) : (
+          presets.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                background: "var(--c-bg-tertiary, rgba(0,0,0,0.15))",
+                border: "1px solid var(--c-border)",
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "13px" }}>{p.name}</div>
+                <div style={{ fontSize: "11px", opacity: 0.7 }}>
+                  Model: {p.model} | Effort: {p.effort} | YOLO: {p.yolo ? "On" : "Off"}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => void handleDelete(p.id)}
+                style={{ color: "var(--c-danger, #ef4444)" }}
+              >
+                <IconTrash size={14} />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -1677,6 +1772,7 @@ export function SettingsPage({
                 onChange={(v) => onNotificationsEnabled?.(v)}
                 t={t}
               />
+              <PresetsSettingsSection t={t} />
             </div>
           </>
         )}

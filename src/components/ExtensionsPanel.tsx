@@ -90,6 +90,46 @@ export function ExtensionsPanel({
   const [mpSourceFilter, setMpSourceFilter] = useState<string | null>(null);
   const [installTarget, setInstallTarget] = useState<api.MarketplacePluginDto | null>(null);
 
+  const [installProgressOpen, setInstallProgressOpen] = useState(false);
+  const [installProgressTitle, setInstallProgressTitle] = useState("");
+  const [installProgressLogs, setInstallProgressLogs] = useState<string[]>([]);
+  const [installProgressStatus, setInstallProgressStatus] = useState<"installing" | "success" | "error">("installing");
+  const [installRetrySource, setInstallRetrySource] = useState<{ name: string; source: string } | null>(null);
+
+  const runInstallWithProgress = async (name: string, source: string) => {
+    setInstallProgressTitle(`Installing ${name}`);
+    setInstallProgressLogs([]);
+    setInstallProgressStatus("installing");
+    setInstallProgressOpen(true);
+    setInstallRetrySource({ name, source });
+
+    try {
+      const result = await api.installGrokPluginWithProgress(name, source, (line) => {
+        setInstallProgressLogs((prev) => {
+          const next = [...prev, line];
+          if (next.length > 500) {
+            return [...next.slice(0, 100), "... [output truncated] ...", ...next.slice(next.length - 300)];
+          }
+          return next;
+        });
+      });
+
+      if (result.ok) {
+        setInstallProgressStatus("success");
+        await refresh();
+        await refreshMarketplace();
+      } else {
+        setInstallProgressStatus("error");
+        if (result.output) {
+          setInstallProgressLogs((prev) => [...prev, result.output]);
+        }
+      }
+    } catch (err: any) {
+      setInstallProgressStatus("error");
+      setInstallProgressLogs((prev) => [...prev, err?.message || String(err)]);
+    }
+  };
+
   const installedPluginNames = useMemo(
     () => new Set(plugins.map((p) => p.name)),
     [plugins],
@@ -142,10 +182,7 @@ export function ExtensionsPanel({
       typeof target.source === "object" && target.source
         ? target.source.url ?? target.source.path ?? target.name
         : target.name;
-    await runPluginAction("marketplace-install", async () => {
-      await api.pluginInstall(sourceUrl);
-      await refreshMarketplace();
-    });
+    void runInstallWithProgress(target.name, sourceUrl);
   };
 
   const refresh = useCallback(async () => {
@@ -349,10 +386,8 @@ export function ExtensionsPanel({
       setActionError(tr("ext.plugins.installEmpty"));
       return;
     }
-    await runPluginAction("install", async () => {
-      await api.pluginInstall(source);
-      setInstallSource("");
-    });
+    setInstallSource("");
+    void runInstallWithProgress(source, source);
   };
 
   const updatePlugin = (p: api.PluginDto) => {
@@ -1099,6 +1134,75 @@ export function ExtensionsPanel({
         ) : (
           <pre className="ext-details-pre">{detailsBody}</pre>
         )}
+      </GlassModal>
+
+      <GlassModal
+        open={installProgressOpen}
+        onClose={() => setInstallProgressOpen(false)}
+        title={installProgressTitle}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "8px 0" }}>
+          <pre
+            style={{
+              maxHeight: "300px",
+              overflowY: "auto",
+              fontFamily: "monospace",
+              fontSize: "12px",
+              background: "rgba(0,0,0,0.4)",
+              borderRadius: "8px",
+              padding: "12px",
+              whiteSpace: "pre-wrap",
+              color: installProgressStatus === "error" ? "var(--c-danger, #ef4444)" : "inherit",
+            }}
+          >
+            {installProgressLogs.join("\n") || "Starting plugin installation..."}
+          </pre>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              {installProgressStatus === "installing" && <span>Installing...</span>}
+              {installProgressStatus === "success" && (
+                <span style={{ color: "var(--c-success, #22c55e)", fontWeight: 600 }}>✓ Plugin Installed Successfully</span>
+              )}
+              {installProgressStatus === "error" && (
+                <span style={{ color: "var(--c-danger, #ef4444)", fontWeight: 600 }}>✗ Installation Failed</span>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: "8px" }}>
+              {installProgressStatus === "error" && installRetrySource && (
+                <button
+                  type="button"
+                  onClick={() => runInstallWithProgress(installRetrySource.name, installRetrySource.source)}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "6px",
+                    background: "var(--c-accent, #3794ff)",
+                    color: "#fff",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Retry
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setInstallProgressOpen(false)}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "6px",
+                  background: "transparent",
+                  border: "1px solid var(--c-border)",
+                  color: "inherit",
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       </GlassModal>
     </div>
   );

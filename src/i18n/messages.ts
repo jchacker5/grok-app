@@ -766,6 +766,12 @@ const en = {
   "settings.notificationsDenied":
     "OS permission denied — enable notifications for Grok in system settings",
   "settings.notificationsRequest": "Request permission",
+  "settings.testNotification": "Send Test Notification",
+  "settings.sessionPresets": "Session Presets",
+  "settings.sessionPresetsDesc":
+    "Manage saved model, effort, and system prompt configurations",
+  "settings.noPresetsSaved":
+    "No saved presets yet. Save one from the composer toolbar!",
 
   "settings.addProjectBaseDir": "Add project starts in",
   "settings.addProjectBaseDirDesc":
@@ -2208,6 +2214,11 @@ const zh: Record<MessageKey, string> = {
   "settings.notificationsGranted": "已获得系统通知权限",
   "settings.notificationsDenied": "系统通知权限被拒绝 — 请在系统设置中为 Grok 开启通知",
   "settings.notificationsRequest": "请求权限",
+  "settings.testNotification": "发送测试通知",
+  "settings.sessionPresets": "会话预设",
+  "settings.sessionPresetsDesc":
+    "管理已保存的模型、思考层级与系统提示词配置",
+  "settings.noPresetsSaved": "暂无已保存预设。可通过输入框工具栏保存新预设！",
 
   "prov.emptyTitle": "暂无提供商",
   "prov.detailEmpty": "选择左侧提供商，或添加新的。",

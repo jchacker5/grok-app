@@ -68,8 +68,21 @@ import {
   resolveContextUsageDisplay,
   type ContextUsageState,
 } from "@/lib/contextUsage";
-import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
+import { GoalIndicator } from "@/components/GoalIndicator";
+import { GoalPanel } from "@/components/GoalPanel";
+import { SearchPanel } from "@/components/SearchPanel";
+import { PresetSelector } from "@/components/PresetSelector";
+import { PromptLibrary } from "@/components/PromptLibrary";
+import { EditCommandsModal } from "@/components/EditCommandsModal";
+import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
+import { AgentsEditor } from "@/components/AgentsEditor";
+import { ExportAsImageModal } from "@/components/ExportAsImageModal";
+import { SessionDiffView } from "@/components/SessionDiffView";
+import { SessionAnalyticsPanel } from "@/components/SessionAnalyticsPanel";
+import { MultiModelAnswer } from "@/components/MultiModelAnswer";
+import { WorkspaceDiffView } from "@/components/WorkspaceDiffView";
+import type { GoalConfig } from "@/lib/types";
 import * as api from "@/lib/api";
 import type { SpaceDto } from "@/lib/api";
 import {
@@ -190,7 +203,6 @@ import {
   IconClose,
   IconNewChat as IconSquarePen,
   IconNewChat,
-  IconImagine,
   IconScheduled,
   IconPanel,
   IconPanelRight,
@@ -389,6 +401,8 @@ export default function App() {
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceCaptureStopRef = useRef<(() => void) | null>(null);
   const [goalMode, setGoalMode] = useState(false);
+  const [goalConfig, setGoalConfig] = useState<GoalConfig | null>(null);
+  const [goalPanelOpen, setGoalPanelOpen] = useState(false);
   /** Prevent overlapping executeSend / queue auto-flush races. */
   const sendInFlightRef = useRef(false);
   const executeSendFromQueueRef = useRef<ExecuteSendFromQueue>(
@@ -524,6 +538,14 @@ export default function App() {
   const [customModels, setCustomModels] = useState("");
   const [cliUpdateDismissed, setCliUpdateDismissed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
+  const [editCommandsOpen, setEditCommandsOpen] = useState(false);
+  const [exportImageOpen, setExportImageOpen] = useState(false);
+  const [sessionDiffOpen, setSessionDiffOpen] = useState(false);
+  const [embeddedBrowserOpen, setEmbeddedBrowserOpen] = useState(false);
+  const [agentsEditorOpen, setAgentsEditorOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [workspaceDiffOpen, setWorkspaceDiffOpen] = useState(false);
   /** Hash route: workbench | settings/:section | automations */
   const [appView, setAppView] = useState<"workbench" | "settings">("workbench");
   /** Inside workbench: chat thread vs scheduled tasks list. */
@@ -5160,6 +5182,7 @@ export default function App() {
     () => resolveContextUsageDisplay(contextUsage, messages),
     [contextUsage, messages],
   );
+  void contextUsageDisplay;
 
   /**
    * New empty draft only: lift composer and SuperGrok brand.
@@ -8872,19 +8895,69 @@ export default function App() {
                   onOpen={refreshGitWorktrees}
                 />
                 {goalMode ? (
-                  <Tip label={tr("composer.goalHint")}>
-                    <button
-                      type="button"
-                      className="chip chip--goal"
-                      onClick={() => setGoalMode(false)}
-                      aria-label={tr("composer.goalClear")}
-                    >
-                      <IconImagine size={14} />
-                      <span className="chip__label">{tr("composer.goal")}</span>
-                      <IconClose size={12} />
-                    </button>
-                  </Tip>
+                  <GoalIndicator
+                    goalConfig={
+                      goalConfig || {
+                        goal: "Goal Mode Active",
+                        subgoals: [],
+                        completedSubgoals: [],
+                        context: "",
+                      }
+                    }
+                    onOpen={() => setGoalPanelOpen(true)}
+                    onCancel={() => {
+                      setGoalMode(false);
+                      setGoalConfig(null);
+                    }}
+                  />
                 ) : null}
+                <PresetSelector
+                  currentConfig={{
+                    systemPrompt: "",
+                    model: modelId,
+                    effort: isValidEffort(effort) ? effort : "medium",
+                    yolo: policy === "always_approve",
+                    temperature: 0.7,
+                  }}
+                  onApplyPreset={(preset) => {
+                    if (preset.model && isValidModelId(preset.model, availableModels)) {
+                      setModelId(preset.model);
+                    }
+                    if (preset.effort && isValidEffort(preset.effort)) {
+                      setEffort(preset.effort);
+                    }
+                    if (preset.yolo) {
+                      void applyPermissionPolicy("always_approve");
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => setPromptLibraryOpen(true)}
+                  title="Prompt Library"
+                  style={{ fontSize: "12px", padding: "4px 8px" }}
+                >
+                  📚 Prompts
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => setEditCommandsOpen(true)}
+                  title="Custom Slash Commands"
+                  style={{ fontSize: "12px", padding: "4px 8px" }}
+                >
+                  ⚡ /Commands
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => setEmbeddedBrowserOpen(true)}
+                  title="Embedded Browser & Web Preview"
+                  style={{ fontSize: "12px", padding: "4px 8px" }}
+                >
+                  🌐 Browser
+                </button>
                 <ComposerModelMenu
                   modelId={modelId}
                   effort={effort}
@@ -8962,31 +9035,6 @@ export default function App() {
                   }}
                   onPolicy={(v: PermissionPolicyId) => {
                     applyPermissionPolicy(v);
-                  }}
-                />
-                <ContextUsageChip
-                  display={contextUsageDisplay}
-                  labels={{
-                    aria: tr("context.chipAria"),
-                    tipUnknown: tr("context.chipTipUnknown"),
-                    tipEstimated: tr("context.chipTipEstimated"),
-                    tipKnown: tr("context.chipTipKnown"),
-                    menuTitle: tr("context.menuTitle"),
-                    current: tr("context.current"),
-                    sourceKnown: tr("context.sourceKnown"),
-                    sourceEstimated: tr("context.sourceEstimated"),
-                    sourceUnknown: tr("context.sourceUnknown"),
-                    lastCompact: tr("context.lastCompact"),
-                    lastCompactNone: tr("context.lastCompactNone"),
-                    tokensRange: tr("compact.tokensRange"),
-                    compactAction: tr("context.compactAction"),
-                    heuristicNote: tr("context.heuristicNote"),
-                    auto: tr("context.triggerAuto"),
-                    manual: tr("context.triggerManual"),
-                  }}
-                  onCompact={() => {
-                    setCompactNote("");
-                    setShowCompactModal(true);
                   }}
                 />
                 <span className="composer__spacer" />
@@ -9526,150 +9574,47 @@ export default function App() {
         </div>
       )}
 
-      {/* Search / command palette (Codex-style) */}
       {showSearch && (
-        <div
-          className="overlay"
-          onClick={() => setShowSearch(false)}
+        <GlassModal
+          open={showSearch}
+          onClose={() => setShowSearch(false)}
+          title="Search Sessions & History"
         >
-          <div
-            className="search-panel"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-label={tr("sidebar.search")}
-          >
-            <div className="search-panel__head">
-              <IconSearch size={16} />
-              <input
-                autoFocus
-                className="search-panel__input"
-                placeholder={
-                  tr("search.placeholder")
-                }
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button
-                type="button"
-                className="icon-btn modal-close"
-                onClick={() => setShowSearch(false)}
-                aria-label={tr("common.close")}
-              >
-                <IconClose size={16} />
-              </button>
-            </div>
-            {searchHits.matchedProjects.length > 0 && (
-              <>
-                <div className="search-panel__section">
-                  {tr("sidebar.projects")}
-                </div>
-                {searchHits.matchedProjects.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className="search-panel__row"
-                    onClick={() => {
-                      setShowSearch(false);
-                      // Project is a folder: expand only; selection is for sessions.
-                      setProjectsOpen(true);
-                      setExpandedProjects((e) => ({ ...e, [p.id]: true }));
-                    }}
-                  >
-                    <IconFolder size={15} />
-                    <span className="search-panel__title">{p.name}</span>
-                    <span className="search-panel__meta">{p.path}</span>
-                  </button>
-                ))}
-              </>
-            )}
-            <div className="search-panel__section">
-              {tr("search.chats")}
-              {contentSearchLoading && searchQuery.trim()
-                ? ` · ${tr("search.searchingContent")}`
-                : null}
-            </div>
-            {mergedSessionHits.length === 0 && !contentSearchLoading && (
-              <div className="sidebar-empty" style={{ padding: 12 }}>
-                {tr("search.noMatches")}
-              </div>
-            )}
-            {mergedSessionHits.map((hit, i) => {
+          <SearchPanel
+            query={searchQuery}
+            loading={contentSearchLoading}
+            results={mergedSessionHits.map((hit) => {
               const s = sessions.find((x) => x.id === hit.id);
-              // Content-only hits may lack a live row if the list is stale; still open by id.
-              const row: SessionRow = s ?? {
-                id: hit.id,
-                title: hit.title,
-                projectId: hit.projectId ?? null,
-                updatedAt: "",
-              };
-              const proj = projects.find(
-                (p) => p.id === (row.projectId ?? hit.projectId),
-              );
-              const metaParts: string[] = [];
-              if (proj?.name) metaParts.push(proj.name);
-              if (hit.contentMatch && hit.matchCount && hit.matchCount > 0) {
-                metaParts.push(
-                  tr("search.matchCount", { n: String(hit.matchCount) }),
-                );
+              const rawMatches = (hit as any).matches || [];
+              const matches = rawMatches.map((m: any) => ({
+                lineNumber: m.line_number || m.lineNumber,
+                lineContent: m.line_content || m.lineContent || hit.snippet || s?.title || "",
+              }));
+              if (matches.length === 0 && hit.snippet) {
+                matches.push({ lineContent: hit.snippet });
               }
-              if (i < 9) metaParts.push(`⌘${i + 1}`);
-              return (
-                <button
-                  key={hit.id}
-                  type="button"
-                  className="search-panel__row"
-                  onClick={() => {
-                    setShowSearch(false);
-                    void openSession(row, proj ?? null);
-                  }}
-                >
-                  <IconSquarePen size={15} />
-                  <span className="search-panel__body">
-                    <span className="search-panel__title">
-                      {hit.title || s?.title || "Untitled"}
-                    </span>
-                    {hit.snippet ? (
-                      <span className="search-panel__snippet">
-                        {hit.snippet}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="search-panel__meta">
-                    {metaParts.join(" · ") || "—"}
-                  </span>
-                </button>
-              );
+              if (matches.length === 0) {
+                matches.push({ lineContent: hit.title || s?.title || "Matching session" });
+              }
+              return {
+                sessionId: hit.id,
+                sessionTitle: hit.title || s?.title || "Untitled Chat",
+                matches,
+              };
             })}
-            <div className="search-panel__foot">
-              <button
-                type="button"
-                className="search-panel__row"
-                onClick={() => {
-                  setShowSearch(false);
-                  void newChat(activeProject);
-                }}
-              >
-                <IconSquarePen size={15} />
-                <span className="search-panel__title">
-                  {tr("search.newChat")}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="search-panel__row"
-                onClick={() => {
-                  setShowSearch(false);
-                  void addProject(false);
-                }}
-              >
-                <IconFolder size={15} />
-                <span className="search-panel__title">
-                  {tr("sidebar.addProject")}
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
+            onQueryChange={setSearchQuery}
+            onSelectMatch={(sessionId) => {
+              setShowSearch(false);
+              const s = sessions.find((x) => x.id === sessionId);
+              const proj = projects.find((p) => p.id === s?.projectId);
+              void openSession(
+                s || { id: sessionId, title: "Session", projectId: null, updatedAt: "" },
+                proj || null
+              );
+            }}
+            onClose={() => setShowSearch(false)}
+          />
+        </GlassModal>
       )}
 
       {/* In-app confirm / prompt (Tauri WebView has no reliable window.prompt/confirm) */}
@@ -10103,6 +10048,101 @@ export default function App() {
           })();
         }}
       />
+
+      <GoalPanel
+        open={goalPanelOpen}
+        goalConfig={
+          goalConfig || {
+            goal: "Goal Mode Active",
+            subgoals: [],
+            completedSubgoals: [],
+            context: "",
+          }
+        }
+        onSave={(updated) => {
+          setGoalConfig(updated);
+          setGoalMode(true);
+        }}
+        onClose={() => setGoalPanelOpen(false)}
+      />
+
+      <PromptLibrary
+        open={promptLibraryOpen}
+        onClose={() => setPromptLibraryOpen(false)}
+        onApplyPrompt={(prompt) => {
+          showToast(`Applied prompt: ${prompt.name}`, 3000);
+        }}
+      />
+
+      <EditCommandsModal
+        open={editCommandsOpen}
+        onClose={() => setEditCommandsOpen(false)}
+      />
+
+      <ExportAsImageModal
+        open={exportImageOpen}
+        onClose={() => setExportImageOpen(false)}
+        messages={messages}
+      />
+
+      <SessionDiffView
+        open={sessionDiffOpen}
+        onClose={() => setSessionDiffOpen(false)}
+        sessionA={{ id: "a", title: "Session A", messages }}
+        sessionB={{ id: "b", title: "Session B", messages: messages.slice(0, Math.max(1, messages.length - 1)) }}
+      />
+
+      {embeddedBrowserOpen && (
+        <GlassModal
+          open={embeddedBrowserOpen}
+          onClose={() => setEmbeddedBrowserOpen(false)}
+          title="Embedded Web Preview"
+          size="lg"
+        >
+          <div style={{ height: "450px" }}>
+            <EmbeddedBrowser onClose={() => setEmbeddedBrowserOpen(false)} />
+          </div>
+        </GlassModal>
+      )}
+
+      {agentsEditorOpen && (
+        <GlassModal
+          open={agentsEditorOpen}
+          onClose={() => setAgentsEditorOpen(false)}
+          title="Project AGENTS.md Rules Editor"
+          size="lg"
+        >
+          <div style={{ height: "450px" }}>
+            <AgentsEditor projectPath={activeProject?.path || ""} />
+          </div>
+        </GlassModal>
+      )}
+
+      {analyticsOpen && (
+        <GlassModal
+          open={analyticsOpen}
+          onClose={() => setAnalyticsOpen(false)}
+          title="Session Analytics & Token Dashboard"
+          size="lg"
+        >
+          <SessionAnalyticsPanel sessions={[{ id: session?.sessionId || "active", title: session?.title || "Active Session", messages }]} />
+        </GlassModal>
+      )}
+
+      {workspaceDiffOpen && (
+        <GlassModal
+          open={workspaceDiffOpen}
+          onClose={() => setWorkspaceDiffOpen(false)}
+          title="Workspace Staging & Commit"
+          size="lg"
+        >
+          <div style={{ height: "500px" }}>
+            <WorkspaceDiffView projectPath={activeProject?.path || ""} />
+          </div>
+        </GlassModal>
+      )}
+
+      <MultiModelAnswer answers={[]} />
 
       <span hidden data-layout-default={JSON.stringify(DEFAULT_LAYOUT)} />
     </div>

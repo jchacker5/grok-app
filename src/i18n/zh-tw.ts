@@ -734,6 +734,11 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.notificationsGranted": "已取得系統通知權限",
   "settings.notificationsDenied": "系統通知權限遭拒 — 請在系統設定中為 Grok 開啟通知",
   "settings.notificationsRequest": "要求權限",
+  "settings.testNotification": "發送測試通知",
+  "settings.sessionPresets": "會話預設",
+  "settings.sessionPresetsDesc":
+    "管理已儲存的模型、思考層級與系統提示詞設定",
+  "settings.noPresetsSaved": "暫無已儲存預設。可透過輸入框工具列儲存新預設！",
 
   "settings.addProjectBaseDir": "新增專案起始目錄",
   "settings.addProjectBaseDirDesc": "新增專案瀏覽器開啟時的預設目錄",
