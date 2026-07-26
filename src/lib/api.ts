@@ -21,6 +21,35 @@ export async function sessionGetState(): Promise<SessionSnapshot> {
   return invoke("session_get_state");
 }
 
+export async function terminalSpawn(
+  cwd: string | null,
+  cols: number,
+  rows: number,
+  id?: string,
+): Promise<string> {
+  return invoke<string>("terminal_spawn", { id: id ?? null, cwd, cols, rows });
+}
+
+export async function terminalWrite(id: string, data: string): Promise<void> {
+  return invoke<void>("terminal_write", { id, data });
+}
+
+export async function terminalResize(
+  id: string,
+  cols: number,
+  rows: number,
+): Promise<void> {
+  return invoke<void>("terminal_resize", { id, cols, rows });
+}
+
+export async function terminalSnapshot(id: string): Promise<string> {
+  return invoke<string>("terminal_snapshot", { id });
+}
+
+export async function terminalKill(id: string): Promise<void> {
+  return invoke<void>("terminal_kill", { id });
+}
+
 export async function sessionConnect(opts?: {
   projectPath?: string;
   sessionId?: string;
@@ -1104,6 +1133,8 @@ export interface AppSettings {
   wslDistro?: string | null;
   /** Max warm/live agent processes (default 3). */
   maxConcurrentAgents?: number;
+  /** Max live embedded terminal processes (default 4). */
+  maxConcurrentTerminals?: number;
   /** Recycle idle agent processes after N minutes (default 30). */
   agentIdleMinutes?: number;
   /** Pure stream silence before cancel prompt, seconds (default 120). */

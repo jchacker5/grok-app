@@ -202,6 +202,9 @@ pub struct AppSettings {
     /// Max warm/live agent processes (I02). Default 3.
     #[serde(default = "default_max_concurrent_agents")]
     pub max_concurrent_agents: u32,
+    /// Max live embedded terminal processes. Default 4.
+    #[serde(default = "default_max_concurrent_terminals")]
+    pub max_concurrent_terminals: u32,
     /// Recycle idle agent processes after this many minutes (I03). Default 30.
     #[serde(default = "default_agent_idle_minutes")]
     pub agent_idle_minutes: u32,
@@ -323,6 +326,10 @@ fn default_max_concurrent_agents() -> u32 {
     crate::process_limits::DEFAULT_MAX_CONCURRENT_AGENTS
 }
 
+fn default_max_concurrent_terminals() -> u32 {
+    crate::process_limits::DEFAULT_MAX_CONCURRENT_TERMINALS
+}
+
 fn default_agent_idle_minutes() -> u32 {
     crate::process_limits::DEFAULT_AGENT_IDLE_MINUTES
 }
@@ -387,6 +394,7 @@ impl Default for AppSettings {
             ssh_tunnel_enabled: false,
             wsl_distro: None,
             max_concurrent_agents: default_max_concurrent_agents(),
+            max_concurrent_terminals: default_max_concurrent_terminals(),
             agent_idle_minutes: default_agent_idle_minutes(),
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,

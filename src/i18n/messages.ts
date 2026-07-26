@@ -10,7 +10,7 @@ const en = {
   // App chrome
   "app.name": "Grok",
   "app.tagline": "MIT · Unofficial · Sister project grok-go",
-  "app.versionFooter": "Grok v0.1.11 · MIT · Unofficial · Sister project grok-go",
+  "app.versionFooter": "Grok v0.1.12 · MIT · Unofficial · Sister project grok-go",
 
   // Window chrome (Windows self-drawn controls)
   "window.minimize": "Minimize",
@@ -230,6 +230,14 @@ const en = {
   "resources.emptyPreview": "No file open",
   "resources.emptyPreviewHint":
     "Pick a file from the tree on the right to preview it here.",
+  "terminal.new": "New Terminal",
+  "terminal.openHere": "Open Terminal Here",
+  "terminal.tabTitle": "Terminal",
+  "terminal.clear": "Clear",
+  "terminal.kill": "Kill",
+  "terminal.exited": "Terminal exited",
+  "terminal.spawnFailed": "Failed to start terminal",
+  "terminal.limitReached": "Terminal limit reached",
   "resources.plan": "Plan",
   "resources.planEmpty": "No plan is waiting for review in this session.",
   "resources.copyPathShort": "Path",
@@ -1592,7 +1600,7 @@ const en = {
 const zh: Record<MessageKey, string> = {
   "app.name": "Grok",
   "app.tagline": "MIT · 非 xAI 官方 · 姐妹项目 grok-go",
-  "app.versionFooter": "Grok v0.1.11 · MIT · 非 xAI 官方 · 姐妹项目 grok-go",
+  "app.versionFooter": "Grok v0.1.12 · MIT · 非 xAI 官方 · 姐妹项目 grok-go",
 
   "window.minimize": "最小化",
   "window.maximize": "最大化",
@@ -1804,6 +1812,14 @@ const zh: Record<MessageKey, string> = {
   "resources.needProject": "添加或选择项目后，即可在此浏览文件。",
   "resources.emptyPreview": "尚未打开文件",
   "resources.emptyPreviewHint": "从右侧文件树选择文件进行预览。",
+  "terminal.new": "新建终端",
+  "terminal.openHere": "在此处打开终端",
+  "terminal.tabTitle": "终端",
+  "terminal.clear": "清空",
+  "terminal.kill": "终止",
+  "terminal.exited": "终端已退出",
+  "terminal.spawnFailed": "无法启动终端",
+  "terminal.limitReached": "已达到终端数量上限",
   "resources.plan": "计划",
   "resources.planEmpty": "当前会话没有待审阅的计划。",
   "resources.copyPathShort": "路径",

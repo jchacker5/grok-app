@@ -8,6 +8,7 @@ use tauri::{Emitter, State};
 use crate::cli_probe::{self, CliProbeResult};
 use crate::session_manager::{SessionManager, SessionSnapshot};
 use crate::store::{self, AppSettings, Project, SessionMeta};
+use crate::terminal::TerminalManager;
 
 fn windows_grok_go_config_candidates() -> Option<Vec<String>> {
     #[cfg(target_os = "windows")]
@@ -34,6 +35,59 @@ pub async fn session_get_state(
     mgr: State<'_, Arc<SessionManager>>,
 ) -> Result<SessionSnapshot, String> {
     Ok(mgr.snapshot())
+}
+
+#[tauri::command]
+pub fn terminal_spawn(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<TerminalManager>>,
+    id: Option<String>,
+    cwd: Option<String>,
+    cols: u16,
+    rows: u16,
+) -> Result<String, String> {
+    mgr.spawn(app, id, cwd, cols, rows)
+}
+
+#[tauri::command]
+pub fn terminal_write(
+    mgr: State<'_, Arc<TerminalManager>>,
+    id: String,
+    data: String,
+) -> Result<(), String> {
+    mgr.write(&id, &data)
+}
+
+#[tauri::command]
+pub fn terminal_resize(
+    mgr: State<'_, Arc<TerminalManager>>,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    mgr.resize(&id, cols, rows)
+}
+
+#[tauri::command]
+pub fn terminal_snapshot(
+    mgr: State<'_, Arc<TerminalManager>>,
+    id: String,
+) -> Result<String, String> {
+    mgr.snapshot(&id)
+}
+
+#[tauri::command]
+pub fn terminal_kill(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<TerminalManager>>,
+    id: String,
+) -> Result<(), String> {
+    mgr.kill(&app, &id)
+}
+
+#[tauri::command]
+pub fn terminal_active_count(mgr: State<'_, Arc<TerminalManager>>) -> u32 {
+    mgr.active_count()
 }
 
 #[tauri::command]

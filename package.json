@@ -1,7 +1,7 @@
 {
   "name": "grok-app",
   "private": true,
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Desktop workbench for Grok Build CLI (English-first)",
   "author": "RongleCat",
   "license": "MIT",
@@ -40,6 +40,8 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-store": "^2",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "docx-preview": "^0.4.0",

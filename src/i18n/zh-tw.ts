@@ -4,7 +4,7 @@ import type { MessageKey } from "./messages";
 export const zhTW: Record<MessageKey, string> = {
   "app.name": "Grok",
   "app.tagline": "MIT · 非 xAI 官方 · 姊妹專案 grok-go",
-  "app.versionFooter": "Grok v0.1.11 · MIT · 非 xAI 官方 · 姊妹專案 grok-go",
+  "app.versionFooter": "Grok v0.1.12 · MIT · 非 xAI 官方 · 姊妹專案 grok-go",
 
   "window.minimize": "最小化",
   "window.maximize": "最大化",
@@ -216,6 +216,14 @@ export const zhTW: Record<MessageKey, string> = {
   "resources.needProject": "新增或選擇專案後，即可在此瀏覽檔案。",
   "resources.emptyPreview": "尚未開啟檔案",
   "resources.emptyPreviewHint": "從右側檔案樹選擇檔案進行預覽。",
+  "terminal.new": "新增終端機",
+  "terminal.openHere": "在此處開啟終端機",
+  "terminal.tabTitle": "終端機",
+  "terminal.clear": "清除",
+  "terminal.kill": "終止",
+  "terminal.exited": "終端機已結束",
+  "terminal.spawnFailed": "無法啟動終端機",
+  "terminal.limitReached": "已達終端機數量上限",
   "resources.plan": "計劃",
   "resources.planEmpty": "目前對話沒有待審閱的計劃。",
   "resources.copyPathShort": "路徑",

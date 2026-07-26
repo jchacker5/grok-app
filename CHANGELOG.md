@@ -11,6 +11,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-07-26
+
+### Added
+
+- **Embedded Terminal Panel** (Phase 1): Open a real PTY-backed shell in the resource pane ("New Terminal" toolbar button), keep it alive with bounded scrollback while switching tabs, resize it with the pane, and terminate it when its tab closes. Shell resolution: `$SHELL` (macOS/Linux, zsh/bash fallback) or PowerShell (Windows). Concurrency capped like agent processes (`max_concurrent_terminals`, default 4). Embedded terminals have full shell access with the same trust level as opening a system terminal — opt-in only, no ACP tool can trigger one.
+
 ## [0.1.11] - 2026-07-25
 
 ### Added

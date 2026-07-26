@@ -1,6 +1,6 @@
 [package]
 name = "grok-app"
-version = "0.1.11"
+version = "0.1.12"
 description = "Grok — desktop workbench for Grok Build CLI"
 authors = ["RongleCat"]
 edition = "2021"
@@ -60,6 +60,7 @@ tauri-plugin-notification = "2"
 # macOS: requires Screen Recording TCC permission — first capture after grant
 # may be black; commands.rs surfaces an explicit permission-needed error.
 xcap = "0.9"
+portable-pty = "0.9"
 
 [profile.release]
 codegen-units = 1

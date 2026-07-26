@@ -25,6 +25,7 @@ mod process_util;
 mod process_limits;
 mod journal_throttle;
 mod stream_stall;
+mod terminal;
 mod cli_sessions;
 mod turn_complete;
 mod store_lock;
@@ -68,6 +69,10 @@ pub fn run() {
         .init();
 
     let session_mgr = Arc::new(SessionManager::new());
+    let settings = store::load_settings();
+    let terminal_mgr = Arc::new(terminal::TerminalManager::new(
+        settings.max_concurrent_terminals,
+    ));
     let voice_host = Arc::new(voice_host::VoiceHost::new());
     let ssh_tunnel_mgr = ssh_tunnel::SshTunnelManager::new();
     let recording_registry = Arc::new(commands::RecordingRegistry::new());
@@ -85,6 +90,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .manage(session_mgr)
+        .manage(terminal_mgr)
         .manage(voice_host)
         .manage(ssh_tunnel_mgr)
         .manage(recording_registry)
@@ -144,6 +150,12 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::session_get_state,
+            commands::terminal_spawn,
+            commands::terminal_write,
+            commands::terminal_resize,
+            commands::terminal_snapshot,
+            commands::terminal_kill,
+            commands::terminal_active_count,
             commands::session_connect,
             commands::session_send,
             commands::session_stop,
