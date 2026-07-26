@@ -5083,7 +5083,7 @@ export default function App() {
         return;
       }
 
-      // Remove the /query from draft for mode/action
+      // Remove the /query from draft for mode/action/prompt items.
       if (q) {
         setDraft((d) => d.slice(0, q.start) + d.slice(q.end));
       }
@@ -5108,10 +5108,21 @@ export default function App() {
         }
       }
 
+      if (item.kind === "prompt") {
+        setDraft((d) => {
+          const needsSpace = d.length > 0 && !/\s$/.test(d);
+          return `${d}${needsSpace ? " " : ""}/${item.name} `;
+        });
+        return;
+      }
+
       if (item.kind === "action") {
         switch (item.action) {
           case "doctor":
             openDoctor();
+            return;
+          case "memory":
+            setAgentMemoryOpen(true);
             return;
           case "status":
             setShowStatusModal(true);
@@ -8964,10 +8975,10 @@ export default function App() {
                   type="button"
                   className="chip"
                   onClick={() => setAgentMemoryOpen(true)}
-                  title="Agent Memory Viewer"
+                  title={tr("memory.title")}
                   style={{ fontSize: "12px", padding: "4px 8px" }}
                 >
-                  🧠 Memory
+                  🧠 {tr("slash.memory")}
                 </button>
                 <ComposerModelMenu
                   modelId={modelId}
@@ -10159,11 +10170,14 @@ export default function App() {
         <GlassModal
           open={agentMemoryOpen}
           onClose={() => setAgentMemoryOpen(false)}
-          title="Agent Memory Inspector"
+          title={tr("memory.title")}
           size="lg"
         >
           <div style={{ height: "450px" }}>
-            <AgentMemoryViewer />
+            <AgentMemoryViewer
+              projectPath={activeProject?.path || ""}
+              locale={locale}
+            />
           </div>
         </GlassModal>
       )}

@@ -83,6 +83,28 @@ export function builtinSlashItems(): SlashItem[] {
       action: "doctor",
     },
     {
+      id: "memory",
+      kind: "action",
+      name: "memory",
+      titleKey: "slash.memory",
+      descriptionKey: "slash.memoryDesc",
+      action: "memory",
+    },
+    {
+      id: "flush",
+      kind: "prompt",
+      name: "flush",
+      titleKey: "slash.flush",
+      descriptionKey: "slash.flushDesc",
+    },
+    {
+      id: "dream",
+      kind: "prompt",
+      name: "dream",
+      titleKey: "slash.dream",
+      descriptionKey: "slash.dreamDesc",
+    },
+    {
       id: "newChat",
       kind: "action",
       name: "new",

@@ -1,159 +1,588 @@
-import React, { useState, useEffect, useMemo } from "react";
-import type { MemoryEntry } from "../lib/types";
-import * as api from "../lib/api";
-import { GlassModal } from "./GlassModal";
-import { IconSearch, IconTrash } from "./icons";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { homeDir, join } from "@tauri-apps/api/path";
+import { createT, type Locale } from "@/i18n";
+import * as api from "@/lib/api";
+import { GlassModal } from "@/components/GlassModal";
+import { MarkdownBody } from "@/components/MarkdownBody";
+import { IconCheck, IconTrash } from "@/components/icons";
 
-export const AgentMemoryViewer: React.FC = () => {
-  const [memories, setMemories] = useState<MemoryEntry[]>([]);
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<string>("all");
-  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+type MemorySection = "global" | "workspace" | "sessions";
 
-  const refresh = async () => {
+interface AgentMemoryViewerProps {
+  projectPath: string;
+  locale: Locale;
+}
+
+interface MemoryEditorProps {
+  path: string;
+  label: string;
+  locale: Locale;
+}
+
+function MemoryEditor({ path, label, locale }: MemoryEditorProps) {
+  const tr = useMemo(() => createT(locale), [locale]);
+  const [content, setContent] = useState("");
+  const [savedContent, setSavedContent] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const dirty = content !== savedContent;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const list = await api.readAgentMemories();
-      setMemories(list || []);
+      const next = await api.readAgentsFile(path);
+      setContent(next);
+      setSavedContent(next);
     } catch {
-      setMemories([]);
+      // A missing MEMORY.md is a valid initial state; Save creates it.
+      setContent("");
+      setSavedContent("");
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [path]);
 
   useEffect(() => {
-    void refresh();
-  }, []);
+    void load();
+  }, [load]);
 
-  const filteredMemories = useMemo(() => {
-    return memories.filter((m) => {
-      const matchesCategory = category === "all" || m.category === category;
-      const q = search.toLowerCase().trim();
-      const matchesSearch =
-        !q ||
-        m.key.toLowerCase().includes(q) ||
-        m.value.toLowerCase().includes(q) ||
-        m.source.toLowerCase().includes(q);
-      return matchesCategory && matchesSearch;
-    });
-  }, [memories, category, search]);
-
-  const handleClearAll = async () => {
+  const save = useCallback(async () => {
+    if (saving || !dirty) return;
+    setSaving(true);
+    setError(null);
     try {
-      await api.clearAgentMemories();
-      setMemories([]);
+      await api.writeAgentsFile(path, content);
+      setSavedContent(content);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2_000);
+    } catch (saveError) {
+      setError(`${tr("memory.saveFailed")}: ${String(saveError)}`);
     } finally {
-      setConfirmClearOpen(false);
+      setSaving(false);
+    }
+  }, [content, dirty, path, saving, tr]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void save();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [save]);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        minHeight: 0,
+        height: "100%",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
+          <div
+            title={path}
+            style={{
+              fontSize: 11,
+              opacity: 0.6,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {path}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            aria-live="polite"
+            style={{
+              minWidth: 82,
+              textAlign: "right",
+              fontSize: 11,
+              opacity: saved || dirty ? 0.8 : 0,
+            }}
+          >
+            {saved ? (
+              <>
+                <IconCheck size={13} /> {tr("memory.saved")}
+              </>
+            ) : dirty ? (
+              tr("memory.unsaved")
+            ) : (
+              tr("memory.saved")
+            )}
+          </span>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={!dirty || saving}
+            onClick={() => setContent(savedContent)}
+          >
+            {tr("memory.revert")}
+          </button>
+          <button
+            type="button"
+            className="btn btn--solid"
+            disabled={!dirty || saving}
+            onClick={() => void save()}
+          >
+            {saving ? tr("memory.saving") : tr("memory.save")}
+          </button>
+        </div>
+      </div>
+      {error && (
+        <div className="settings-error" role="alert">
+          {error}
+        </div>
+      )}
+      {loading ? (
+        <div style={{ padding: 24, textAlign: "center", opacity: 0.65 }}>
+          {tr("memory.loading")}
+        </div>
+      ) : (
+        <textarea
+          aria-label={label}
+          value={content}
+          onChange={(event) => {
+            setContent(event.target.value);
+            setSaved(false);
+          }}
+          spellCheck={false}
+          style={{
+            flex: 1,
+            minHeight: 220,
+            width: "100%",
+            resize: "none",
+            border: "1px solid var(--c-border)",
+            borderRadius: 8,
+            background: "var(--c-bg-tertiary)",
+            color: "inherit",
+            padding: 12,
+            fontFamily: "var(--font-mono, monospace)",
+            fontSize: 12,
+            lineHeight: 1.55,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+export const AgentMemoryViewer: React.FC<AgentMemoryViewerProps> = ({
+  projectPath,
+  locale,
+}) => {
+  const tr = useMemo(() => createT(locale), [locale]);
+  const [section, setSection] = useState<MemorySection>("global");
+  const [memoryRoot, setMemoryRoot] = useState("");
+  const [globalMemoryPath, setGlobalMemoryPath] = useState("");
+  const [globalRevision, setGlobalRevision] = useState(0);
+  const [workspaceNames, setWorkspaceNames] = useState<string[]>([]);
+  const [selectedWorkspace, setSelectedWorkspace] = useState("");
+  const [workspaceMemoryPath, setWorkspaceMemoryPath] = useState("");
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
+  const [sessions, setSessions] = useState<api.MemorySessionEntry[]>([]);
+  const [selectedSession, setSelectedSession] =
+    useState<api.MemorySessionEntry | null>(null);
+  const [sessionContent, setSessionContent] = useState("");
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [clearScope, setClearScope] =
+    useState<api.MemoryClearScope | null>(null);
+  const [clearing, setClearing] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const root = await join(await homeDir(), ".grok", "memory");
+        setMemoryRoot(root);
+        setGlobalMemoryPath(await join(root, "MEMORY.md"));
+      } catch (pathError) {
+        setError(`${tr("memory.loadFailed")}: ${String(pathError)}`);
+      }
+    })();
+  }, [tr]);
+
+  const refreshWorkspaces = useCallback(async () => {
+    if (!projectPath) {
+      setWorkspaceNames([]);
+      setSelectedWorkspace("");
+      return;
+    }
+    const matches = await api.findProjectMemoryWorkspace(projectPath);
+    setWorkspaceNames(matches);
+    setSelectedWorkspace((current) =>
+      current && matches.includes(current) ? current : (matches[0] ?? ""),
+    );
+  }, [projectPath]);
+
+  useEffect(() => {
+    void refreshWorkspaces().catch((workspaceError) => {
+      setError(`${tr("memory.loadFailed")}: ${String(workspaceError)}`);
+    });
+  }, [refreshWorkspaces, tr]);
+
+  useEffect(() => {
+    if (!memoryRoot || !selectedWorkspace) {
+      setWorkspaceMemoryPath("");
+      return;
+    }
+    void join(memoryRoot, selectedWorkspace, "MEMORY.md").then(
+      setWorkspaceMemoryPath,
+      (pathError) =>
+        setError(`${tr("memory.loadFailed")}: ${String(pathError)}`),
+    );
+  }, [memoryRoot, selectedWorkspace, tr]);
+
+  const refreshSessions = useCallback(async () => {
+    if (!selectedWorkspace) {
+      setSessions([]);
+      setSelectedSession(null);
+      setSessionContent("");
+      return;
+    }
+    setLoadingSessions(true);
+    try {
+      const entries = await api.listMemorySessions(selectedWorkspace);
+      const sorted = [...entries].sort(
+        (left, right) => right.modifiedAt - left.modifiedAt,
+      );
+      setSessions(sorted);
+      setSelectedSession((current) =>
+        current
+          ? (sorted.find((entry) => entry.path === current.path) ?? null)
+          : null,
+      );
+    } catch (sessionError) {
+      setError(`${tr("memory.loadFailed")}: ${String(sessionError)}`);
+      setSessions([]);
+    } finally {
+      setLoadingSessions(false);
+    }
+  }, [selectedWorkspace, tr]);
+
+  useEffect(() => {
+    void refreshSessions();
+  }, [refreshSessions]);
+
+  useEffect(() => {
+    if (!selectedSession) {
+      setSessionContent("");
+      return;
+    }
+    setSessionContent("");
+    void api.readAgentsFile(selectedSession.path).then(
+      setSessionContent,
+      (sessionError) =>
+        setError(`${tr("memory.loadFailed")}: ${String(sessionError)}`),
+    );
+  }, [selectedSession, tr]);
+
+  const clearLabels: Record<api.MemoryClearScope, string> = {
+    global: tr("memory.global"),
+    workspace: tr("memory.workspace"),
+    all: tr("memory.all"),
+  };
+
+  const confirmClear = async () => {
+    if (!clearScope || clearing) return;
+    setClearing(true);
+    setError(null);
+    try {
+      await api.memoryClear(
+        clearScope,
+        clearScope === "workspace" ? projectPath : null,
+      );
+      setClearScope(null);
+      if (clearScope === "workspace" || clearScope === "all") {
+        setWorkspaceRevision((revision) => revision + 1);
+        await refreshWorkspaces();
+        await refreshSessions();
+      }
+      if (clearScope === "global" || clearScope === "all") {
+        setGlobalRevision((revision) => revision + 1);
+      }
+    } catch (clearError) {
+      setError(`${tr("memory.clearFailed")}: ${String(clearError)}`);
+    } finally {
+      setClearing(false);
     }
   };
 
-  const renderStars = (confidence: number) => {
-    const count = Math.round(confidence * 5);
-    return "★".repeat(count) + "☆".repeat(5 - count);
+  const dateLocale =
+    locale === "zh" ? "zh-CN" : locale === "zh-TW" ? "zh-TW" : "en-US";
+  const sectionLabels: Record<MemorySection, string> = {
+    global: tr("memory.global"),
+    workspace: tr("memory.workspace"),
+    sessions: tr("memory.sessions"),
   };
 
   return (
-    <div className="agent-memory-viewer" style={{ display: "flex", flexDirection: "column", gap: "12px", height: "100%", padding: "12px", background: "var(--c-bg)" }}>
-      {/* Header Controls */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-        <div style={{ position: "relative", flex: 1 }}>
-          <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", opacity: 0.5, display: "flex", alignItems: "center" }}>
-            <IconSearch size={14} />
-          </span>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search memories..."
-            style={{ width: "100%", padding: "6px 12px 6px 30px", borderRadius: "6px", background: "var(--c-bg-tertiary)", border: "1px solid var(--c-border)", color: "inherit", fontSize: "12px" }}
-          />
+    <div
+      className="agent-memory-viewer"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", gap: 4 }}>
+          {(["global", "workspace", "sessions"] as MemorySection[]).map(
+            (item) => (
+              <button
+                key={item}
+                type="button"
+                className={`btn ${section === item ? "btn--solid" : "btn--ghost"}`}
+                onClick={() => setSection(item)}
+              >
+                {sectionLabels[item]}
+              </button>
+            ),
+          )}
         </div>
-
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          style={{ padding: "6px 12px", borderRadius: "6px", background: "rgba(255,255,255,0.1)", border: "none", color: "inherit", fontSize: "12px", cursor: "pointer" }}
-        >
-          Refresh
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setConfirmClearOpen(true)}
-          style={{ padding: "6px 12px", borderRadius: "6px", background: "rgba(239,68,68,0.15)", color: "var(--c-danger, #ef4444)", border: "none", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
-        >
-          <IconTrash size={14} /> Clear All
-        </button>
-      </div>
-
-      {/* Categories */}
-      <div style={{ display: "flex", gap: "4px" }}>
-        {["all", "preference", "context", "fact"].map((cat) => (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button
-            key={cat}
             type="button"
-            onClick={() => setCategory(cat)}
-            style={{
-              padding: "4px 10px",
-              borderRadius: "4px",
-              border: "none",
-              background: category === cat ? "var(--c-accent, #3794ff)" : "transparent",
-              color: category === cat ? "#fff" : "inherit",
-              fontSize: "11px",
-              cursor: "pointer",
-              textTransform: "capitalize",
-            }}
+            className="btn btn--danger"
+            onClick={() => setClearScope("global")}
           >
-            {cat}
+            <IconTrash size={14} /> {tr("memory.clearGlobal")}
           </button>
-        ))}
+          <button
+            type="button"
+            className="btn btn--danger"
+            disabled={!projectPath}
+            onClick={() => setClearScope("workspace")}
+          >
+            <IconTrash size={14} /> {tr("memory.clearWorkspace")}
+          </button>
+          <button
+            type="button"
+            className="btn btn--danger"
+            onClick={() => setClearScope("all")}
+          >
+            <IconTrash size={14} /> {tr("memory.clearAll")}
+          </button>
+        </div>
       </div>
 
-      {/* Memory Cards Grid */}
-      <div style={{ flex: 1, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "10px" }}>
-        {filteredMemories.length === 0 ? (
-          <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "32px 0", opacity: 0.6, fontSize: "12px" }}>
-            No agent memories found
-          </div>
-        ) : (
-          filteredMemories.map((m, idx) => (
+      {error && (
+        <div className="settings-error" role="alert">
+          {error}
+        </div>
+      )}
+
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {section === "global" &&
+          (globalMemoryPath ? (
+            <MemoryEditor
+              key={`${globalMemoryPath}:${globalRevision}`}
+              path={globalMemoryPath}
+              label={tr("memory.global")}
+              locale={locale}
+            />
+          ) : (
+            <div style={{ padding: 24, textAlign: "center", opacity: 0.65 }}>
+              {tr("memory.loading")}
+            </div>
+          ))}
+
+        {section === "workspace" &&
+          (!selectedWorkspace ? (
+            <div style={{ padding: 32, textAlign: "center", opacity: 0.65 }}>
+              {tr("memory.noWorkspaceFound")}
+            </div>
+          ) : (
             <div
-              key={idx}
               style={{
                 display: "flex",
                 flexDirection: "column",
-                justifyContent: "space-between",
-                padding: "12px",
-                borderRadius: "8px",
-                background: "var(--c-bg-tertiary, rgba(0,0,0,0.15))",
-                border: "1px solid var(--c-border)",
-                gap: "6px",
+                gap: 10,
+                height: "100%",
+                minHeight: 0,
               }}
             >
-              <div>
-                <div style={{ fontWeight: 600, fontSize: "12px", color: "var(--c-accent, #3794ff)" }}>{m.key}</div>
-                <div style={{ fontSize: "12px", opacity: 0.85, marginTop: "4px", lineHeight: "1.4" }}>{m.value}</div>
+              {workspaceNames.length > 1 && (
+                <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12 }}>
+                    {tr("memory.selectWorkspace")}
+                  </span>
+                  <select
+                    value={selectedWorkspace}
+                    onChange={(event) =>
+                      setSelectedWorkspace(event.target.value)
+                    }
+                    style={{ flex: 1, minWidth: 0 }}
+                  >
+                    {workspaceNames.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {workspaceMemoryPath && (
+                <MemoryEditor
+                  key={`${workspaceMemoryPath}:${workspaceRevision}`}
+                  path={workspaceMemoryPath}
+                  label={tr("memory.workspace")}
+                  locale={locale}
+                />
+              )}
+            </div>
+          ))}
+
+        {section === "sessions" &&
+          (!selectedWorkspace ? (
+            <div style={{ padding: 32, textAlign: "center", opacity: 0.65 }}>
+              {tr("memory.noWorkspaceFound")}
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(190px, 0.8fr) minmax(0, 1.5fr)",
+                gap: 12,
+                height: "100%",
+                minHeight: 0,
+              }}
+            >
+              <div
+                style={{
+                  overflowY: "auto",
+                  border: "1px solid var(--c-border)",
+                  borderRadius: 8,
+                }}
+              >
+                {loadingSessions ? (
+                  <div style={{ padding: 20, opacity: 0.65 }}>
+                    {tr("memory.loading")}
+                  </div>
+                ) : sessions.length === 0 ? (
+                  <div style={{ padding: 20, opacity: 0.65 }}>
+                    {tr("memory.noSessions")}
+                  </div>
+                ) : (
+                  sessions.map((entry) => (
+                    <button
+                      key={entry.path}
+                      type="button"
+                      className={`cmm__opt ${
+                        selectedSession?.path === entry.path ? "is-active" : ""
+                      }`}
+                      onClick={() => setSelectedSession(entry)}
+                      style={{
+                        width: "100%",
+                        display: "block",
+                        textAlign: "left",
+                        borderRadius: 0,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>
+                        {entry.name}
+                      </div>
+                      <div style={{ fontSize: 10, opacity: 0.6 }}>
+                        {new Date(entry.modifiedAt).toLocaleString(dateLocale)}
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "10px", opacity: 0.6, marginTop: "6px" }}>
-                <span>Source: {m.source}</span>
-                <span style={{ color: "#f59e0b" }}>{renderStars(m.confidence)}</span>
+              <div
+                style={{
+                  minWidth: 0,
+                  overflow: "auto",
+                  border: "1px solid var(--c-border)",
+                  borderRadius: 8,
+                  padding: 12,
+                }}
+              >
+                {selectedSession ? (
+                  <MarkdownBody locale={locale}>{sessionContent}</MarkdownBody>
+                ) : (
+                  <div style={{ padding: 20, opacity: 0.65 }}>
+                    {tr("memory.selectSession")}
+                  </div>
+                )}
               </div>
             </div>
-          ))
-        )}
+          ))}
       </div>
 
-      {/* Confirmation Modal */}
-      <GlassModal open={confirmClearOpen} onClose={() => setConfirmClearOpen(false)} title="Clear Agent Memory">
-        <div style={{ padding: "8px 0", fontSize: "13px" }}>
-          Are you sure you want to clear all stored memories? This operation cannot be undone.
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "16px" }}>
-            <button type="button" onClick={() => setConfirmClearOpen(false)} style={{ padding: "6px 14px", borderRadius: "6px", background: "transparent", border: "1px solid var(--c-border)", color: "inherit", cursor: "pointer" }}>
-              Cancel
+      <GlassModal
+        open={clearScope !== null}
+        onClose={() => {
+          if (!clearing) setClearScope(null);
+        }}
+        title={tr("memory.clearTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={clearing}
+              onClick={() => setClearScope(null)}
+            >
+              {tr("common.cancel")}
             </button>
-            <button type="button" onClick={() => void handleClearAll()} style={{ padding: "6px 14px", borderRadius: "6px", background: "var(--c-danger, #ef4444)", color: "#fff", border: "none", cursor: "pointer" }}>
-              Clear Memories
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={clearing}
+              onClick={() => void confirmClear()}
+            >
+              {clearScope
+                ? tr("memory.clearAction", {
+                    scope: clearLabels[clearScope],
+                  })
+                : tr("common.confirm")}
             </button>
-          </div>
-        </div>
+          </>
+        }
+      >
+        <p>
+          {clearScope
+            ? tr("memory.clearConfirm", {
+                scope: clearLabels[clearScope],
+              })
+            : ""}
+        </p>
       </GlassModal>
     </div>
   );

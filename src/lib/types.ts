@@ -87,15 +87,6 @@ export interface DepGraph {
   edges: DepEdge[];
 }
 
-export interface MemoryEntry {
-  key: string;
-  value: string;
-  timestamp: number;
-  source: string;
-  category: string;
-  confidence: number;
-}
-
 export interface SyncStatus {
   method: string;
   path: string;
