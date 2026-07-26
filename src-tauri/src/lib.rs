@@ -5,6 +5,7 @@ mod account_profiles;
 mod acp_client;
 mod agent_prefs;
 mod app_update;
+mod changelog;
 mod extensions;
 mod supergrok_quota;
 mod cli_probe;
@@ -35,6 +36,8 @@ mod secrets;
 mod session_import;
 mod session_content_search;
 mod session_title;
+mod git_blame;
+mod workspace_search;
 #[cfg(test)]
 mod permission_host_test;
 #[cfg(test)]
@@ -183,6 +186,7 @@ pub fn run() {
             commands::save_recording,
             commands::app_check_update,
             commands::cli_check_update,
+            commands::read_changelog,
             commands::projects_list,
             commands::project_add,
             commands::project_add_dialog,
@@ -205,6 +209,8 @@ pub fn run() {
             commands::session_set_archived,
             commands::session_set_pinned,
             commands::session_set_tags,
+            commands::session_set_bookmark,
+            commands::session_set_folder,
             commands::session_set_settled,
             commands::session_set_snoozed,
             commands::session_set_branch_pr,
@@ -217,6 +223,8 @@ pub fn run() {
             commands::session_resolve_relative_media,
             commands::settings_get,
             commands::settings_set,
+            commands::export_settings,
+            commands::import_settings,
             commands::models_list_available,
             commands::composer_prefs_resolve,
             commands::composer_prefs_set,
@@ -240,6 +248,7 @@ pub fn run() {
             commands::inspect_mcp,
             commands::project_inspect,
             commands::extensions_get,
+            commands::get_plugin_logs,
             commands::extensions_set_mcp,
             commands::extensions_set_skill,
             commands::extensions_enable_all_mcp,
@@ -301,6 +310,9 @@ pub fn run() {
             commands::path_open,
             commands::path_reveal,
             commands::git_file_diff,
+            commands::git_blame_file,
+            commands::search_workspace_content,
+            commands::workspace_search_rg_available,
             commands::git_status,
             commands::git_worktrees_list,
             commands::git_show_file,
@@ -313,6 +325,7 @@ pub fn run() {
             commands::git_pr_open,
             commands::acp_ephemeral_prompt,
             commands::fs_list_dir,
+            commands::list_project_files_recursive,
             commands::fs_read_file,
             commands::fs_write_file,
             commands::fs_write_absolute,
@@ -332,6 +345,10 @@ pub fn run() {
             commands::space_delete,
             commands::space_reorder,
             commands::project_set_space,
+            commands::folders_list,
+            commands::folder_create,
+            commands::folder_rename,
+            commands::folder_delete,
             commands::account_status,
             commands::account_login,
             commands::account_login_cancel,

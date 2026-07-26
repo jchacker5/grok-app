@@ -96,7 +96,7 @@ import { WorkspaceDiffView } from "@/components/WorkspaceDiffView";
 import { AgentMemoryViewer } from "@/components/AgentMemoryViewer";
 import type { GoalConfig } from "@/lib/types";
 import * as api from "@/lib/api";
-import type { SpaceDto } from "@/lib/api";
+import type { SpaceDto, SessionFolderDto } from "@/lib/api";
 import {
   colorForSpaceIndex,
   spaceForShortcutIndex,
@@ -137,6 +137,8 @@ import {
   ensureNotifyPermission,
   showDesktopNotification,
 } from "@/lib/desktopNotify";
+import { speakText, stopSpeaking, stripMarkdownForSpeech } from "@/lib/chatTts";
+import { matchVoiceCommand } from "@/lib/voiceCommands";
 import { GlassModal } from "@/components/GlassModal";
 import {
   applyResolvedSessionMedia,
@@ -235,6 +237,7 @@ import {
   IconArchive,
   IconPin,
   IconPinOff,
+  IconBookmark,
   IconRename,
   IconCopy,
   IconTrash,
@@ -313,12 +316,16 @@ import {
   toggleMaximizeFromTitlebar,
 } from "@/components/WindowControls";
 import { CliUpdateBanner } from "@/components/CliUpdateBanner";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
+import { FileFinderPanel } from "@/components/FileFinderPanel";
+import { parseLatestChangelogEntry, type ChangelogEntry } from "@/lib/changelog";
 import {
   addTag as addSessionTag,
   computeKnownTags,
   matchesTagFilters,
   toggleTag as toggleSessionTag,
 } from "@/lib/sessionTags";
+import { isFoldered, sessionsForFolderId } from "@/lib/sessionFolders";
 import {
   popClosedSession,
   pushClosedSession,
@@ -360,6 +367,10 @@ interface SessionRow {
   prState?: string;
   /** User-defined labels for sidebar filtering. */
   tags?: string[];
+  /** Bookmark note; undefined/null = not bookmarked, "" = bookmarked with no note. */
+  bookmarkNote?: string | null;
+  /** Session folder membership — at most one folder (unlike `tags`). */
+  folderId?: string | null;
 }
 
 type ContextMenuState =
@@ -369,6 +380,8 @@ type ContextMenuState =
   | { kind: "space"; id: string; x: number; y: number }
   | { kind: "session"; id: string; x: number; y: number }
   | { kind: "session-tags"; id: string; x: number; y: number }
+  | { kind: "session-folder"; id: string; x: number; y: number }
+  | { kind: "folder"; id: string; x: number; y: number }
   | null;
 
 /** In-app dialogs — window.prompt/confirm are unreliable in Tauri WebView. */
@@ -532,6 +545,8 @@ export default function App() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [spaces, setSpaces] = useState<SpaceDto[]>([]);
+  /** Session folders — ad-hoc, single-assignment session groupings (distinct from Grok Spaces, which group projects). */
+  const [folders, setFolders] = useState<SessionFolderDto[]>([]);
   /** View filter only — not app data, so it lives in localStorage, not settings. */
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(() => {
     try {
@@ -581,6 +596,8 @@ export default function App() {
     }
   });
   const [projectsOpen, setProjectsOpen] = useState(true);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [foldersOpen, setFoldersOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState>(null);
   const [appDialog, setAppDialog] = useState<AppDialog>(null);
@@ -592,12 +609,34 @@ export default function App() {
   appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  /** ⌘P fuzzy file finder — distinct from the ⌘K session search above. */
+  const [showFileFinder, setShowFileFinder] = useState(false);
+  const [fileFinderFiles, setFileFinderFiles] = useState<string[]>([]);
+  const [fileFinderLoading, setFileFinderLoading] = useState(false);
+  /** "What's new" changelog panel: parsed top CHANGELOG.md section. */
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [whatsNewEntry, setWhatsNewEntry] = useState<ChangelogEntry | null>(null);
   /** Debounced journal content hits from `sessions_search`. */
   const [contentSearchHits, setContentSearchHits] = useState<
     SessionContentHit[]
   >([]);
   const [contentSearchLoading, setContentSearchLoading] = useState(false);
   const contentSearchSeq = useRef(0);
+  /**
+   * Find-in-files content search (⌘K "Files" tab) — greps file bodies
+   * across the active project's workspace. Distinct from the session
+   * content search above (chat journals) and from any filename fuzzy
+   * finder.
+   */
+  const [searchMode, setSearchMode] = useState<"sessions" | "files">(
+    "sessions",
+  );
+  const [fileSearchHits, setFileSearchHits] = useState<api.WorkspaceSearchHit[]>(
+    [],
+  );
+  const [fileSearchLoading, setFileSearchLoading] = useState(false);
+  const [ripgrepAvailable, setRipgrepAvailable] = useState(true);
+  const fileSearchSeq = useRef(0);
   const [showComposerPlus, setShowComposerPlus] = useState(false);
   showComposerPlusRef.current = showComposerPlus;
   const composerPlusTriggerRef = useRef<HTMLButtonElement>(null);
@@ -785,6 +824,67 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [searchQuery, showSearch]);
 
+  // Reset to Sessions mode whenever the search modal is (re)opened — Files
+  // mode is a per-visit choice, not a sticky preference.
+  useEffect(() => {
+    if (showSearch) setSearchMode("sessions");
+  }, [showSearch]);
+
+  // Probe once whether `rg` is on PATH (drives the soft "slower fallback"
+  // hint in the Files tab) — cheap, but no need to re-check every keystroke.
+  useEffect(() => {
+    if (!showSearch || searchMode !== "files" || !api.isTauri()) return;
+    let cancelled = false;
+    void api
+      .workspaceSearchRgAvailable()
+      .then((ok) => {
+        if (!cancelled) setRipgrepAvailable(ok);
+      })
+      .catch(() => {
+        if (!cancelled) setRipgrepAvailable(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showSearch, searchMode]);
+
+  // Debounced find-in-files content search (Files tab) — greps file bodies
+  // under the active project's workspace via `search_workspace_content`
+  // (rg when available, else a built-in walker). Distinct from the session
+  // content search above (chat journals) and from any filename-only fuzzy
+  // finder living elsewhere in the app.
+  useEffect(() => {
+    if (!showSearch || searchMode !== "files") {
+      setFileSearchHits([]);
+      setFileSearchLoading(false);
+      return;
+    }
+    const projectPath = activeProject?.path;
+    const q = searchQuery.trim();
+    if (!projectPath || q.length < 2) {
+      setFileSearchHits([]);
+      setFileSearchLoading(false);
+      return;
+    }
+    setFileSearchLoading(true);
+    const seq = ++fileSearchSeq.current;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const hits = await api.searchWorkspaceContent(projectPath, q, 500);
+          if (fileSearchSeq.current !== seq) return;
+          setFileSearchHits(hits);
+        } catch {
+          if (fileSearchSeq.current !== seq) return;
+          setFileSearchHits([]);
+        } finally {
+          if (fileSearchSeq.current === seq) setFileSearchLoading(false);
+        }
+      })();
+    }, 280);
+    return () => window.clearTimeout(t);
+  }, [searchQuery, showSearch, searchMode, activeProject?.path]);
+
   // Global shortcuts: search, help, doctor, new chat, settings.
   // Handlers go through refs so we don't re-bind every render.
   const shortcutHandlersRef = useRef({
@@ -808,6 +908,13 @@ export default function App() {
       if (key === "k") {
         e.preventDefault();
         setShowSearch(true);
+        return;
+      }
+      // ⌘P fuzzy file finder — distinct from ⌘K session search above.
+      // preventDefault() also stops the browser/webview print dialog.
+      if (key === "p" && !typing) {
+        e.preventDefault();
+        setShowFileFinder(true);
         return;
       }
       if (key === "/") {
@@ -859,6 +966,54 @@ export default function App() {
     if (appGate !== "ready") return;
     void ensureNotifyPermission();
   }, [appGate]);
+  // "What's new" panel: compare the changelog's top (non-Unreleased) version
+  // against the last-seen version stored in AppSettings. Mismatch (or first
+  // launch, when lastSeenVersion is unset) shows the modal once, then
+  // persists the new version immediately — not gated on the user closing the
+  // modal, so a crash/quit before dismissal doesn't re-show it every boot.
+  useEffect(() => {
+    if (appGate !== "ready" || !api.isTauri()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [raw, settings] = await Promise.all([
+          api.readChangelog(),
+          api.settingsGet(),
+        ]);
+        if (cancelled) return;
+        const entry = parseLatestChangelogEntry(raw);
+        if (!entry) return;
+        setWhatsNewEntry(entry);
+        if (settings.lastSeenVersion !== entry.version) {
+          setShowWhatsNew(true);
+          void api.settingsSet({ ...settings, lastSeenVersion: entry.version });
+        }
+      } catch {
+        // Changelog unavailable (e.g. dev checkout oddity) — not fatal, just
+        // skip the "what's new" panel this launch.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appGate]);
+  /** Manual reopen from Settings → About, even outside the boot version-diff check. */
+  const openWhatsNew = useCallback(() => {
+    if (whatsNewEntry) {
+      setShowWhatsNew(true);
+      return;
+    }
+    void api
+      .readChangelog()
+      .then((raw) => {
+        const entry = parseLatestChangelogEntry(raw);
+        if (entry) {
+          setWhatsNewEntry(entry);
+          setShowWhatsNew(true);
+        }
+      })
+      .catch(() => {});
+  }, [whatsNewEntry]);
   const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -902,6 +1057,57 @@ export default function App() {
   /** Chat file/url card → open in right resource pane. */
   const [resourceOpenTarget, setResourceOpenTarget] =
     useState<ResourceOpenTarget | null>(null);
+  /**
+   * Expand the resource pane (if collapsed) and open a file/url/terminal
+   * there. Shared by chat file cards (`onOpenResource`) and the ⌘P fuzzy
+   * file finder, so "open a file in the resource pane" stays one code path.
+   */
+  const openResourceTarget = useCallback((target: ResourceOpenTarget) => {
+    setLayout((l) => {
+      if (l.asideCollapsed) {
+        const n = { ...l, asideCollapsed: false };
+        saveLayout(localStorage, n);
+        return n;
+      }
+      return l;
+    });
+    setResourceOpenTarget(target);
+  }, []);
+  // ⌘P fuzzy file finder: (re)index the active project's files whenever the
+  // panel opens or the active project changes while it's open. Recursive —
+  // distinct from the `@file:` mention picker's single-directory listing.
+  useEffect(() => {
+    if (!showFileFinder || !activeProject?.path) return;
+    let cancelled = false;
+    setFileFinderLoading(true);
+    api
+      .listProjectFilesRecursive(activeProject.path)
+      .then((files) => {
+        if (!cancelled) setFileFinderFiles(files);
+      })
+      .catch(() => {
+        if (!cancelled) setFileFinderFiles([]);
+      })
+      .finally(() => {
+        if (!cancelled) setFileFinderLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showFileFinder, activeProject?.path]);
+
+  const selectFileFinderResult = useCallback(
+    (relativePath: string) => {
+      const projectPath = activeProject?.path;
+      if (!projectPath) return;
+      const sep = projectPath.includes("\\") ? "\\" : "/";
+      const absolute = `${projectPath.replace(/[/\\]+$/, "")}${sep}${relativePath.replace(/\//g, sep)}`;
+      const title = relativePath.split("/").pop() || relativePath;
+      openResourceTarget({ type: "file", path: absolute, title });
+      setShowFileFinder(false);
+    },
+    [activeProject?.path, openResourceTarget],
+  );
   /** Bump to force ResourceViewer into Plan review mode (Details / auto-open). */
   const [planFocusKey, setPlanFocusKey] = useState(0);
   /** Live drag-drop target for zone overlays (null = not dragging). */
@@ -952,6 +1158,14 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const notificationsEnabledRef = useRef(notificationsEnabled);
   notificationsEnabledRef.current = notificationsEnabled;
+  /** Opt-in: speak new assistant replies aloud (regular chat, not Live Voice). */
+  const [autoReadReplies, setAutoReadReplies] = useState(false);
+  const autoReadRepliesRef = useRef(autoReadReplies);
+  autoReadRepliesRef.current = autoReadReplies;
+  /** Opt-in: interpret a small fixed set of spoken phrases during dictation as app actions. */
+  const [voiceCommandsEnabled, setVoiceCommandsEnabled] = useState(false);
+  const voiceCommandsEnabledRef = useRef(voiceCommandsEnabled);
+  voiceCommandsEnabledRef.current = voiceCommandsEnabled;
   /** User-authored CSS injected into this window's renderer (Settings → Appearance). */
   const [customCss, setCustomCss] = useState("");
   const [wallpaperPath, setWallpaperPath] = useState<string | null>(null);
@@ -1095,16 +1309,18 @@ export default function App() {
         cliAuthPresent: false,
       });
       void api.spacesList().then(setSpaces).catch(() => {});
+      void api.foldersList().then(setFolders).catch(() => {});
       return;
     }
     try {
-      const [p, s, settings, cli, modelsRes, spacesRes] = await Promise.all([
+      const [p, s, settings, cli, modelsRes, spacesRes, foldersRes] = await Promise.all([
         api.projectsList(),
         api.sessionsList(),
         api.settingsGet(),
         api.probeCli(),
         api.modelsListAvailable().catch(() => null),
         api.spacesList().catch(() => []),
+        api.foldersList().catch(() => []),
       ]);
       setProjects(
         (p as Project[]).map((x) => ({
@@ -1113,6 +1329,7 @@ export default function App() {
         })),
       );
       setSpaces(spacesRes);
+      setFolders(foldersRes);
       setSessions(
         (
           s as Array<
@@ -1136,6 +1353,8 @@ export default function App() {
           prRef: x.prRef,
           prState: x.prState,
           tags: x.tags,
+          bookmarkNote: x.bookmarkNote,
+          folderId: x.folderId,
         })),
       );
       void api.trayRefresh();
@@ -1244,6 +1463,8 @@ export default function App() {
       setVoiceSensitivity(typeof settings.voiceSensitivity === "number" ? settings.voiceSensitivity : 0.5);
       setVoiceMicDeviceId(settings.voiceMicDeviceId || "");
       setVoiceFeedbackChime(!!settings.voiceFeedbackChime);
+      setAutoReadReplies(!!settings.autoReadReplies);
+      setVoiceCommandsEnabled(!!settings.voiceCommandsEnabled);
       setNotificationsEnabled(settings.notificationsEnabled !== false);
       setCustomCss(settings.customCss || "");
       setWallpaperPath(settings.wallpaperPath || null);
@@ -1537,6 +1758,19 @@ export default function App() {
                     body: trRef.current("notify.turnDoneBody"),
                     tag: `turn-${s.sessionId || "x"}`,
                   });
+                }
+                // Opt-in: read the just-completed assistant reply aloud via the
+                // browser SpeechSynthesis API (regular chat, not a Live Voice
+                // session — see chatTts.ts). Mirrors the notification hook above.
+                if (s.state === "ready" && autoReadRepliesRef.current) {
+                  const lastAssistant = [...messagesRef.current]
+                    .reverse()
+                    .find(
+                      (m) => m.role === "assistant" && !m.isError && !!m.content?.trim(),
+                    );
+                  if (lastAssistant) {
+                    speakText(stripMarkdownForSpeech(lastAssistant.content));
+                  }
                 }
               } else if (
                 (s.state === "streaming" || s.state === "awaiting_permission") &&
@@ -2567,6 +2801,7 @@ export default function App() {
       (s) =>
         s.projectId === projectId &&
         !s.archived &&
+        !isFoldered(s) &&
         matchesTagFilters(s, activeTagFilters),
     );
 
@@ -2574,8 +2809,20 @@ export default function App() {
     (s) =>
       (!s.projectId || !projects.some((p) => p.id === s.projectId)) &&
       !s.archived &&
+      !isFoldered(s) &&
       matchesTagFilters(s, activeTagFilters),
   );
+
+  /**
+   * Sessions assigned to a given folder — a session in a folder appears there
+   * instead of under its plain project (or "Other sessions") bucket, since
+   * folder membership is single-assignment (like a directory), unlike
+   * multi-assignment `tags`.
+   */
+  const sessionsForFolder = (folderId: string) =>
+    sessionsForFolderId(sessions, folderId).filter(
+      (s) => !s.archived && matchesTagFilters(s, activeTagFilters),
+    );
 
   /** Archived chats grouped by project for Settings → Archived. */
   const archivedGroups = useMemo(() => {
@@ -2643,6 +2890,8 @@ export default function App() {
           prRef: s.prRef,
           prState: s.prState,
           tags: s.tags,
+          bookmarkNote: s.bookmarkNote,
+          folderId: s.folderId,
         })),
       );
       void api.trayRefresh();
@@ -3002,6 +3251,90 @@ export default function App() {
     });
   };
 
+  const refreshFolders = async () => {
+    try {
+      setFolders(await api.foldersList());
+    } catch {
+      /* ignore */
+    }
+  };
+
+  /** Opens the "New folder..." prompt. When `andAssignSessionId` is given (from the
+   *  session context menu's "Move to folder... > New folder..." action), the newly
+   *  created folder is immediately assigned to that session. */
+  const createFolder = (andAssignSessionId?: string) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "prompt",
+      title: tr("folder.new"),
+      initial: "",
+      placeholder: tr("folder.namePlaceholder"),
+      onSubmit: async (name) => {
+        const next = name.trim();
+        if (!next) return;
+        try {
+          const created = await api.folderCreate(next);
+          await refreshFolders();
+          if (andAssignSessionId) {
+            await api.sessionSetFolder(andAssignSessionId, created.id);
+            await refreshSessions();
+          }
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  const renameFolder = (folder: SessionFolderDto) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "prompt",
+      title: tr("folder.rename"),
+      initial: folder.name,
+      onSubmit: async (name) => {
+        const next = name.trim();
+        if (!next || next === folder.name) return;
+        try {
+          await api.folderRename(folder.id, next);
+          await refreshFolders();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  const deleteFolder = (folder: SessionFolderDto) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "confirm",
+      title: tr("folder.delete"),
+      message: tr("folder.deleteConfirm", { name: folder.name }),
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await api.folderDelete(folder.id);
+          await refreshFolders();
+          await refreshSessions();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  /** Assign (or clear, with `folderId = null`) a session's folder membership. */
+  const moveSessionToFolder = async (s: SessionRow, folderId: string | null) => {
+    setCtxMenu(null);
+    try {
+      await api.sessionSetFolder(s.id, folderId);
+      await refreshSessions();
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
   const applySessionTitle = useCallback(
     (sessionId: string, title: string) => {
       setSessions((list) =>
@@ -3296,6 +3629,7 @@ export default function App() {
           prRef: hit.prRef,
           prState: hit.prState,
           tags: hit.tags,
+          bookmarkNote: hit.bookmarkNote,
         };
         await openSession(row, proj ?? undefined);
       }
@@ -3334,6 +3668,36 @@ export default function App() {
     setCtxMenu(null);
     try {
       await api.sessionSetPinned(s.id, pinned);
+      await refreshSessions();
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /** Set/update a session's bookmark note via the shared prompt dialog. */
+  const bookmarkSession = (s: SessionRow) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "prompt",
+      title: tr("session.bookmarkNote"),
+      initial: s.bookmarkNote ?? "",
+      placeholder: tr("session.bookmarkNotePlaceholder"),
+      onSubmit: async (note) => {
+        try {
+          await api.sessionSetBookmark(s.id, note);
+          await refreshSessions();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  /** Remove a session's bookmark entirely. */
+  const removeBookmark = async (s: SessionRow) => {
+    setCtxMenu(null);
+    try {
+      await api.sessionSetBookmark(s.id, null);
       await refreshSessions();
     } catch (e) {
       setLocalError(String(e));
@@ -3539,6 +3903,12 @@ export default function App() {
     e.preventDefault();
     e.stopPropagation();
     setCtxMenu({ kind: "space", id: space.id, x: e.clientX, y: e.clientY });
+  };
+
+  const openFolderMenu = (e: ReactMouseEvent, folder: SessionFolderDto) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ kind: "folder", id: folder.id, x: e.clientX, y: e.clientY });
   };
 
   const searchHits = useMemo(
@@ -6233,6 +6603,7 @@ export default function App() {
                 prRef: hit.prRef,
                 prState: hit.prState,
                 tags: hit.tags,
+                bookmarkNote: hit.bookmarkNote,
               };
               setSessions(
                 list.map((s) => ({
@@ -6249,6 +6620,7 @@ export default function App() {
                   prRef: s.prRef,
                   prState: s.prState,
                   tags: s.tags,
+                  bookmarkNote: s.bookmarkNote,
                 })),
               );
             }
@@ -7256,6 +7628,232 @@ export default function App() {
     return out;
   }, [tr]);
 
+  /**
+   * Shared sidebar session row — identical markup for project-bucket
+   * sessions, project-less ("Other sessions") sessions, and folder sessions,
+   * so a session assigned to a folder renders exactly like it would
+   * elsewhere in the tree (just under a different L1/L2 grouping).
+   */
+  const renderSessionRow = (
+    s: SessionRow,
+    proj: Project | null,
+    extraClassName?: string,
+  ) => {
+    const working = busySessionId === s.id;
+    const isSettled = !!s.settledAt;
+    const isSnoozed = !!s.snoozedUntil && new Date(s.snoozedUntil) > new Date();
+    const checked = selectedThreadIds.has(s.id);
+    return (
+      <div
+        className={
+          "tree-l3" +
+          (extraClassName ? ` ${extraClassName}` : "") +
+          (session.sessionId === s.id ? " tree-l3--active" : "") +
+          (s.archived ? " tree-l3--archived" : "") +
+          (working ? " tree-l3--working" : "") +
+          (isSettled ? " tree-l3--settled" : "") +
+          (isSnoozed ? " tree-l3--snoozed" : "") +
+          (checked ? " tree-l3--checked" : "")
+        }
+        role="button"
+        tabIndex={0}
+        onClick={(e) => handleThreadClick(e, s, proj)}
+        onContextMenu={(e) => openSessionMenu(e, s)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void openSession(s, proj);
+        }}
+      >
+        <span
+          className="tree-l3__checkbox"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleThreadClick(e, s, proj);
+          }}
+        >
+          {checked ? (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2 5L4 7L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          ) : null}
+        </span>
+        <span className="tree-l3__title">
+          {s.pinned ? (
+            <span
+              className="tree-l3__kind"
+              title={tr("session.pinned")}
+              aria-label={tr("session.pinned")}
+            >
+              <IconPin
+                size={12}
+                className="tree-l3__pin"
+              />
+            </span>
+          ) : null}
+          {s.bookmarkNote != null ? (
+            <span
+              className="tree-l3__kind"
+              title={
+                s.bookmarkNote
+                  ? s.bookmarkNote
+                  : tr("session.bookmark")
+              }
+              aria-label={tr("session.bookmark")}
+            >
+              <IconBookmark
+                size={12}
+                className="tree-l3__pin"
+              />
+            </span>
+          ) : null}
+          {s.scheduled ? (
+            <span
+              className="tree-l3__kind"
+              title={tr("automations.msgTag")}
+              aria-label={tr("automations.msgTag")}
+            >
+              <IconClock size={13} />
+            </span>
+          ) : null}
+          <span className="tree-l3__name">
+            {s.title || "Untitled"}
+          </span>
+        </span>
+        {s.prRef ? (
+          <span
+            className={
+              "tree-l3__pr-badge" +
+              (s.prState === "open" ? " tree-l3__pr-badge--open" : "") +
+              (s.prState === "merged" ? " tree-l3__pr-badge--merged" : "") +
+              (s.prState === "closed" ? " tree-l3__pr-badge--closed" : "")
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            title={`#${s.prRef} (${s.prState || "unknown"})`}
+          >
+            <span className="tree-l3__pr-dot" />
+            #{s.prRef}
+          </span>
+        ) : null}
+        {working ? (
+          <Tip label={tr("sidebar.sessionWorking")}>
+            <span
+              className="tree-l3__status"
+              aria-label={tr(
+                "sidebar.sessionWorking",
+              )}
+            >
+              <Spinner
+                size={14}
+                className="tree-l3__spinner"
+              />
+            </span>
+          </Tip>
+        ) : (
+          <span className="tree-l3__actions tree-l3__actions--triple">
+            <Tip
+              label={
+                isSettled
+                  ? tr("session.unsettle")
+                  : tr("session.settle")
+              }
+            >
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void settleSession(s, !isSettled);
+                }}
+              >
+                {isSettled ? (
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
+                    <path d="M4 6.5L6 8.5L9 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  </svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
+                  </svg>
+                )}
+              </button>
+            </Tip>
+            <Tip label={tr("session.snooze")}>
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const d = new Date(Date.now() + 3600000);
+                  void snoozeSession(s, d.toISOString());
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                  <path d="M6.5 3v3.5L9 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
+                </svg>
+              </button>
+            </Tip>
+            <Tip
+              label={
+                s.pinned
+                  ? tr("session.unpin")
+                  : tr("session.pin")
+              }
+            >
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void pinSession(s, !s.pinned);
+                }}
+              >
+                {s.pinned ? (
+                  <IconPinOff size={13} />
+                ) : (
+                  <IconPin size={13} />
+                )}
+              </button>
+            </Tip>
+            <Tip
+              label={
+                s.archived
+                  ? tr("sidebar.unarchive")
+                  : tr("sidebar.archive")
+              }
+            >
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void archiveSession(
+                    s,
+                    !s.archived,
+                  );
+                }}
+              >
+                <IconArchive size={13} />
+              </button>
+            </Tip>
+            <Tip label={tr("sidebar.menu")}>
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) =>
+                  openSessionMenu(e, s)
+                }
+              >
+                <IconMore size={13} />
+              </button>
+            </Tip>
+          </span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <ImageViewerProvider locale={locale}>
     <div
@@ -7351,6 +7949,12 @@ export default function App() {
           sessionDataMode={sessionDataMode}
           onCliSessionsImported={() => {
             void refreshSessions();
+          }}
+          onSettingsImported={() => {
+            // Reuse the same "apply settings to app state" boot logic so the
+            // whole UI (theme, locale, voice, runtime knobs, projects,
+            // sessions...) reflects the imported values without a restart.
+            void refreshLists();
           }}
           onSessionDataMode={(v) => {
             const commit = () => {
@@ -7569,6 +8173,21 @@ export default function App() {
               api.settingsSet({ ...s, voiceFeedbackChime: v }),
             );
           }}
+          autoReadReplies={autoReadReplies}
+          onAutoReadReplies={(v) => {
+            setAutoReadReplies(v);
+            if (!v) stopSpeaking();
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, autoReadReplies: v }),
+            );
+          }}
+          voiceCommandsEnabled={voiceCommandsEnabled}
+          onVoiceCommandsEnabled={(v) => {
+            setVoiceCommandsEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceCommandsEnabled: v }),
+            );
+          }}
           notificationsEnabled={notificationsEnabled}
           onNotificationsEnabled={(v) => {
             setNotificationsEnabled(v);
@@ -7623,6 +8242,7 @@ export default function App() {
           }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
+          onOpenWhatsNew={openWhatsNew}
           versionFooter={tr("app.versionFooter")}
           account={account}
           accountLoading={accountLoading}
@@ -7987,6 +8607,115 @@ export default function App() {
               </div>
             )}
 
+            {/* L1 — Folders section: ad-hoc, single-assignment session groupings.
+                Distinct from Grok Spaces (groups projects, above) and from `tags`
+                (multi-assignment chip filter, below). A session assigned to a
+                folder renders here instead of under its plain project bucket. */}
+            <div className="tree-l1">
+              <button
+                type="button"
+                className="tree-l1__head"
+                onClick={() => setFoldersOpen((v) => !v)}
+              >
+                {foldersOpen ? (
+                  <IconChevronDown size={14} />
+                ) : (
+                  <IconChevronRight size={14} />
+                )}
+                <span className="tree-l1__label">
+                  {tr("sidebar.folders")}
+                </span>
+              </button>
+              <Tip label={tr("folder.new")}>
+                <button
+                  type="button"
+                  className="tree-l1__action"
+                  onClick={() => createFolder()}
+                >
+                  <IconPlus size={15} />
+                </button>
+              </Tip>
+            </div>
+
+            {foldersOpen &&
+              folders.map((folder) => {
+                const open = expandedFolders[folder.id] !== false;
+                const folderSessions = sessionsForFolder(folder.id);
+                return (
+                  <div key={folder.id} className="tree-project">
+                    {/* L2 — folder: expand/collapse only (not selectable) */}
+                    <div
+                      className="tree-l2"
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={open}
+                      onClick={() => {
+                        setExpandedFolders((e) => ({
+                          ...e,
+                          [folder.id]: !open,
+                        }));
+                      }}
+                      onContextMenu={(e) => openFolderMenu(e, folder)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setExpandedFolders((ex) => ({
+                            ...ex,
+                            [folder.id]: !open,
+                          }));
+                        }
+                      }}
+                    >
+                      <span className="tree-l2__icon">
+                        <IconFolder size={15} />
+                      </span>
+                      <span className="tree-l2__name">{folder.name}</span>
+                      <span className="tree-l2__actions">
+                        <Tip label={tr("sidebar.menu")}>
+                          <button
+                            type="button"
+                            className="tree-icon-btn"
+                            onClick={(e) => openFolderMenu(e, folder)}
+                          >
+                            <IconMore size={14} />
+                          </button>
+                        </Tip>
+                      </span>
+                    </div>
+
+                    {open && (
+                      <div className="tree-l3-list-wrap">
+                        {folderSessions.length > 0 ? (
+                          <VirtualList
+                            className="tree-l3-list"
+                            items={folderSessions}
+                            getKey={(s) => s.id}
+                            rowHeight={SIDEBAR_SESSION_ROW_HEIGHT}
+                            gap={SIDEBAR_SESSION_ROW_GAP}
+                            scrollToKey={
+                              session.sessionId &&
+                              folderSessions.some((x) => x.id === session.sessionId)
+                                ? session.sessionId
+                                : null
+                            }
+                            renderItem={(s) =>
+                              renderSessionRow(
+                                s,
+                                projects.find((p) => p.id === s.projectId) ?? null,
+                              )
+                            }
+                          />
+                        ) : (
+                          <div className="sidebar-empty" style={{ padding: "4px 10px" }}>
+                            {tr("sidebar.noChats")}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
             {/* L1 — Projects section */}
             <div className="tree-l1">
               <button
@@ -8153,207 +8882,7 @@ export default function App() {
                                 ? session.sessionId
                                 : null
                             }
-                            renderItem={(s) => {
-                              const working = busySessionId === s.id;
-                              const isSettled = !!s.settledAt;
-                              const isSnoozed = !!s.snoozedUntil && new Date(s.snoozedUntil) > new Date();
-                              const checked = selectedThreadIds.has(s.id);
-                              return (
-                                <div
-                                  className={
-                                    "tree-l3" +
-                                    (session.sessionId === s.id
-                                      ? " tree-l3--active"
-                                      : "") +
-                                    (s.archived ? " tree-l3--archived" : "") +
-                                    (working ? " tree-l3--working" : "") +
-                                    (isSettled ? " tree-l3--settled" : "") +
-                                    (isSnoozed ? " tree-l3--snoozed" : "") +
-                                    (checked ? " tree-l3--checked" : "")
-                                  }
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={(e) => handleThreadClick(e, s, proj)}
-                                  onContextMenu={(e) => openSessionMenu(e, s)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter")
-                                      void openSession(s, proj);
-                                  }}
-                                >
-                                  <span
-                                    className="tree-l3__checkbox"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleThreadClick(e, s, proj);
-                                    }}
-                                  >
-                                    {checked ? (
-                                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                                        <path d="M2 5L4 7L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                      </svg>
-                                    ) : null}
-                                  </span>
-                                  <span className="tree-l3__title">
-                                    {s.pinned ? (
-                                      <span
-                                        className="tree-l3__kind"
-                                        title={tr("session.pinned")}
-                                        aria-label={tr("session.pinned")}
-                                      >
-                                        <IconPin
-                                          size={12}
-                                          className="tree-l3__pin"
-                                        />
-                                      </span>
-                                    ) : null}
-                                    {s.scheduled ? (
-                                      <span
-                                        className="tree-l3__kind"
-                                        title={tr("automations.msgTag")}
-                                        aria-label={tr("automations.msgTag")}
-                                      >
-                                        <IconClock size={13} />
-                                      </span>
-                                    ) : null}
-                                    <span className="tree-l3__name">
-                                      {s.title || "Untitled"}
-                                    </span>
-                                  </span>
-                                  {s.prRef ? (
-                                    <span
-                                      className={
-                                        "tree-l3__pr-badge" +
-                                        (s.prState === "open" ? " tree-l3__pr-badge--open" : "") +
-                                        (s.prState === "merged" ? " tree-l3__pr-badge--merged" : "") +
-                                        (s.prState === "closed" ? " tree-l3__pr-badge--closed" : "")
-                                      }
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                      }}
-                                      title={`#${s.prRef} (${s.prState || "unknown"})`}
-                                    >
-                                      <span className="tree-l3__pr-dot" />
-                                      #{s.prRef}
-                                    </span>
-                                  ) : null}
-                                  {working ? (
-                                    <Tip label={tr("sidebar.sessionWorking")}>
-                                      <span
-                                        className="tree-l3__status"
-                                        aria-label={tr(
-                                          "sidebar.sessionWorking",
-                                        )}
-                                      >
-                                        <Spinner
-                                          size={14}
-                                          className="tree-l3__spinner"
-                                        />
-                                      </span>
-                                    </Tip>
-                                  ) : (
-                                    <span className="tree-l3__actions tree-l3__actions--triple">
-                                      <Tip
-                                        label={
-                                          isSettled
-                                            ? tr("session.unsettle")
-                                            : tr("session.settle")
-                                        }
-                                      >
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void settleSession(s, !isSettled);
-                                          }}
-                                        >
-                                          {isSettled ? (
-                                            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                              <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
-                                              <path d="M4 6.5L6 8.5L9 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                                            </svg>
-                                          ) : (
-                                            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                              <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
-                                            </svg>
-                                          )}
-                                        </button>
-                                      </Tip>
-                                      <Tip label={tr("session.snooze")}>
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const d = new Date(Date.now() + 3600000);
-                                            void snoozeSession(s, d.toISOString());
-                                          }}
-                                        >
-                                          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                            <path d="M6.5 3v3.5L9 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                                            <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
-                                          </svg>
-                                        </button>
-                                      </Tip>
-                                      <Tip
-                                        label={
-                                          s.pinned
-                                            ? tr("session.unpin")
-                                            : tr("session.pin")
-                                        }
-                                      >
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void pinSession(s, !s.pinned);
-                                          }}
-                                        >
-                                          {s.pinned ? (
-                                            <IconPinOff size={13} />
-                                          ) : (
-                                            <IconPin size={13} />
-                                          )}
-                                        </button>
-                                      </Tip>
-                                      <Tip
-                                        label={
-                                          s.archived
-                                            ? tr("sidebar.unarchive")
-                                            : tr("sidebar.archive")
-                                        }
-                                      >
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void archiveSession(
-                                              s,
-                                              !s.archived,
-                                            );
-                                          }}
-                                        >
-                                          <IconArchive size={13} />
-                                        </button>
-                                      </Tip>
-                                      <Tip label={tr("sidebar.menu")}>
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) =>
-                                            openSessionMenu(e, s)
-                                          }
-                                        >
-                                          <IconMore size={13} />
-                                        </button>
-                                      </Tip>
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            }}
+                            renderItem={(s) => renderSessionRow(s, proj)}
                           />
                         ) : null}
                         {projSessions.length === 0 && proj.trusted && (
@@ -8397,192 +8926,7 @@ export default function App() {
                     ? session.sessionId
                     : null
                 }
-                renderItem={(s) => {
-                  const working = busySessionId === s.id;
-                  const isSettled = !!s.settledAt;
-                  const isSnoozed = !!s.snoozedUntil && new Date(s.snoozedUntil) > new Date();
-                  const checked = selectedThreadIds.has(s.id);
-                  return (
-                    <div
-                      className={
-                        "tree-l3 tree-l3--orphan" +
-                        (session.sessionId === s.id
-                          ? " tree-l3--active"
-                          : "") +
-                        (working ? " tree-l3--working" : "") +
-                        (isSettled ? " tree-l3--settled" : "") +
-                        (isSnoozed ? " tree-l3--snoozed" : "") +
-                        (checked ? " tree-l3--checked" : "")
-                      }
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => handleThreadClick(e, s, null)}
-                      onContextMenu={(e) => openSessionMenu(e, s)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void openSession(s);
-                      }}
-                    >
-                      <span
-                        className="tree-l3__checkbox"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleThreadClick(e, s, null);
-                        }}
-                      >
-                        {checked ? (
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                            <path d="M2 5L4 7L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        ) : null}
-                      </span>
-                      <span className="tree-l3__title">
-                        {s.pinned ? (
-                          <span
-                            className="tree-l3__kind"
-                            title={tr("session.pinned")}
-                            aria-label={tr("session.pinned")}
-                          >
-                            <IconPin
-                              size={12}
-                              className="tree-l3__pin"
-                            />
-                          </span>
-                        ) : null}
-                        {s.scheduled ? (
-                          <span
-                            className="tree-l3__kind"
-                            title={tr("automations.msgTag")}
-                            aria-label={tr("automations.msgTag")}
-                          >
-                            <IconClock size={13} />
-                          </span>
-                        ) : null}
-                        <span className="tree-l3__name">
-                          {s.title || "Untitled"}
-                        </span>
-                      </span>
-                      {s.prRef ? (
-                        <span
-                          className={
-                            "tree-l3__pr-badge" +
-                            (s.prState === "open" ? " tree-l3__pr-badge--open" : "") +
-                            (s.prState === "merged" ? " tree-l3__pr-badge--merged" : "") +
-                            (s.prState === "closed" ? " tree-l3__pr-badge--closed" : "")
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                          }}
-                          title={`#${s.prRef} (${s.prState || "unknown"})`}
-                        >
-                          <span className="tree-l3__pr-dot" />
-                          #{s.prRef}
-                        </span>
-                      ) : null}
-                      {working ? (
-                        <Tip label={tr("sidebar.sessionWorking")}>
-                          <span
-                            className="tree-l3__status"
-                            aria-label={tr("sidebar.sessionWorking")}
-                          >
-                            <Spinner
-                              size={14}
-                              className="tree-l3__spinner"
-                            />
-                          </span>
-                        </Tip>
-                      ) : (
-                        <span className="tree-l3__actions tree-l3__actions--triple">
-                          <Tip
-                            label={
-                              isSettled
-                                ? tr("session.unsettle")
-                                : tr("session.settle")
-                            }
-                          >
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void settleSession(s, !isSettled);
-                              }}
-                            >
-                              {isSettled ? (
-                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                  <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
-                                  <path d="M4 6.5L6 8.5L9 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                                </svg>
-                              ) : (
-                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                  <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
-                                </svg>
-                              )}
-                            </button>
-                          </Tip>
-                          <Tip label={tr("session.snooze")}>
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const d = new Date(Date.now() + 3600000);
-                                void snoozeSession(s, d.toISOString());
-                              }}
-                            >
-                              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                <path d="M6.5 3v3.5L9 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                                <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
-                              </svg>
-                            </button>
-                          </Tip>
-                          <Tip
-                            label={
-                              s.pinned
-                                ? tr("session.unpin")
-                                : tr("session.pin")
-                            }
-                          >
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void pinSession(s, !s.pinned);
-                              }}
-                            >
-                              {s.pinned ? (
-                                <IconPinOff size={13} />
-                              ) : (
-                                <IconPin size={13} />
-                              )}
-                            </button>
-                          </Tip>
-                          <Tip label={tr("sidebar.archive")}>
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void archiveSession(s, !s.archived);
-                              }}
-                            >
-                              <IconArchive size={13} />
-                            </button>
-                          </Tip>
-                          <Tip label={tr("sidebar.menu")}>
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => openSessionMenu(e, s)}
-                            >
-                              <IconMore size={13} />
-                            </button>
-                          </Tip>
-                        </span>
-                      )}
-                    </div>
-                  );
-                }}
+                renderItem={(s) => renderSessionRow(s, null, "tree-l3--orphan")}
               />
             ) : null}
           </OverlayScroll>
@@ -9158,17 +9502,7 @@ export default function App() {
             onRewindToUserMessage={onRewindToUserMessage}
             onForkFromUserMessage={onForkFromUserMessage}
             turnStartedAt={turnStartedAt}
-            onOpenResource={(target) => {
-              setLayout((l) => {
-                if (l.asideCollapsed) {
-                  const n = { ...l, asideCollapsed: false };
-                  saveLayout(localStorage, n);
-                  return n;
-                }
-                return l;
-              });
-              setResourceOpenTarget(target);
-            }}
+            onOpenResource={openResourceTarget}
             onAddAttachmentToComposer={(att) =>
               setAttachments((prev) => mergeAttachments(prev, [att]))
             }
@@ -9996,11 +10330,32 @@ export default function App() {
                                       .replace(/\bopen quote\b/gi, "\u201c")
                                       .replace(/\bclose quote\b/gi, "\u201d");
                                     text = text.replace(/(\.\s+)([a-z])/g, (_, p, l) => p + (l as string).toUpperCase());
-                                    setDraft((d) =>
-                                      d.trim()
-                                        ? `${d.trim()} ${text}`
-                                        : text.charAt(0).toUpperCase() + text.slice(1),
-                                    );
+
+                                    // Voice command hotkeys (v1 starter set, opt-in — see
+                                    // voiceCommands.ts). Only fires when the trigger phrase
+                                    // is the WHOLE dictated transcript, so a sentence that
+                                    // merely mentions "new session" etc. is never hijacked.
+                                    const cmd = voiceCommandsEnabledRef.current
+                                      ? matchVoiceCommand(text.trim())
+                                      : null;
+                                    if (cmd) {
+                                      if (cmd.command === "send") {
+                                        void send();
+                                      } else if (cmd.command === "newSession") {
+                                        void newChat(null);
+                                      }
+                                      // "stopDictation": recording has already ended by the
+                                      // time this final transcript is available (dictation
+                                      // here is single-shot, ended via the stop button before
+                                      // transcription runs) — recognizing the phrase and
+                                      // skipping insertion below is the whole action.
+                                    } else {
+                                      setDraft((d) =>
+                                        d.trim()
+                                          ? `${d.trim()} ${text}`
+                                          : text.charAt(0).toUpperCase() + text.slice(1),
+                                      );
+                                    }
                                   }
                                 } catch (e) {
                                   console.warn("dictation failed", e);
@@ -10421,8 +10776,60 @@ export default function App() {
               );
             }}
             onClose={() => setShowSearch(false)}
+            mode={searchMode}
+            onModeChange={setSearchMode}
+            fileSearch={{
+              hits: fileSearchHits,
+              loading: fileSearchLoading,
+              enabled: !!activeProject?.path,
+              ripgrepUnavailable: !ripgrepAvailable,
+              onSelectHit: (hit) => {
+                setShowSearch(false);
+                setLayout((l) => {
+                  if (l.asideCollapsed) {
+                    const n = { ...l, asideCollapsed: false };
+                    saveLayout(localStorage, n);
+                    return n;
+                  }
+                  return l;
+                });
+                setResourceOpenTarget({
+                  type: "file",
+                  path: hit.path,
+                  line: hit.lineNumber,
+                });
+              },
+              labels: {
+                sessionsTab: tr("search.sessionsTab"),
+                filesTab: tr("search.filesTab"),
+                filesPlaceholder: tr("search.filesPlaceholder"),
+                filesEmpty: tr("search.filesEmpty"),
+                filesEmptyProject: tr("search.filesEmptyProject"),
+                ripgrepUnavailable: tr("search.ripgrepUnavailable"),
+              },
+            }}
           />
         </GlassModal>
+      )}
+
+      <FileFinderPanel
+        open={showFileFinder}
+        onClose={() => setShowFileFinder(false)}
+        locale={locale}
+        files={fileFinderFiles}
+        loading={fileFinderLoading}
+        onSelect={selectFileFinderResult}
+      />
+
+      {whatsNewEntry && (
+        <WhatsNewModal
+          open={showWhatsNew}
+          onClose={() => setShowWhatsNew(false)}
+          locale={locale}
+          version={whatsNewEntry.version}
+          date={whatsNewEntry.date}
+          body={whatsNewEntry.body}
+        />
       )}
 
       {/* In-app confirm / prompt (Tauri WebView has no reliable window.prompt/confirm) */}
@@ -10730,6 +11137,51 @@ export default function App() {
               ),
             ];
           }
+        } else if (ctxMenu?.kind === "session-folder") {
+          const s = sessions.find((x) => x.id === ctxMenu.id);
+          if (s) {
+            const current = s.folderId ?? null;
+            items = [
+              {
+                id: "remove-from-folder",
+                label: tr("folder.removeFromFolder"),
+                icon: !current ? <IconCheck size={16} /> : undefined,
+                disabled: !current,
+                onClick: () => {
+                  void moveSessionToFolder(s, null);
+                },
+              },
+              ...(folders.length === 0
+                ? [
+                    {
+                      id: "no-folders",
+                      label: tr("folder.noFolders"),
+                      disabled: true,
+                      onClick: () => {},
+                    } satisfies ContextMenuItem,
+                  ]
+                : folders.map(
+                    (folder) =>
+                      ({
+                        id: `folder-${folder.id}`,
+                        label: folder.name,
+                        icon:
+                          current === folder.id ? (
+                            <IconCheck size={16} />
+                          ) : undefined,
+                        onClick: () => {
+                          void moveSessionToFolder(s, folder.id);
+                        },
+                      }) satisfies ContextMenuItem,
+                  )),
+              {
+                id: "new-folder",
+                label: tr("folder.new"),
+                icon: <IconPlus size={16} />,
+                onClick: () => createFolder(s.id),
+              },
+            ];
+          }
         } else if (ctxMenu?.kind === "space") {
           const space = spaces.find((s) => s.id === ctxMenu.id);
           if (space) {
@@ -10746,6 +11198,25 @@ export default function App() {
                 icon: <IconTrash size={16} />,
                 danger: true,
                 onClick: () => deleteSpace(space),
+              },
+            ];
+          }
+        } else if (ctxMenu?.kind === "folder") {
+          const folder = folders.find((f) => f.id === ctxMenu.id);
+          if (folder) {
+            items = [
+              {
+                id: "rename",
+                label: tr("folder.rename"),
+                icon: <IconRename size={16} />,
+                onClick: () => renameFolder(folder),
+              },
+              {
+                id: "delete",
+                label: tr("folder.delete"),
+                icon: <IconTrash size={16} />,
+                danger: true,
+                onClick: () => deleteFolder(folder),
               },
             ];
           }
@@ -10784,6 +11255,41 @@ export default function App() {
                 onClick: () => {
                   setCtxMenu({
                     kind: "session-tags",
+                    id: s.id,
+                    x: ctxMenu.x,
+                    y: ctxMenu.y,
+                  });
+                },
+              },
+              {
+                id: "bookmark",
+                label:
+                  s.bookmarkNote != null
+                    ? tr("session.removeBookmark")
+                    : tr("session.bookmark"),
+                icon: <IconBookmark size={16} />,
+                onClick: () => {
+                  if (s.bookmarkNote != null) void removeBookmark(s);
+                  else bookmarkSession(s);
+                },
+              },
+              ...(s.bookmarkNote != null
+                ? [
+                    {
+                      id: "bookmark-edit",
+                      label: tr("session.bookmarkNote"),
+                      icon: <IconBookmark size={16} />,
+                      onClick: () => bookmarkSession(s),
+                    },
+                  ]
+                : []),
+              {
+                id: "move-to-folder",
+                label: tr("folder.moveToFolder"),
+                icon: <IconFolder size={16} />,
+                onClick: () => {
+                  setCtxMenu({
+                    kind: "session-folder",
                     id: s.id,
                     x: ctxMenu.x,
                     y: ctxMenu.y,
@@ -10883,7 +11389,9 @@ export default function App() {
                 ? 280
                 : ctxMenu?.kind === "project-space"
                   ? 240 + spaces.length * 32
-                  : 240
+                  : ctxMenu?.kind === "session-folder"
+                    ? 240 + folders.length * 32
+                    : 240
             }
           />
         );

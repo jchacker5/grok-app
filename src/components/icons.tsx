@@ -15,6 +15,7 @@ import {
   IconCornerUpRight as TbCornerUpRight,
   IconBell as TbBell,
   IconBolt as TbBolt,
+  IconBookmark as TbBookmark,
   IconGitBranch as TbGitBranch,
   IconBox as TbBox,
   IconBrandWindows as TbBrandWindows,
@@ -94,6 +95,7 @@ import {
   IconUpload as TbUpload,
   IconUser as TbUser,
   IconVideo as TbVideo,
+  IconVolume2 as TbVolume2,
   IconWand as TbWand,
   IconX as TbX,
   IconZoomIn as TbZoomIn,
@@ -272,6 +274,7 @@ export const IconThumbsDown = wrap(TbThumbDown);
 export const IconRefresh = wrap(TbRefresh);
 export const IconCopy = wrap(TbCopy);
 export const IconExportMd = wrap(TbMarkdown);
+export const IconSpeak = wrap(TbVolume2);
 export const IconArchive = wrap(TbArchive);
 export const IconChat = wrap(TbMessage);
 /** Inline diff review comment (Changes panel — existing comment marker). */
@@ -285,6 +288,8 @@ export const IconMaximize = wrap(TbSquare);
 export const IconPlan = wrap(TbList);
 export const IconPin = wrap(TbPinned);
 export const IconPinOff = wrap(TbPinnedOff);
+/** Session bookmark w/ note indicator. */
+export const IconBookmark = wrap(TbBookmark);
 export const IconHandStop = wrap(TbHandStop);
 export const IconShield = wrap(TbShield);
 export const IconShieldCheck = wrap(TbShieldCheck);

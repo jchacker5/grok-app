@@ -28,6 +28,7 @@ import {
   IconPuzzle,
   IconSearch,
   IconSettings,
+  IconSparkles,
   IconShield,
   IconTrash,
   IconTunnel,
@@ -110,6 +111,12 @@ export interface SettingsPageProps {
   onSessionDataMode: (v: string) => void;
   /** After importing CLI sessions (shared mode) — refresh sidebar. */
   onCliSessionsImported?: () => void;
+  /**
+   * After a successful full-settings import (Export/Import settings panel) —
+   * reload all in-memory app state from disk so the UI reflects the
+   * imported values immediately, without requiring a restart.
+   */
+  onSettingsImported?: () => void;
   policy: string;
   onPolicy: (v: PermissionPolicyId) => void;
   /** Where model / permission choices are remembered. */
@@ -162,6 +169,8 @@ export interface SettingsPageProps {
     cliAuthPresent: boolean;
   };
   onDoctor: () => void;
+  /** Reopen the "What's new" changelog panel (Settings → About). */
+  onOpenWhatsNew: () => void;
   versionFooter: string;
   /** Official Grok Build account (membership / usage). */
   account: AccountStatus | null;
@@ -225,6 +234,12 @@ export interface SettingsPageProps {
   /** Play chime on voice start/stop. */
   voiceFeedbackChime?: boolean;
   onVoiceFeedbackChime?: (v: boolean) => void;
+  /** Automatically speak new assistant replies aloud (regular chat, not Live Voice). */
+  autoReadReplies?: boolean;
+  onAutoReadReplies?: (v: boolean) => void;
+  /** Interpret a small set of spoken command phrases during dictation as app actions. */
+  voiceCommandsEnabled?: boolean;
+  onVoiceCommandsEnabled?: (v: boolean) => void;
   /** Timestamp display format. */
   timestampFormat?: string;
   onTimestampFormat?: (v: string) => void;
@@ -1003,6 +1018,7 @@ export function SettingsPage({
   sessionDataMode,
   onSessionDataMode,
   onCliSessionsImported,
+  onSettingsImported,
   policy,
   onPolicy,
   prefsScope = "global",
@@ -1038,6 +1054,7 @@ export function SettingsPage({
   onSandboxProfile,
   cliInfo,
   onDoctor,
+  onOpenWhatsNew,
   versionFooter,
   account,
   accountLoading,
@@ -1083,6 +1100,10 @@ export function SettingsPage({
   onVoiceMicDeviceId,
   voiceFeedbackChime = false,
   onVoiceFeedbackChime,
+  autoReadReplies = false,
+  onAutoReadReplies,
+  voiceCommandsEnabled = false,
+  onVoiceCommandsEnabled,
   timestampFormat = "locale",
   onTimestampFormat,
   sidebarSortOrder = "updated_at",
@@ -1883,6 +1904,10 @@ export function SettingsPage({
               <NotificationSettingsSection />
               <GitHubIntegrationSection />
               <SyncSettingsSection />
+              <ExportImportSettingsPanel
+                t={t}
+                onImported={onSettingsImported}
+              />
             </div>
           </>
         )}
@@ -2262,6 +2287,42 @@ export function SettingsPage({
                   checked={voiceFeedbackChime}
                   onChange={() => onVoiceFeedbackChime(!voiceFeedbackChime)}
                   ariaLabel={t("voice.feedbackChime")}
+                />
+              </div>
+            ) : null}
+
+            {onVoiceCommandsEnabled ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.voiceCommands")}</div>
+                  <div className="settings-row__desc">{t("settings.voiceCommandsDesc")}</div>
+                  <ul className="settings-row__list">
+                    <li>{t("settings.voiceCommandsPhraseSend")}</li>
+                    <li>{t("settings.voiceCommandsPhraseNewSession")}</li>
+                    <li>{t("settings.voiceCommandsPhraseStop")}</li>
+                  </ul>
+                </div>
+                <UiCheck
+                  checked={voiceCommandsEnabled}
+                  onChange={() => onVoiceCommandsEnabled(!voiceCommandsEnabled)}
+                  ariaLabel={t("settings.voiceCommands")}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <h2 className="settings-page__h2">{t("settings.chatReadAloud")}</h2>
+          <div className="settings-card">
+            {onAutoReadReplies ? (
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.autoReadReplies")}</div>
+                  <div className="settings-row__desc">{t("settings.autoReadRepliesDesc")}</div>
+                </div>
+                <UiCheck
+                  checked={autoReadReplies}
+                  onChange={() => onAutoReadReplies(!autoReadReplies)}
+                  ariaLabel={t("settings.autoReadReplies")}
                 />
               </div>
             ) : null}
@@ -2787,6 +2848,21 @@ export function SettingsPage({
                 <div className="settings-row__desc">{versionFooter}</div>
               </div>
             </div>
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  <IconSparkles size={16} />
+                  {t("whatsNew.viewAgain")}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn--ghost settings-row__action"
+                onClick={onOpenWhatsNew}
+              >
+                {t("whatsNew.viewAgain")}
+              </button>
+            </div>
             <AboutUpdateRow t={t} />
           </div>
         )}
@@ -2977,6 +3053,86 @@ function CliSessionsPanel({
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Export/import the full app settings blob as a JSON file (native dialogs). */
+function ExportImportSettingsPanel({
+  t,
+  onImported,
+}: {
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string;
+  onImported?: () => void;
+}) {
+  const [busy, setBusy] = useState<"export" | "import" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const doExport = async () => {
+    setBusy("export");
+    setError(null);
+    setStatus(null);
+    try {
+      await api.exportSettings();
+      setStatus(t("settings.exportSettingsSuccess"));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doImport = async () => {
+    setBusy("import");
+    setError(null);
+    setStatus(null);
+    try {
+      await api.importSettings();
+      setStatus(t("settings.importSettingsSuccess"));
+      onImported?.();
+    } catch (e) {
+      setError(t("settings.importSettingsError", { error: String(e) }));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">{t("settings.exportSettings")}</div>
+        <div className="settings-row__desc">{t("settings.exportSettingsDesc")}</div>
+      </div>
+      <div className="settings-cli-sessions__actions">
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={!!busy}
+          onClick={() => void doExport()}
+        >
+          {t("settings.exportSettings")}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={!!busy}
+          onClick={() => void doImport()}
+          title={t("settings.importSettingsDesc")}
+        >
+          {t("settings.importSettings")}
+        </button>
+      </div>
+      {error ? (
+        <div className="settings-cli-sessions__err" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {status ? (
+        <div className="settings-cli-sessions__ok" role="status">
+          {status}
+        </div>
+      ) : null}
     </div>
   );
 }

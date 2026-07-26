@@ -476,6 +476,17 @@ pub async fn app_check_update() -> Result<crate::app_update::AppUpdateCheck, Str
     crate::app_update::check_app_update().await
 }
 
+/// Raw `CHANGELOG.md` markdown for the in-app "What's new" panel. See
+/// `crate::changelog` for the bundled-resource-dir vs. dev-mode resolution
+/// strategy. The frontend (`src/lib/changelog.ts`) parses out just the top
+/// `## [X.Y.Z]` section for display.
+#[tauri::command]
+pub async fn read_changelog(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    let resource_dir = app.path().resource_dir().ok();
+    crate::changelog::read_changelog_text(resource_dir)
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CliUpdateCheck {
@@ -1648,6 +1659,25 @@ pub async fn session_set_tags(id: String, tags: Vec<String>) -> Result<SessionMe
     store::set_session_tags(&id, tags)
 }
 
+/// Bookmark (or unbookmark) a session with an attached note. `note: None`
+/// clears the bookmark; `Some(note)` sets it (note may be an empty string).
+#[tauri::command]
+pub async fn session_set_bookmark(
+    id: String,
+    note: Option<String>,
+) -> Result<SessionMeta, String> {
+    store::set_session_bookmark(&id, note)
+}
+
+/// Assign (or clear, with `folder_id = None`) a session's folder membership.
+#[tauri::command]
+pub async fn session_set_folder(
+    session_id: String,
+    folder_id: Option<String>,
+) -> Result<SessionMeta, String> {
+    store::set_session_folder(&session_id, folder_id)
+}
+
 #[tauri::command]
 pub async fn session_set_settled(id: String, settled_at: Option<String>) -> Result<SessionMeta, String> {
     let parsed = settled_at
@@ -1882,6 +1912,32 @@ pub async fn project_set_space(
     store::set_project_space(&id, space_id)
 }
 
+// ─── Session folders ────────────────────────────────────────────────────────
+// Ad-hoc named groupings of *sessions* — distinct from Grok Spaces (which
+// group *projects*) and from `tags` (which allow multiple labels per
+// session). A session belongs to at most one folder.
+
+#[tauri::command]
+pub async fn folders_list() -> Result<Vec<store::SessionFolder>, String> {
+    Ok(store::load_folders())
+}
+
+#[tauri::command]
+pub async fn folder_create(name: String) -> Result<store::SessionFolder, String> {
+    store::create_folder(name)
+}
+
+#[tauri::command]
+pub async fn folder_rename(id: String, name: String) -> Result<(), String> {
+    store::rename_folder(&id, &name)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn folder_delete(id: String) -> Result<(), String> {
+    store::delete_folder(&id)
+}
+
 #[tauri::command]
 pub async fn settings_get() -> Result<AppSettings, String> {
     Ok(store::load_settings())
@@ -1931,6 +1987,180 @@ pub async fn settings_set(
         tracing::warn!("settings_set tray refresh: {e}");
     }
     Ok(settings)
+}
+
+/// Build the pretty-JSON export of `AppSettings`, redacting fields that may
+/// carry raw secrets. Everything else in `AppSettings` is non-sensitive
+/// (API keys / tokens normally live in `secrets.json` or the OS keychain —
+/// see `store::AppSettings::store_api_keys_in_keychain`), but
+/// `browser_cookies` is a general-purpose KV bag also used to stash the
+/// GitHub PAT (`set_github_pat` inserts it under `__github_pat__`), so it
+/// must never leave the machine via export.
+fn settings_export_json() -> Result<String, String> {
+    let mut settings = store::load_settings();
+    settings.browser_cookies.clear();
+    serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())
+}
+
+/// Parse an exported settings JSON blob and persist it via the normal
+/// settings-write path. Since export deliberately omits `browser_cookies`
+/// (see `settings_export_json`), the current value is preserved here rather
+/// than being wiped by the import.
+fn settings_import_json(json: &str) -> Result<AppSettings, String> {
+    let mut settings: AppSettings =
+        serde_json::from_str(json).map_err(|e| format!("invalid settings file: {e}"))?;
+    settings.browser_cookies = store::load_settings().browser_cookies;
+    store::save_settings(&settings)?;
+    Ok(settings)
+}
+
+/// Export current app settings as pretty JSON and prompt a native save
+/// dialog (defaults to `grok-app-settings.json`) to write it to disk.
+/// Returns the JSON regardless of whether the user picked a destination
+/// (cancelling the dialog just skips the file write).
+#[tauri::command]
+pub async fn export_settings() -> Result<String, String> {
+    let json = settings_export_json()?;
+    let json_for_dialog = json.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(dest) = rfd::FileDialog::new()
+            .set_title("Export settings")
+            .set_file_name("grok-app-settings.json")
+            .add_filter("JSON", &["json"])
+            .save_file()
+        {
+            let _ = std::fs::write(&dest, json_for_dialog.as_bytes());
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(json)
+}
+
+/// Import app settings. When `json` is provided (non-empty), it is parsed
+/// and persisted directly — used for programmatic/round-trip callers. When
+/// omitted, prompts a native open-file dialog filtered to `.json` and reads
+/// the picked file. Errors if the dialog is cancelled or the file fails to
+/// parse as `AppSettings`.
+#[tauri::command]
+pub async fn import_settings(json: Option<String>) -> Result<(), String> {
+    let text = match json.filter(|s| !s.trim().is_empty()) {
+        Some(j) => j,
+        None => {
+            let path = tauri::async_runtime::spawn_blocking(|| {
+                rfd::FileDialog::new()
+                    .set_title("Import settings")
+                    .add_filter("JSON", &["json"])
+                    .pick_file()
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+            let Some(path) = path else {
+                return Err("import cancelled".into());
+            };
+            std::fs::read_to_string(&path).map_err(|e| format!("read file: {e}"))?
+        }
+    };
+    settings_import_json(&text)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod settings_export_import_tests {
+    use super::*;
+    use crate::test_env_lock::ENV_LOCK;
+
+    fn with_temp_home<F: FnOnce()>(name: &str, f: F) {
+        let tmp = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        f();
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn export_then_import_round_trips_settings() {
+        let _g = ENV_LOCK.lock().unwrap();
+        with_temp_home("grok-app-settings-export-test", || {
+            let mut settings = AppSettings::default();
+            settings.theme = "dark".into();
+            settings.locale = "zh-TW".into();
+            settings.voice_id = "custom-voice".into();
+            settings.max_concurrent_agents = 5;
+            store::save_settings(&settings).expect("save settings");
+
+            let exported = settings_export_json().expect("export settings");
+            let parsed: serde_json::Value =
+                serde_json::from_str(&exported).expect("export is valid json");
+            assert_eq!(parsed["theme"], "dark");
+            assert_eq!(parsed["locale"], "zh-TW");
+            assert_eq!(parsed["voiceId"], "custom-voice");
+            assert_eq!(parsed["maxConcurrentAgents"], 5);
+
+            // Mutate on-disk settings so we can prove import actually restores them.
+            let mut other = AppSettings::default();
+            other.theme = "light".into();
+            store::save_settings(&other).expect("save other settings");
+
+            let imported = settings_import_json(&exported).expect("import settings");
+            assert_eq!(imported.theme, "dark");
+            assert_eq!(imported.locale, "zh-TW");
+            assert_eq!(imported.voice_id, "custom-voice");
+            assert_eq!(imported.max_concurrent_agents, 5);
+
+            let reloaded = store::load_settings();
+            assert_eq!(reloaded.theme, "dark");
+            assert_eq!(reloaded.voice_id, "custom-voice");
+        });
+    }
+
+    #[test]
+    fn export_redacts_browser_cookies_and_import_preserves_existing_ones() {
+        let _g = ENV_LOCK.lock().unwrap();
+        with_temp_home("grok-app-settings-redact-test", || {
+            let mut settings = AppSettings::default();
+            settings
+                .browser_cookies
+                .insert("__github_pat__".into(), "ghp_supersecret".into());
+            settings
+                .browser_cookies
+                .insert("example.com".into(), "session=abc".into());
+            store::save_settings(&settings).expect("save settings with cookies");
+
+            let exported = settings_export_json().expect("export settings");
+            assert!(
+                !exported.contains("ghp_supersecret"),
+                "exported settings must never contain the GitHub PAT"
+            );
+            assert!(
+                !exported.contains("session=abc"),
+                "exported settings must never contain saved browser cookies"
+            );
+
+            // Importing a settings file that (correctly) omits browserCookies
+            // must not wipe out the current cookie/PAT store.
+            let imported = settings_import_json(&exported).expect("import settings");
+            assert_eq!(
+                imported.browser_cookies.get("__github_pat__").map(String::as_str),
+                Some("ghp_supersecret")
+            );
+            assert_eq!(
+                imported.browser_cookies.get("example.com").map(String::as_str),
+                Some("session=abc")
+            );
+        });
+    }
+
+    #[test]
+    fn import_rejects_invalid_json() {
+        let _g = ENV_LOCK.lock().unwrap();
+        with_temp_home("grok-app-settings-invalid-test", || {
+            let err = settings_import_json("not valid json").unwrap_err();
+            assert!(err.contains("invalid settings file"));
+        });
+    }
 }
 
 #[tauri::command]
@@ -2048,6 +2278,15 @@ pub async fn fs_list_dir(
     relative: Option<String>,
 ) -> Result<Vec<crate::fs_browser::FsEntry>, String> {
     crate::fs_browser::list_dir(&project_path, relative.as_deref().unwrap_or(""))
+}
+
+/// Recursively list every file under `project_path` (relative paths, `/`
+/// separators, capped at [`crate::fs_browser::MAX_RECURSIVE_FILES`]) for the
+/// ⌘P fuzzy file finder. Unlike `fs_list_dir` (single directory, used by the
+/// `@file:` mention picker), this walks the whole project tree.
+#[tauri::command]
+pub async fn list_project_files_recursive(project_path: String) -> Result<Vec<String>, String> {
+    crate::fs_browser::list_files_recursive(&project_path)
 }
 
 #[tauri::command]
@@ -3503,6 +3742,31 @@ fn attach_skill_enabled(skills: Vec<SkillDto>) -> Vec<serde_json::Value> {
 #[tauri::command]
 pub async fn extensions_get() -> Result<crate::extensions::ExtensionsPrefs, String> {
     Ok(crate::extensions::load_prefs())
+}
+
+/// Captured stderr/stdout log lines for an MCP server, for Settings →
+/// Extensions → "View logs".
+///
+/// **Scope-down (documented, not an oversight):** this app never spawns MCP
+/// server processes itself. MCP servers are children of the external `grok
+/// agent stdio` CLI process (see `acp_client.rs` — the host only ever spawns
+/// `grok`, then talks ACP JSON-RPC over its stdio; the CLI reads
+/// `config.toml` and launches/manages MCP subprocesses entirely inside its
+/// own process tree, which this app has no handle into). So there is no
+/// stdout/stderr pipe here to buffer from.
+///
+/// Capturing real logs would require either (a) upstream `grok` CLI support
+/// for forwarding MCP server logs over ACP (a protocol change outside this
+/// repo), or (b) this app taking over MCP process spawning itself — a deep,
+/// risky rework of already-working session/process management. Per the
+/// feature spec, we scope this down to a clearly-labeled empty result; the
+/// UI shows "logs not yet available" rather than pretending to have data.
+/// `server_name` is accepted (not `_server_name`) so the signature is ready
+/// to key a real per-server ring buffer the moment log capture exists.
+#[tauri::command]
+pub async fn get_plugin_logs(server_name: String) -> Result<Vec<String>, String> {
+    let _ = server_name;
+    Ok(Vec::new())
 }
 
 /// Toggle one MCP server; persists prefs, syncs agent-home/config, soft-respawns.
@@ -5125,6 +5389,105 @@ pub async fn git_file_diff(
         relative_path: Some(rel),
         reason: None,
     })
+}
+
+/// Per-line `git blame` annotations for a tracked file (ResourceViewer file
+/// preview gutter — distinct from the Changes-panel diff view). Soft-fails
+/// with a clear error string on any failure (untracked file, not a git
+/// repo, git missing, …) — the frontend shows `resources.blameUnavailable`.
+#[tauri::command]
+pub async fn git_blame_file(
+    project_path: String,
+    relative_path: String,
+) -> Result<Vec<crate::git_blame::BlameLine>, String> {
+    let project = normalize_fs_path(&project_path);
+    let target = normalize_fs_path(&relative_path);
+    if project.is_empty() || target.is_empty() {
+        return Err("empty path".into());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Err("project not a directory".into());
+    }
+    git_probe_work_tree(&project)?;
+
+    // Accept either a project-relative or an absolute path (same tolerant
+    // handling as `git_file_diff`) so callers don't need to pre-compute it.
+    let rel = {
+        let t = std::path::PathBuf::from(&target);
+        match t.strip_prefix(&proj) {
+            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Err(_) => {
+                let p = project.trim_end_matches('/').replace('\\', "/");
+                let a = target.replace('\\', "/");
+                if a.starts_with(&(p.clone() + "/")) {
+                    a[p.len() + 1..].to_string()
+                } else {
+                    target.clone()
+                }
+            }
+        }
+    };
+    if rel.is_empty() || rel == "." {
+        return Err("not a file path".into());
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let out = std::process::Command::new("git")
+            .args(["-C", &project, "blame", "--line-porcelain", "--", &rel])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(if err.is_empty() {
+                "git blame failed".to_string()
+            } else {
+                err.chars().take(200).collect()
+            });
+        }
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        Ok(crate::git_blame::parse_blame_porcelain(&text))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Find-in-files content search across a project's workspace (greps file
+/// bodies — distinct from `sessions_search`, which greps chat journals, and
+/// from any filename-only fuzzy finder). Prefers `rg` when present on PATH;
+/// falls back to a hand-rolled recursive walker otherwise. Infallible by
+/// design — worst case returns an empty vec.
+#[tauri::command]
+pub async fn search_workspace_content(
+    project_path: String,
+    query: String,
+    max_results: Option<u32>,
+) -> Result<Vec<crate::workspace_search::WorkspaceSearchHit>, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Ok(Vec::new());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Ok(Vec::new());
+    }
+    let cap = max_results
+        .unwrap_or(crate::workspace_search::DEFAULT_MAX_RESULTS)
+        .clamp(1, crate::workspace_search::DEFAULT_MAX_RESULTS);
+    let q = query;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::workspace_search::search_workspace_content(&proj, &q, cap)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Whether `rg` (ripgrep) is on PATH — the frontend shows a soft note
+/// (`search.ripgrepUnavailable`) when falling back to the slower walker.
+#[tauri::command]
+pub async fn workspace_search_rg_available() -> Result<bool, String> {
+    Ok(which::which("rg").is_ok())
 }
 
 // ── Workspace git status (Changes panel: Session + Workspace) ──────────────

@@ -471,6 +471,14 @@ export async function cliCheckUpdate() {
   return invoke<CliUpdateCheck>("cli_check_update");
 }
 
+/**
+ * Raw `CHANGELOG.md` markdown for the "What's new" panel. Parse out the top
+ * `## [X.Y.Z]` section with `parseLatestChangelogEntry` from `@/lib/changelog`.
+ */
+export async function readChangelog() {
+  return invoke<string>("read_changelog");
+}
+
 export async function projectsList() {
   return invoke<
     Array<{
@@ -661,6 +669,53 @@ export async function gitShowFile(projectPath: string, path: string) {
   return invoke<GitShowFileResult>("git_show_file", { projectPath, path });
 }
 
+/** Per-line `git blame` annotation (ResourceViewer file-preview gutter). */
+export interface BlameLine {
+  lineNumber: number;
+  author: string;
+  date: string;
+  commitShort: string;
+  summary?: string | null;
+}
+
+/**
+ * Soft-fails by throwing a clear error string (untracked file, not a git
+ * repo, git missing, …) — callers should catch and show
+ * `resources.blameUnavailable`.
+ */
+export async function gitBlameFile(projectPath: string, relativePath: string) {
+  return invoke<BlameLine[]>("git_blame_file", { projectPath, relativePath });
+}
+
+/** Find-in-files content search hit (greps file bodies, not filenames). */
+export interface WorkspaceSearchHit {
+  path: string;
+  lineNumber: number;
+  lineText: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+/** Content search across a project's workspace — prefers `rg`, falls back to a built-in walker. */
+export async function searchWorkspaceContent(
+  projectPath: string,
+  query: string,
+  maxResults = 500,
+) {
+  if (!isTauri()) return [] as WorkspaceSearchHit[];
+  return invoke<WorkspaceSearchHit[]>("search_workspace_content", {
+    projectPath,
+    query,
+    maxResults,
+  });
+}
+
+/** Whether `rg` (ripgrep) is on PATH — drives the `search.ripgrepUnavailable` hint. */
+export async function workspaceSearchRgAvailable() {
+  if (!isTauri()) return false;
+  return invoke<boolean>("workspace_search_rg_available", {});
+}
+
 // ── Git mutating operations (stage / commit / push / PR) ───────────────────
 // Unlike the read-only helpers above, these throw / reject on failure — the
 // Changes panel toolbar + CommitDialog surface the error directly.
@@ -795,6 +850,16 @@ export async function fsListDir(projectPath: string, relative = "") {
     projectPath,
     relative: relative || null,
   });
+}
+
+/**
+ * Recursively list every file under a project root (relative paths, `/`
+ * separators, capped server-side at 5000 entries) for the ⌘P fuzzy file
+ * finder. Distinct from `fsListDir`, which only lists one directory (used by
+ * the `@file:` mention picker).
+ */
+export async function listProjectFilesRecursive(projectPath: string) {
+  return invoke<string[]>("list_project_files_recursive", { projectPath });
 }
 
 /** Read file under project root for preview (text or base64). */
@@ -934,6 +999,10 @@ export async function sessionsList() {
       prState?: string;
       /** User-defined labels for sidebar filtering. */
       tags?: string[];
+      /** Bookmark note; `undefined`/absent = not bookmarked, "" = bookmarked with no note. */
+      bookmarkNote?: string | null;
+      /** Session folder membership — at most one folder (unlike `tags`). */
+      folderId?: string;
     }>
   >("sessions_list");
 }
@@ -1038,6 +1107,19 @@ export async function sessionSetPinned(id: string, pinned: boolean) {
 
 export async function sessionSetTags(id: string, tags: string[]) {
   return invoke("session_set_tags", { id, tags });
+}
+
+/**
+ * Bookmark (or unbookmark) a session with an attached note.
+ * `note: null` clears the bookmark; `note: ""` bookmarks with no note.
+ */
+export async function sessionSetBookmark(id: string, note: string | null) {
+  return invoke("session_set_bookmark", { id, note });
+}
+
+/** Assign (or clear, with `folderId = null`) a session's folder membership. */
+export async function sessionSetFolder(sessionId: string, folderId: string | null) {
+  return invoke("session_set_folder", { sessionId, folderId });
 }
 
 export async function sessionSetSettled(id: string, settledAt: string | null) {
@@ -1191,6 +1273,18 @@ export interface AppSettings {
   voiceMicDeviceId?: string;
   /** Play audible chime on dictation start/stop. */
   voiceFeedbackChime?: boolean;
+  /**
+   * Automatically speak new assistant replies aloud via the browser
+   * `SpeechSynthesis` API (regular chat, not a Live Voice session).
+   * Default false — opt-in.
+   */
+  autoReadReplies?: boolean;
+  /**
+   * Interpret a small fixed set of spoken command phrases ("send message",
+   * "new session", "stop dictation") during dictation as app actions instead
+   * of inserting them as literal text. Default false — opt-in.
+   */
+  voiceCommandsEnabled?: boolean;
   /** Timestamp display format. */
   timestampFormat?: string;
   /** Sidebar sort order. */
@@ -1228,6 +1322,11 @@ export interface AppSettings {
   wallpaperBlur?: number;
   /** Custom accent color override (hex). `null`/unset = theme default. */
   accentColor?: string | null;
+  /**
+   * Last app version (top `## [X.Y.Z]` CHANGELOG.md section) the user has
+   * seen the "What's new" panel for. `null`/unset = never shown.
+   */
+  lastSeenVersion?: string | null;
 }
 
 export interface VoiceSessionState {
@@ -1408,6 +1507,28 @@ export async function composerPrefsSet(body: {
 
 export async function settingsSet(settings: Record<string, unknown>) {
   return invoke("settings_set", { settings });
+}
+
+/**
+ * Export current app settings as pretty JSON. Prompts a native save dialog
+ * (defaulting to `grok-app-settings.json`) on the Rust side; the returned
+ * string is the JSON that was (or would have been) written, regardless of
+ * whether the user picked a destination. Never includes `browserCookies`
+ * (may hold secrets like a saved GitHub PAT) — everything else in
+ * `AppSettings` is non-sensitive.
+ */
+export async function exportSettings() {
+  return invoke<string>("export_settings");
+}
+
+/**
+ * Import app settings. With no argument, prompts a native open-file dialog
+ * filtered to `.json`; pass `json` directly to import programmatically
+ * (e.g. tests) without a dialog. Throws if the dialog is cancelled or the
+ * file does not parse as `AppSettings`.
+ */
+export async function importSettings(json?: string) {
+  return invoke<void>("import_settings", { json: json ?? null });
 }
 
 /** Update live Host permission policy + persist at configured prefs scope. */
@@ -1649,6 +1770,20 @@ export async function inspectMcp(projectPath?: string | null) {
   return invoke<InspectMcpResult>("inspect_mcp", {
     projectPath: projectPath ?? null,
   });
+}
+
+/**
+ * Captured log lines for an MCP server (Settings → Extensions → "View logs").
+ *
+ * Currently always resolves to `[]` — this app spawns only the `grok agent
+ * stdio` CLI process; MCP servers are children of *that* CLI's own process
+ * tree, so there's no stdout/stderr handle here to buffer from. See the
+ * `get_plugin_logs` Rust command doc comment for the full rationale. The
+ * signature is real (keyed by server name) so a future host-side log capture
+ * can slot in without an API change.
+ */
+export async function getPluginLogs(serverName: string) {
+  return invoke<string[]>("get_plugin_logs", { serverName });
 }
 
 // ── Project inspect summary (`grok inspect --json`, secret-safe DTO) ────────
@@ -2461,6 +2596,34 @@ export async function projectSetSpace(
 ): Promise<void> {
   if (!isTauri()) return;
   await invoke("project_set_space", { id, spaceId });
+}
+
+// ─── Session folders ────────────────────────────────────────────────────────
+// Ad-hoc named groupings of *sessions* — distinct from Grok Spaces (which
+// group projects) and from session `tags` (multi-assignment labels). A
+// session belongs to at most one folder.
+
+export interface SessionFolderDto {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export async function foldersList(): Promise<SessionFolderDto[]> {
+  if (!isTauri()) return [];
+  return invoke<SessionFolderDto[]>("folders_list");
+}
+
+export async function folderCreate(name: string): Promise<SessionFolderDto> {
+  return invoke<SessionFolderDto>("folder_create", { name });
+}
+
+export async function folderRename(id: string, name: string): Promise<void> {
+  await invoke("folder_rename", { id, name });
+}
+
+export async function folderDelete(id: string): Promise<void> {
+  await invoke("folder_delete", { id });
 }
 
 // ─── Call Logs, Presets, Export, Plugin Install with Progress ─────────────

@@ -26,6 +26,7 @@ const en = {
   "sidebar.spaces": "Spaces",
   "sidebar.addSpace": "New space",
   "sidebar.allSpaces": "All",
+  "sidebar.folders": "Folders",
   "sidebar.noProjectsInSpace": "No projects in this space yet.",
   "sidebar.untrusted": "untrusted",
   "sidebar.pathMissing": "missing",
@@ -70,6 +71,15 @@ const en = {
   "space.delete": "Delete space",
   "space.deleteConfirm":
     'Delete "{name}"? Projects in this space are kept, just ungrouped.',
+  "folder.new": "New folder",
+  "folder.namePlaceholder": "Folder name",
+  "folder.rename": "Rename folder",
+  "folder.delete": "Delete folder",
+  "folder.deleteConfirm":
+    'Delete "{name}"? Sessions in this folder are kept, just unfoldered.',
+  "folder.moveToFolder": "Move to folder…",
+  "folder.removeFromFolder": "Remove from folder",
+  "folder.noFolders": "No folders yet",
   "project.removeConfirmDetail":
     'Remove "{name}" from the app list? The folder on disk and related chats are kept.',
   "project.trustConfirm":
@@ -257,6 +267,9 @@ const en = {
   "resources.editorAria": "Edit {name}",
   "resources.saveFailed": "Could not save file",
   "resources.saveNoPath": "No path to save",
+  "resources.blameShow": "Show blame",
+  "resources.blameHide": "Hide blame",
+  "resources.blameUnavailable": "Blame unavailable for this file",
   "resources.conflictTitle": "File changed on disk",
   "resources.conflictBody":
     "This file was changed by the agent or another app while you were editing. Reload the disk version, or overwrite with your buffer.",
@@ -566,6 +579,16 @@ const en = {
   "search.addProject": "Add project",
   "search.matchCount": "{n} matches",
   "search.searchingContent": "Searching messages…",
+
+  // Find-in-files content search (SearchPanel "Files" mode) — distinct from
+  // chat/session search above and from any filename-only fuzzy finder.
+  "search.sessionsTab": "Sessions",
+  "search.filesTab": "Files",
+  "search.filesPlaceholder": "Search file contents in this project…",
+  "search.filesEmpty": "No matching lines found",
+  "search.filesEmptyProject": "Open a project to search its files",
+  "search.ripgrepUnavailable":
+    "ripgrep (rg) not found — using the slower built-in search",
 
   // Plan card
   "plan.waiting": "Waiting for plan",
@@ -899,6 +922,15 @@ const en = {
     "Reset all settings to defaults? This cannot be undone.",
   "settings.restoreDefaultsDesc":
     "Reset all settings to their factory defaults.",
+  "settings.exportSettings": "Export settings…",
+  "settings.exportSettingsDesc":
+    "Save all app settings to a JSON file you can back up or move to another machine.",
+  "settings.importSettings": "Import settings…",
+  "settings.importSettingsDesc":
+    "Load app settings from a previously exported JSON file.",
+  "settings.importSettingsSuccess": "Settings imported.",
+  "settings.importSettingsError": "Import failed: {error}",
+  "settings.exportSettingsSuccess": "Settings exported.",
   "settings.sidebar.previewCount": "Message preview lines",
   "settings.sidebar.previewCountDesc":
     "How many message lines to show per chat in the sidebar (1-15).",
@@ -1183,6 +1215,7 @@ const en = {
   "shortcuts.send": "Send message",
   "shortcuts.help": "Show shortcuts",
   "shortcuts.spaceSwitch": "Switch space (while Grok is focused)",
+  "shortcuts.fileFinder": "Find file in project",
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
@@ -1454,6 +1487,8 @@ const en = {
   "chat.scrollBottom": "Scroll to latest",
   "chat.codeWrap": "Wrap lines",
   "chat.codeUnwrap": "No wrap",
+  "chat.speakReply": "Speak reply aloud",
+  "chat.stopSpeaking": "Stop speaking",
   "chat.codeExpand": "Expand",
   "chat.codeCollapse": "Collapse",
   "chat.codeLines": "lines",
@@ -1582,6 +1617,17 @@ const en = {
   "voice.feedbackChime": "Feedback chime",
   "voice.feedbackChimeDesc": "Play a chime when voice recording starts and stops",
 
+  "settings.chatReadAloud": "Chat read-aloud",
+  "settings.autoReadReplies": "Automatically read new replies aloud",
+  "settings.autoReadRepliesDesc":
+    "Speak each new assistant reply aloud as soon as it finishes, using your device's built-in text-to-speech. Works in regular chat, not just Live Voice.",
+  "settings.voiceCommands": "Voice command hotkeys",
+  "settings.voiceCommandsDesc":
+    "During dictation, treat a small set of spoken phrases as app actions instead of inserting them as text. Off by default. Only fires when the phrase is the entire thing you said — not when mentioned mid-sentence.",
+  "settings.voiceCommandsPhraseSend": "“Send message” / “Send it” — send the current draft",
+  "settings.voiceCommandsPhraseNewSession": "“New session” / “New chat” — start a new session",
+  "settings.voiceCommandsPhraseStop": "“Stop dictation” — end dictation",
+
   "cli.updateAvailable": "Grok Build v{v} is available",
   "cli.updateNow": "Update",
   "cli.winSmartScreenWarn":
@@ -1599,6 +1645,12 @@ const en = {
   "session.newTagPlaceholder": "New tag… (Enter to add)",
   "session.noTags": "No tags yet",
 
+  // Session bookmarking with notes
+  "session.bookmark": "Bookmark this session…",
+  "session.bookmarkNote": "Bookmark note",
+  "session.bookmarkNotePlaceholder": "Note… (optional)",
+  "session.removeBookmark": "Remove bookmark",
+
   // Sidebar tag-chip filter row
   "sidebar.tagFilter.all": "All tags",
   "sidebar.tagFilter.clear": "Clear tag filters",
@@ -1608,6 +1660,21 @@ const en = {
   "sidebar.reopenLastClosedEmpty": "No recently closed chats",
   "shortcuts.reopenClosed": "Reopen last closed chat",
   "toast.sessionReopened": "Reopened “{title}”",
+
+  // What's new / changelog panel
+  "whatsNew.title": "What's new in v{v}",
+  "whatsNew.close": "Close",
+  "whatsNew.viewAgain": "What's new",
+
+  // ⌘P fuzzy file finder (distinct from ⌘K session search)
+  "fileFinder.placeholder": "Search files in this project…",
+  "fileFinder.empty": "No matching files",
+  "fileFinder.loading": "Indexing project files…",
+
+  // Extensions → MCP server log viewer
+  "extensions.viewLogs": "View logs",
+  "extensions.logsEmpty": "Logs not yet available for this server",
+  "extensions.logsRefresh": "Refresh",
 } as const;
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {

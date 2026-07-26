@@ -76,6 +76,96 @@
   cursor: text;
 }
 
+/* ── Blame gutter mode (per-line rows; ResourceViewer file preview) ─────── */
+
+.rp-code__blame-scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rp-code__blame-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.rp-code__blame-gutter {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 11rem;
+  padding: 0 10px 0 8px;
+  -webkit-user-select: none;
+  user-select: none;
+  color: var(--text-tertiary);
+  border-right: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-code, var(--bg-hover)) 70%, transparent);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  font-size: 11px;
+  cursor: default;
+}
+
+.rp-code__blame-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent, #5b9dff) 22%, transparent);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.rp-code__blame-date {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.rp-code__blame-ln {
+  flex: 0 0 auto;
+  padding: 0 0 0 8px;
+  opacity: 0.75;
+}
+
+.rp-code__blame-pre {
+  flex: 1;
+  margin: 0;
+  padding: 0 16px 0 14px;
+  min-width: 0;
+  overflow: visible;
+  background: transparent !important;
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
+.rp-code__blame-pre code.hljs {
+  display: block;
+  padding: 0 !important;
+  background: transparent !important;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+  tab-size: 2;
+}
+
 .rp-code__footer {
   flex-shrink: 0;
   padding: 6px 12px;
