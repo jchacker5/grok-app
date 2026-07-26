@@ -11,6 +11,8 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-07-25
+
 ### Added
 
 - **CLI-native slash commands in composer palette**: the app now fetches built-in slash commands bundled with the Grok Build CLI via `grok inspect --json` (future `commands` field) and `~/.grok/commands.json` manifest. CLI commands appear under a "CLI" section in the `/` palette, showing their `/name` and description; selecting one inserts the command text into the composer. Forward-compatible — empty list when no CLI commands are yet exposed. (`cli_builtin_commands` Rust command + `CommandsListResult` API + `cliCommandsToSlashItems` catalog)
@@ -23,12 +25,22 @@ See `docs/llm-wiki/release.md`.
 - **Workspace Diff & Selective Staging Panel**: Visual Git diff viewer (unified & side-by-side) with file/hunk staging and commit panel.
 - **Community & Custom Prompt Library**: Library of built-in system prompts (Code Review, Refactor, Unit Tests, Copywriting, Analysis) and custom prompt manager.
 - **Custom Slash Commands Manager**: Define custom slash commands (`/name`) for text template insertion and shell script execution with test runner.
-- **Embedded Browser Preview**: Embedded browser panel with navigation controls, reload, and domain cookie extractor.
+- **Embedded Browser Preview**: native-webview browser panel (avoids the X-Frame-Options blank-page problem plain iframes hit on GitHub etc.) with an editable address bar, back/forward history, reload, zoom, devtools toggle, element picker (sends a selector + outerHTML snippet to the composer as an attachment), screenshot capture, and screen recording (start/stop/save).
+- **Agent Memory Viewer**: browse and clear the agent's persisted memory entries (Settings panel).
+- **GitHub integration section**: per-session GitHub status/actions surfaced in Settings.
+- **Notification settings**: configure desktop notification behavior in Settings.
+- **Plugin dependency graph**: visualize MCP/skill plugin dependencies in Settings → Extensions.
+- **Sync settings section**: view sync method/path status in Settings.
 - **Per-Project AGENTS.md Rules Editor**: In-app rules editor for `AGENTS.md`, `CLAUDE.md`, and `.grok/AGENTS.md` with starter templates and ⌘S save.
 - **Export Chat as PNG Image**: Carbon-style styled PNG image generator with message selection, themes (Dark, Light, Sepia), and metadata toggle.
 - **Session Diff & Branch Comparison**: Compare two chat sessions side-by-side or unified to view prompt and response diffs.
 - **Session Analytics & Token Usage Dashboard**: Token usage dashboard with overview statistics, model distribution breakdown, and per-session analytics.
 - **Multi-Model Parallel Comparison**: Side-by-side card grid for comparing responses from multiple AI models simultaneously.
+
+### Fixed
+
+- **Embedded Browser regression**: a prior commit replaced the native-webview browser panel with a plain sandboxed iframe (blank-pages on GitHub etc.) and a fake cookie-extractor button that wrote a placeholder string instead of a real cookie. Restored the native-webview version and dropped the non-functional cookie button.
+- **Build break**: three call sites used `dirs::home_dir()` without `dirs` being a declared dependency; switched to the existing `process_util::user_home()` helper.
 
 ## [0.1.10] - 2026-07-25
 

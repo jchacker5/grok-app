@@ -10480,6 +10480,29 @@ textarea::-webkit-scrollbar-thumb:active,
   -webkit-user-select: text;
 }
 
+.embedded-browser__addr-form {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.embedded-browser__addr-input {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.embedded-browser__addr-input:focus {
+  outline: none;
+  border-color: var(--border-focus, var(--text-secondary));
+}
+
 .embedded-browser__host {
   flex: 1;
   min-height: 0;

@@ -57,3 +57,48 @@ export interface CustomCommand {
   actionValue: string;
   shortcut?: string;
 }
+
+export interface NotificationSettings {
+  desktopEnabled: boolean;
+  soundEnabled: boolean;
+  inAppBadge: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  notifyOnCompletion: boolean;
+  notifyOnError: boolean;
+}
+
+export interface DepNode {
+  id: string;
+  label: string;
+  version: string;
+  installed: boolean;
+}
+
+export interface DepEdge {
+  from: string;
+  to: string;
+  relation: string;
+}
+
+export interface DepGraph {
+  nodes: DepNode[];
+  edges: DepEdge[];
+}
+
+export interface MemoryEntry {
+  key: string;
+  value: string;
+  timestamp: number;
+  source: string;
+  category: string;
+  confidence: number;
+}
+
+export interface SyncStatus {
+  method: string;
+  path: string;
+  lastSynced?: number;
+  isActive: boolean;
+}

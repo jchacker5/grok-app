@@ -475,6 +475,8 @@ const en = {
   "resources.openInPanel": "Open in panel",
   "resources.openExternal": "Open externally",
   "resources.browserReload": "Reload",
+  "resources.browserBack": "Back",
+  "resources.browserForward": "Forward",
   "resources.browserFailed": "Could not load this page in the built-in browser.",
   "resources.browserIframeHint": "Some sites block iframe embedding. Use “Open externally”, or run the desktop app for a real webview.",
   "resources.zoomIn": "Zoom in",
@@ -772,6 +774,34 @@ const en = {
     "Manage saved model, effort, and system prompt configurations",
   "settings.noPresetsSaved":
     "No saved presets yet. Save one from the composer toolbar!",
+
+  "settings.notifPrefs": "Notification Preferences",
+  "settings.notifPrefsDesc":
+    "Per-channel toggles, quiet hours, and event notification triggers",
+  "settings.quietHours": "Do Not Disturb",
+  "settings.quietHoursDesc":
+    "Suppress notifications during configured quiet hours",
+  "settings.github": "GitHub Integration",
+  "settings.githubDesc":
+    "Link GitHub issues, PRs, and commits into sessions; create issues from transcripts",
+  "settings.githubToken": "Personal Access Token (PAT)",
+  "settings.githubTokenPh": "ghp_xxxxxxxxxxxx",
+  "settings.githubTestConn": "Test Connection",
+  "settings.sync": "Multi-Machine Sync",
+  "settings.syncDesc":
+    "Sync sessions, settings, prompts, and commands across machines via a shared folder",
+  "settings.syncPath": "Sync Storage Path",
+  "settings.syncMigrate": "Migrate Data to Sync Folder",
+  "ext.depGraph": "Plugin Dependency Graph",
+  "ext.depGraphDesc": "Visual topology of installed plugin dependencies",
+  "agentMemory.title": "Agent Memory",
+  "agentMemory.search": "Search memories",
+  "agentMemory.noMemories":
+    "No memories stored yet. The agent builds memory as you interact.",
+  "agentMemory.clearAll": "Clear All",
+  "agentMemory.clearConfirm":
+    "Clear all stored memories? This operation cannot be undone.",
+  "agentMemory.refresh": "Refresh",
 
   "settings.addProjectBaseDir": "Add project starts in",
   "settings.addProjectBaseDirDesc":
@@ -1934,6 +1964,8 @@ const zh: Record<MessageKey, string> = {
   "resources.openInPanel": "在资源面板打开",
   "resources.openExternal": "用系统应用打开",
   "resources.browserReload": "刷新",
+  "resources.browserBack": "后退",
+  "resources.browserForward": "前进",
   "resources.browserFailed": "内置浏览器无法加载此页面。",
   "resources.browserIframeHint": "部分网站禁止 iframe 嵌入。请用「用系统应用打开」，或在桌面端用原生 WebView 浏览。",
   "resources.zoomIn": "放大",
@@ -2219,6 +2251,28 @@ const zh: Record<MessageKey, string> = {
   "settings.sessionPresetsDesc":
     "管理已保存的模型、思考层级与系统提示词配置",
   "settings.noPresetsSaved": "暂无已保存预设。可通过输入框工具栏保存新预设！",
+
+  "settings.notifPrefs": "通知偏好",
+  "settings.notifPrefsDesc": "按通道切换、静默时段和事件通知触发器",
+  "settings.quietHours": "免打扰",
+  "settings.quietHoursDesc": "在设定的静默时段内屏蔽通知",
+  "settings.github": "GitHub 集成",
+  "settings.githubDesc": "将 GitHub Issue、PR 和提交关联到会话中；从对话生成 Issue",
+  "settings.githubToken": "个人访问令牌 (PAT)",
+  "settings.githubTokenPh": "ghp_xxxxxxxxxxxx",
+  "settings.githubTestConn": "测试连接",
+  "settings.sync": "多设备同步",
+  "settings.syncDesc": "通过共享文件夹跨设备同步会话、设置、提示词和命令",
+  "settings.syncPath": "同步存储路径",
+  "settings.syncMigrate": "迁移数据到同步文件夹",
+  "ext.depGraph": "插件依赖关系图",
+  "ext.depGraphDesc": "已安装插件依赖关系的可视化拓扑图",
+  "agentMemory.title": "代理记忆",
+  "agentMemory.search": "搜索记忆",
+  "agentMemory.noMemories": "尚无记忆。代理在交互过程中会逐步建立记忆。",
+  "agentMemory.clearAll": "清除全部",
+  "agentMemory.clearConfirm": "确定清除所有记忆？此操作不可撤销。",
+  "agentMemory.refresh": "刷新",
 
   "prov.emptyTitle": "暂无提供商",
   "prov.detailEmpty": "选择左侧提供商，或添加新的。",

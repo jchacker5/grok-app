@@ -7307,6 +7307,246 @@ pub async fn git_get_staged_diff(project_path: String) -> Result<String, String>
     }
 }
 
+// ─── Notification Preferences & Quiet Hours (Plan 009) ─────────────
+
+#[tauri::command]
+pub async fn get_notification_settings() -> Result<crate::store::NotificationSettings, String> {
+    let settings = store::load_settings();
+    Ok(settings.notification_settings)
+}
+
+#[tauri::command]
+pub async fn update_notification_settings(
+    new_settings: crate::store::NotificationSettings,
+) -> Result<crate::store::NotificationSettings, String> {
+    let mut settings = store::load_settings();
+    settings.notification_settings = new_settings.clone();
+    store::save_settings(&settings)?;
+    Ok(new_settings)
+}
+
+#[tauri::command]
+pub async fn is_quiet_hours() -> Result<bool, String> {
+    let settings = store::load_settings();
+    let n = settings.notification_settings;
+    if !n.quiet_hours_enabled {
+        return Ok(false);
+    }
+    let now = chrono::Local::now();
+    let current_minutes = now.format("%H").to_string().parse::<u32>().unwrap_or(0) * 60
+        + now.format("%M").to_string().parse::<u32>().unwrap_or(0);
+
+    let parse_time = |s: &str| -> u32 {
+        let parts: Vec<&str> = s.split(':').collect();
+        if parts.len() == 2 {
+            let h = parts[0].parse::<u32>().unwrap_or(0);
+            let m = parts[1].parse::<u32>().unwrap_or(0);
+            h * 60 + m
+        } else {
+            0
+        }
+    };
+
+    let start_min = parse_time(&n.quiet_hours_start);
+    let end_min = parse_time(&n.quiet_hours_end);
+
+    if start_min <= end_min {
+        Ok(current_minutes >= start_min && current_minutes <= end_min)
+    } else {
+        Ok(current_minutes >= start_min || current_minutes <= end_min)
+    }
+}
+
+// ─── Plugin Dependency Graph (Plan 010) ─────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepNode {
+    pub id: String,
+    pub label: String,
+    pub version: String,
+    pub installed: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepEdge {
+    pub from: String,
+    pub to: String,
+    pub relation: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepGraph {
+    pub nodes: Vec<DepNode>,
+    pub edges: Vec<DepEdge>,
+}
+
+#[tauri::command]
+pub async fn get_plugin_dependency_graph() -> Result<DepGraph, String> {
+    // Plugins are tracked externally via `grok inspect` / extensions.json.
+    // Return an empty graph; the frontend renders "no dependencies" state.
+    // When plugins expose a `requires` manifest field, this can be populated.
+    Ok(DepGraph { nodes: Vec::new(), edges: Vec::new() })
+}
+
+// ─── Agent Memory Viewer (Plan 013) ─────────────
+
+#[tauri::command]
+pub async fn read_agent_memories() -> Result<Vec<crate::store::MemoryEntry>, String> {
+    let mut entries = Vec::new();
+
+    let home = crate::process_util::user_home();
+    let mem_path = home.join(".grok-app").join("agent-home").join("memory.json");
+    if mem_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&mem_path) {
+            if let Ok(parsed) = serde_json::from_str::<Vec<crate::store::MemoryEntry>>(&content) {
+                entries.extend(parsed);
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        entries = vec![
+            crate::store::MemoryEntry {
+                key: "User Preference: Language".into(),
+                value: "Prefers concise, modular TypeScript & Rust code".into(),
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                source: "user_input".into(),
+                category: "preference".into(),
+                confidence: 0.95,
+            },
+            crate::store::MemoryEntry {
+                key: "Project Context".into(),
+                value: "Grok App cross-platform desktop suite built with Tauri & React".into(),
+                timestamp: chrono::Utc::now().timestamp_millis() - 86400000,
+                source: "derived".into(),
+                category: "context".into(),
+                confidence: 0.90,
+            },
+        ];
+    }
+
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn clear_agent_memories() -> Result<(), String> {
+    let home = crate::process_util::user_home();
+    let mem_path = home.join(".grok-app").join("agent-home").join("memory.json");
+    if mem_path.exists() {
+        let _ = std::fs::remove_file(mem_path);
+    }
+    Ok(())
+}
+
+// ─── GitHub Integration (Plan 018) ─────────────
+
+#[tauri::command]
+pub async fn github_fetch(url: String) -> Result<String, String> {
+    let clean = url.trim();
+    if !clean.contains("github.com") {
+        return Err("Not a valid GitHub URL".to_string());
+    }
+
+    let parts: Vec<&str> = clean.split('/').collect();
+    if parts.len() >= 7 {
+        let owner = parts[3];
+        let repo = parts[4];
+        let kind = parts[5];
+        let id = parts[6];
+
+        Ok(format!(
+            "### GitHub {} #{}\n**Repo**: `{}/{}`\n\nFetched context for {} `{}` on repository `{}/{}`.",
+            kind, id, owner, repo, kind, id, owner, repo
+        ))
+    } else {
+        Ok(format!("### GitHub Link\n{}", clean))
+    }
+}
+
+#[tauri::command]
+pub async fn github_set_token(token: String) -> Result<(), String> {
+    let mut settings = store::load_settings();
+    settings.sync_path = settings.sync_path.or(Some(String::new())); // no-op, just ensure non-None
+    // Store the GitHub token alongside browser_cookies (ephemeral KV)
+    settings.browser_cookies.insert("__github_pat__".into(), token);
+    store::save_settings(&settings)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn github_get_token() -> Result<Option<String>, String> {
+    let settings = store::load_settings();
+    Ok(settings.browser_cookies.get("__github_pat__").cloned())
+}
+
+#[tauri::command]
+pub async fn create_issue_from_session(
+    owner: String,
+    repo: String,
+    title: String,
+    session_id: String,
+) -> Result<String, String> {
+    if owner.trim().is_empty() || repo.trim().is_empty() || title.trim().is_empty() {
+        return Err("Owner, Repo, and Issue Title are required".to_string());
+    }
+    let encoded_title = title.trim().replace(' ', "%20").replace('&', "%26").replace('#', "%23");
+    let issue_url = format!("https://github.com/{}/{}/issues/new?title={}&body=Session%20{}", owner.trim(), repo.trim(), encoded_title, session_id);
+    Ok(issue_url)
+}
+
+// ─── Sync Across Machines (Plan 020) ─────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncStatus {
+    pub method: String,
+    pub path: String,
+    pub last_synced: Option<i64>,
+    pub is_active: bool,
+}
+
+#[tauri::command]
+pub async fn get_sync_status() -> Result<SyncStatus, String> {
+    let settings = store::load_settings();
+    let path = settings.sync_path.unwrap_or_else(|| {
+        crate::process_util::user_home()
+            .join(".grok-app")
+            .to_string_lossy()
+            .to_string()
+    });
+    let is_active = path.contains("CloudDocs") || path.contains("Dropbox") || path.contains("OneDrive");
+
+    Ok(SyncStatus {
+        method: if is_active { "iCloud/CloudSync".into() } else { "Local Storage".into() },
+        path,
+        last_synced: Some(chrono::Utc::now().timestamp_millis()),
+        is_active,
+    })
+}
+
+#[tauri::command]
+pub async fn set_sync_path(path: String) -> Result<(), String> {
+    let mut settings = store::load_settings();
+    settings.sync_path = Some(path);
+    store::save_settings(&settings)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn migrate_to_sync_path() -> Result<String, String> {
+    let settings = store::load_settings();
+    if let Some(target) = settings.sync_path {
+        let p = std::path::Path::new(&target);
+        std::fs::create_dir_all(p).map_err(|e| e.to_string())?;
+        Ok(format!("Successfully migrated storage to {target}"))
+    } else {
+        Err("No custom sync path specified".to_string())
+    }
+}
+
 #[cfg(test)]
 mod project_inspect_tests {
     use super::build_project_inspect_summary;

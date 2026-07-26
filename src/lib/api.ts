@@ -2552,3 +2552,79 @@ export async function gitGetStagedDiff(projectPath: string): Promise<string> {
   if (!isTauri()) return "";
   return invoke<string>("git_get_staged_diff", { projectPath });
 }
+
+import type { NotificationSettings, DepGraph, MemoryEntry, SyncStatus } from "./types";
+
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  if (!isTauri()) return {
+    desktopEnabled: true,
+    soundEnabled: true,
+    inAppBadge: true,
+    quietHoursEnabled: false,
+    quietHoursStart: "22:00",
+    quietHoursEnd: "08:00",
+    notifyOnCompletion: true,
+    notifyOnError: true,
+  };
+  return invoke<NotificationSettings>("get_notification_settings");
+}
+
+export async function updateNotificationSettings(newSettings: NotificationSettings): Promise<NotificationSettings> {
+  if (!isTauri()) return newSettings;
+  return invoke<NotificationSettings>("update_notification_settings", { newSettings });
+}
+
+export async function isQuietHours(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("is_quiet_hours");
+}
+
+export async function getPluginDependencyGraph(): Promise<DepGraph> {
+  if (!isTauri()) return { nodes: [], edges: [] };
+  return invoke<DepGraph>("get_plugin_dependency_graph");
+}
+
+export async function readAgentMemories(): Promise<MemoryEntry[]> {
+  if (!isTauri()) return [];
+  return invoke<MemoryEntry[]>("read_agent_memories");
+}
+
+export async function clearAgentMemories(): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("clear_agent_memories");
+}
+
+export async function githubFetch(url: string): Promise<string> {
+  if (!isTauri()) return url;
+  return invoke<string>("github_fetch", { url });
+}
+
+export async function githubSetToken(token: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("github_set_token", { token });
+}
+
+export async function githubGetToken(): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string | null>("github_get_token");
+}
+
+export async function createIssueFromSession(owner: string, repo: string, title: string, sessionId: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("create_issue_from_session", { owner, repo, title, sessionId });
+}
+
+export async function getSyncStatus(): Promise<SyncStatus> {
+  if (!isTauri()) return { method: "Local Storage", path: "~/.grok-app", isActive: false };
+  return invoke<SyncStatus>("get_sync_status");
+}
+
+export async function setSyncPath(path: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("set_sync_path", { path });
+}
+
+export async function migrateToSyncPath(): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("migrate_to_sync_path");
+}

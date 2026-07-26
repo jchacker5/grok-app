@@ -294,6 +294,12 @@ pub struct AppSettings {
     /// Saved browser domain cookies.
     #[serde(default)]
     pub browser_cookies: std::collections::HashMap<String, String>,
+    /// Notification preferences & quiet hours.
+    #[serde(default)]
+    pub notification_settings: NotificationSettings,
+    /// Configurable sync storage directory path.
+    #[serde(default)]
+    pub sync_path: Option<String>,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -402,6 +408,8 @@ impl Default for AppSettings {
             custom_prompts: Vec::new(),
             custom_commands: Vec::new(),
             browser_cookies: std::collections::HashMap::new(),
+            notification_settings: NotificationSettings::default(),
+            sync_path: None,
         }
     }
 }
@@ -1656,6 +1664,45 @@ pub struct SessionPreset {
     pub yolo: bool,
     pub temperature: f64,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationSettings {
+    pub desktop_enabled: bool,
+    pub sound_enabled: bool,
+    pub in_app_badge: bool,
+    pub quiet_hours_enabled: bool,
+    pub quiet_hours_start: String,
+    pub quiet_hours_end: String,
+    pub notify_on_completion: bool,
+    pub notify_on_error: bool,
+}
+
+impl Default for NotificationSettings {
+    fn default() -> Self {
+        Self {
+            desktop_enabled: true,
+            sound_enabled: true,
+            in_app_badge: true,
+            quiet_hours_enabled: false,
+            quiet_hours_start: "22:00".into(),
+            quiet_hours_end: "08:00".into(),
+            notify_on_completion: true,
+            notify_on_error: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryEntry {
+    pub key: String,
+    pub value: String,
+    pub timestamp: i64,
+    pub source: String,
+    pub category: String,
+    pub confidence: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
+import { PluginDependencyGraph } from "@/components/PluginDependencyGraph";
 import {
   IconExternalLink,
   IconFolder,
@@ -1204,6 +1205,9 @@ export function ExtensionsPanel({
           </div>
         </div>
       </GlassModal>
+
+      {/* Plugin Dependency Topology */}
+      <PluginDependencyGraph />
     </div>
   );
 }

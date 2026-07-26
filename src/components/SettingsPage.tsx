@@ -62,6 +62,9 @@ import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
+import { NotificationSettingsSection } from "@/components/NotificationSettingsSection";
+import { GitHubIntegrationSection } from "@/components/GitHubIntegrationSection";
+import { SyncSettingsSection } from "@/components/SyncSettingsSection";
 import { getUserOverrides } from "@/lib/keybindings";
 import {
   createT,
@@ -1773,6 +1776,9 @@ export function SettingsPage({
                 t={t}
               />
               <PresetsSettingsSection t={t} />
+              <NotificationSettingsSection />
+              <GitHubIntegrationSection />
+              <SyncSettingsSection />
             </div>
           </>
         )}

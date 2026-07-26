@@ -10,6 +10,7 @@ import {
   IconArchive as TbArchive,
   IconArrowBackUp as TbArrowBackUp,
   IconArrowLeft as TbArrowLeft,
+  IconArrowRight as TbArrowRight,
   IconArrowsMinimize as TbArrowsMinimize,
   IconBell as TbBell,
   IconBolt as TbBolt,
@@ -284,6 +285,7 @@ export const IconAlertTriangle = wrap(TbAlertTriangle);
 export const IconCheck = wrap(TbCheck);
 export const IconRobot = wrap(TbRobot);
 export const IconArrowLeft = wrap(TbArrowLeft);
+export const IconArrowRight = wrap(TbArrowRight);
 export const IconUser = wrap(TbUser);
 export const IconAppearance = wrap(TbBrush);
 export const IconLanguage = wrap(TbLanguage);

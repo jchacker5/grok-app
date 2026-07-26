@@ -82,6 +82,7 @@ import { SessionDiffView } from "@/components/SessionDiffView";
 import { SessionAnalyticsPanel } from "@/components/SessionAnalyticsPanel";
 import { MultiModelAnswer } from "@/components/MultiModelAnswer";
 import { WorkspaceDiffView } from "@/components/WorkspaceDiffView";
+import { AgentMemoryViewer } from "@/components/AgentMemoryViewer";
 import type { GoalConfig } from "@/lib/types";
 import * as api from "@/lib/api";
 import type { SpaceDto } from "@/lib/api";
@@ -546,6 +547,7 @@ export default function App() {
   const [agentsEditorOpen, setAgentsEditorOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [workspaceDiffOpen, setWorkspaceDiffOpen] = useState(false);
+  const [agentMemoryOpen, setAgentMemoryOpen] = useState(false);
   /** Hash route: workbench | settings/:section | automations */
   const [appView, setAppView] = useState<"workbench" | "settings">("workbench");
   /** Inside workbench: chat thread vs scheduled tasks list. */
@@ -8958,6 +8960,15 @@ export default function App() {
                 >
                   🌐 Browser
                 </button>
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => setAgentMemoryOpen(true)}
+                  title="Agent Memory Viewer"
+                  style={{ fontSize: "12px", padding: "4px 8px" }}
+                >
+                  🧠 Memory
+                </button>
                 <ComposerModelMenu
                   modelId={modelId}
                   effort={effort}
@@ -10100,7 +10111,7 @@ export default function App() {
           size="lg"
         >
           <div style={{ height: "450px" }}>
-            <EmbeddedBrowser onClose={() => setEmbeddedBrowserOpen(false)} />
+            <EmbeddedBrowser url="https://x.com" locale={locale} />
           </div>
         </GlassModal>
       )}
@@ -10143,6 +10154,19 @@ export default function App() {
       )}
 
       <MultiModelAnswer answers={[]} />
+
+      {agentMemoryOpen && (
+        <GlassModal
+          open={agentMemoryOpen}
+          onClose={() => setAgentMemoryOpen(false)}
+          title="Agent Memory Inspector"
+          size="lg"
+        >
+          <div style={{ height: "450px" }}>
+            <AgentMemoryViewer />
+          </div>
+        </GlassModal>
+      )}
 
       <span hidden data-layout-default={JSON.stringify(DEFAULT_LAYOUT)} />
     </div>
