@@ -93,7 +93,7 @@ import { WorkspaceDiffView } from "@/components/WorkspaceDiffView";
 import { AgentMemoryViewer } from "@/components/AgentMemoryViewer";
 import type { GoalConfig } from "@/lib/types";
 import * as api from "@/lib/api";
-import type { SpaceDto } from "@/lib/api";
+import type { SpaceDto, SessionFolderDto } from "@/lib/api";
 import {
   colorForSpaceIndex,
   spaceForShortcutIndex,
@@ -315,6 +315,7 @@ import {
   matchesTagFilters,
   toggleTag as toggleSessionTag,
 } from "@/lib/sessionTags";
+import { isFoldered, sessionsForFolderId } from "@/lib/sessionFolders";
 import {
   popClosedSession,
   pushClosedSession,
@@ -356,6 +357,8 @@ interface SessionRow {
   prState?: string;
   /** User-defined labels for sidebar filtering. */
   tags?: string[];
+  /** Session folder membership — at most one folder (unlike `tags`). */
+  folderId?: string | null;
 }
 
 type ContextMenuState =
@@ -365,6 +368,8 @@ type ContextMenuState =
   | { kind: "space"; id: string; x: number; y: number }
   | { kind: "session"; id: string; x: number; y: number }
   | { kind: "session-tags"; id: string; x: number; y: number }
+  | { kind: "session-folder"; id: string; x: number; y: number }
+  | { kind: "folder"; id: string; x: number; y: number }
   | null;
 
 /** In-app dialogs — window.prompt/confirm are unreliable in Tauri WebView. */
@@ -528,6 +533,8 @@ export default function App() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [spaces, setSpaces] = useState<SpaceDto[]>([]);
+  /** Session folders — ad-hoc, single-assignment session groupings (distinct from Grok Spaces, which group projects). */
+  const [folders, setFolders] = useState<SessionFolderDto[]>([]);
   /** View filter only — not app data, so it lives in localStorage, not settings. */
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(() => {
     try {
@@ -570,6 +577,8 @@ export default function App() {
   const messagesRef = useRef<ChatMessage[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const [projectsOpen, setProjectsOpen] = useState(true);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [foldersOpen, setFoldersOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState>(null);
   const [appDialog, setAppDialog] = useState<AppDialog>(null);
@@ -1055,16 +1064,18 @@ export default function App() {
         cliAuthPresent: false,
       });
       void api.spacesList().then(setSpaces).catch(() => {});
+      void api.foldersList().then(setFolders).catch(() => {});
       return;
     }
     try {
-      const [p, s, settings, cli, modelsRes, spacesRes] = await Promise.all([
+      const [p, s, settings, cli, modelsRes, spacesRes, foldersRes] = await Promise.all([
         api.projectsList(),
         api.sessionsList(),
         api.settingsGet(),
         api.probeCli(),
         api.modelsListAvailable().catch(() => null),
         api.spacesList().catch(() => []),
+        api.foldersList().catch(() => []),
       ]);
       setProjects(
         (p as Project[]).map((x) => ({
@@ -1073,6 +1084,7 @@ export default function App() {
         })),
       );
       setSpaces(spacesRes);
+      setFolders(foldersRes);
       setSessions(
         (
           s as Array<
@@ -1096,6 +1108,7 @@ export default function App() {
           prRef: x.prRef,
           prState: x.prState,
           tags: x.tags,
+          folderId: x.folderId,
         })),
       );
       void api.trayRefresh();
@@ -2514,6 +2527,7 @@ export default function App() {
       (s) =>
         s.projectId === projectId &&
         !s.archived &&
+        !isFoldered(s) &&
         matchesTagFilters(s, activeTagFilters),
     );
 
@@ -2521,8 +2535,20 @@ export default function App() {
     (s) =>
       (!s.projectId || !projects.some((p) => p.id === s.projectId)) &&
       !s.archived &&
+      !isFoldered(s) &&
       matchesTagFilters(s, activeTagFilters),
   );
+
+  /**
+   * Sessions assigned to a given folder — a session in a folder appears there
+   * instead of under its plain project (or "Other sessions") bucket, since
+   * folder membership is single-assignment (like a directory), unlike
+   * multi-assignment `tags`.
+   */
+  const sessionsForFolder = (folderId: string) =>
+    sessionsForFolderId(sessions, folderId).filter(
+      (s) => !s.archived && matchesTagFilters(s, activeTagFilters),
+    );
 
   /** Archived chats grouped by project for Settings → Archived. */
   const archivedGroups = useMemo(() => {
@@ -2590,6 +2616,7 @@ export default function App() {
           prRef: s.prRef,
           prState: s.prState,
           tags: s.tags,
+          folderId: s.folderId,
         })),
       );
       void api.trayRefresh();
@@ -2947,6 +2974,90 @@ export default function App() {
         }
       },
     });
+  };
+
+  const refreshFolders = async () => {
+    try {
+      setFolders(await api.foldersList());
+    } catch {
+      /* ignore */
+    }
+  };
+
+  /** Opens the "New folder..." prompt. When `andAssignSessionId` is given (from the
+   *  session context menu's "Move to folder... > New folder..." action), the newly
+   *  created folder is immediately assigned to that session. */
+  const createFolder = (andAssignSessionId?: string) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "prompt",
+      title: tr("folder.new"),
+      initial: "",
+      placeholder: tr("folder.namePlaceholder"),
+      onSubmit: async (name) => {
+        const next = name.trim();
+        if (!next) return;
+        try {
+          const created = await api.folderCreate(next);
+          await refreshFolders();
+          if (andAssignSessionId) {
+            await api.sessionSetFolder(andAssignSessionId, created.id);
+            await refreshSessions();
+          }
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  const renameFolder = (folder: SessionFolderDto) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "prompt",
+      title: tr("folder.rename"),
+      initial: folder.name,
+      onSubmit: async (name) => {
+        const next = name.trim();
+        if (!next || next === folder.name) return;
+        try {
+          await api.folderRename(folder.id, next);
+          await refreshFolders();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  const deleteFolder = (folder: SessionFolderDto) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "confirm",
+      title: tr("folder.delete"),
+      message: tr("folder.deleteConfirm", { name: folder.name }),
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await api.folderDelete(folder.id);
+          await refreshFolders();
+          await refreshSessions();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  /** Assign (or clear, with `folderId = null`) a session's folder membership. */
+  const moveSessionToFolder = async (s: SessionRow, folderId: string | null) => {
+    setCtxMenu(null);
+    try {
+      await api.sessionSetFolder(s.id, folderId);
+      await refreshSessions();
+    } catch (e) {
+      setLocalError(String(e));
+    }
   };
 
   const applySessionTitle = useCallback(
@@ -3486,6 +3597,12 @@ export default function App() {
     e.preventDefault();
     e.stopPropagation();
     setCtxMenu({ kind: "space", id: space.id, x: e.clientX, y: e.clientY });
+  };
+
+  const openFolderMenu = (e: ReactMouseEvent, folder: SessionFolderDto) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ kind: "folder", id: folder.id, x: e.clientX, y: e.clientY });
   };
 
   const searchHits = useMemo(
@@ -7143,6 +7260,216 @@ export default function App() {
     return out;
   }, [tr]);
 
+  /**
+   * Shared sidebar session row — identical markup for project-bucket
+   * sessions, project-less ("Other sessions") sessions, and folder sessions,
+   * so a session assigned to a folder renders exactly like it would
+   * elsewhere in the tree (just under a different L1/L2 grouping).
+   */
+  const renderSessionRow = (
+    s: SessionRow,
+    proj: Project | null,
+    extraClassName?: string,
+  ) => {
+    const working = busySessionId === s.id;
+    const isSettled = !!s.settledAt;
+    const isSnoozed = !!s.snoozedUntil && new Date(s.snoozedUntil) > new Date();
+    const checked = selectedThreadIds.has(s.id);
+    return (
+      <div
+        className={
+          "tree-l3" +
+          (extraClassName ? ` ${extraClassName}` : "") +
+          (session.sessionId === s.id ? " tree-l3--active" : "") +
+          (s.archived ? " tree-l3--archived" : "") +
+          (working ? " tree-l3--working" : "") +
+          (isSettled ? " tree-l3--settled" : "") +
+          (isSnoozed ? " tree-l3--snoozed" : "") +
+          (checked ? " tree-l3--checked" : "")
+        }
+        role="button"
+        tabIndex={0}
+        onClick={(e) => handleThreadClick(e, s, proj)}
+        onContextMenu={(e) => openSessionMenu(e, s)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void openSession(s, proj);
+        }}
+      >
+        <span
+          className="tree-l3__checkbox"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleThreadClick(e, s, proj);
+          }}
+        >
+          {checked ? (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2 5L4 7L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          ) : null}
+        </span>
+        <span className="tree-l3__title">
+          {s.pinned ? (
+            <span
+              className="tree-l3__kind"
+              title={tr("session.pinned")}
+              aria-label={tr("session.pinned")}
+            >
+              <IconPin
+                size={12}
+                className="tree-l3__pin"
+              />
+            </span>
+          ) : null}
+          {s.scheduled ? (
+            <span
+              className="tree-l3__kind"
+              title={tr("automations.msgTag")}
+              aria-label={tr("automations.msgTag")}
+            >
+              <IconClock size={13} />
+            </span>
+          ) : null}
+          <span className="tree-l3__name">
+            {s.title || "Untitled"}
+          </span>
+        </span>
+        {s.prRef ? (
+          <span
+            className={
+              "tree-l3__pr-badge" +
+              (s.prState === "open" ? " tree-l3__pr-badge--open" : "") +
+              (s.prState === "merged" ? " tree-l3__pr-badge--merged" : "") +
+              (s.prState === "closed" ? " tree-l3__pr-badge--closed" : "")
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            title={`#${s.prRef} (${s.prState || "unknown"})`}
+          >
+            <span className="tree-l3__pr-dot" />
+            #{s.prRef}
+          </span>
+        ) : null}
+        {working ? (
+          <Tip label={tr("sidebar.sessionWorking")}>
+            <span
+              className="tree-l3__status"
+              aria-label={tr(
+                "sidebar.sessionWorking",
+              )}
+            >
+              <Spinner
+                size={14}
+                className="tree-l3__spinner"
+              />
+            </span>
+          </Tip>
+        ) : (
+          <span className="tree-l3__actions tree-l3__actions--triple">
+            <Tip
+              label={
+                isSettled
+                  ? tr("session.unsettle")
+                  : tr("session.settle")
+              }
+            >
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void settleSession(s, !isSettled);
+                }}
+              >
+                {isSettled ? (
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
+                    <path d="M4 6.5L6 8.5L9 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  </svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
+                  </svg>
+                )}
+              </button>
+            </Tip>
+            <Tip label={tr("session.snooze")}>
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const d = new Date(Date.now() + 3600000);
+                  void snoozeSession(s, d.toISOString());
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                  <path d="M6.5 3v3.5L9 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
+                </svg>
+              </button>
+            </Tip>
+            <Tip
+              label={
+                s.pinned
+                  ? tr("session.unpin")
+                  : tr("session.pin")
+              }
+            >
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void pinSession(s, !s.pinned);
+                }}
+              >
+                {s.pinned ? (
+                  <IconPinOff size={13} />
+                ) : (
+                  <IconPin size={13} />
+                )}
+              </button>
+            </Tip>
+            <Tip
+              label={
+                s.archived
+                  ? tr("sidebar.unarchive")
+                  : tr("sidebar.archive")
+              }
+            >
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void archiveSession(
+                    s,
+                    !s.archived,
+                  );
+                }}
+              >
+                <IconArchive size={13} />
+              </button>
+            </Tip>
+            <Tip label={tr("sidebar.menu")}>
+              <button
+                type="button"
+                className="tree-icon-btn"
+                onClick={(e) =>
+                  openSessionMenu(e, s)
+                }
+              >
+                <IconMore size={13} />
+              </button>
+            </Tip>
+          </span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <ImageViewerProvider locale={locale}>
     <div
@@ -7842,6 +8169,115 @@ export default function App() {
               </div>
             )}
 
+            {/* L1 — Folders section: ad-hoc, single-assignment session groupings.
+                Distinct from Grok Spaces (groups projects, above) and from `tags`
+                (multi-assignment chip filter, below). A session assigned to a
+                folder renders here instead of under its plain project bucket. */}
+            <div className="tree-l1">
+              <button
+                type="button"
+                className="tree-l1__head"
+                onClick={() => setFoldersOpen((v) => !v)}
+              >
+                {foldersOpen ? (
+                  <IconChevronDown size={14} />
+                ) : (
+                  <IconChevronRight size={14} />
+                )}
+                <span className="tree-l1__label">
+                  {tr("sidebar.folders")}
+                </span>
+              </button>
+              <Tip label={tr("folder.new")}>
+                <button
+                  type="button"
+                  className="tree-l1__action"
+                  onClick={() => createFolder()}
+                >
+                  <IconPlus size={15} />
+                </button>
+              </Tip>
+            </div>
+
+            {foldersOpen &&
+              folders.map((folder) => {
+                const open = expandedFolders[folder.id] !== false;
+                const folderSessions = sessionsForFolder(folder.id);
+                return (
+                  <div key={folder.id} className="tree-project">
+                    {/* L2 — folder: expand/collapse only (not selectable) */}
+                    <div
+                      className="tree-l2"
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={open}
+                      onClick={() => {
+                        setExpandedFolders((e) => ({
+                          ...e,
+                          [folder.id]: !open,
+                        }));
+                      }}
+                      onContextMenu={(e) => openFolderMenu(e, folder)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setExpandedFolders((ex) => ({
+                            ...ex,
+                            [folder.id]: !open,
+                          }));
+                        }
+                      }}
+                    >
+                      <span className="tree-l2__icon">
+                        <IconFolder size={15} />
+                      </span>
+                      <span className="tree-l2__name">{folder.name}</span>
+                      <span className="tree-l2__actions">
+                        <Tip label={tr("sidebar.menu")}>
+                          <button
+                            type="button"
+                            className="tree-icon-btn"
+                            onClick={(e) => openFolderMenu(e, folder)}
+                          >
+                            <IconMore size={14} />
+                          </button>
+                        </Tip>
+                      </span>
+                    </div>
+
+                    {open && (
+                      <div className="tree-l3-list-wrap">
+                        {folderSessions.length > 0 ? (
+                          <VirtualList
+                            className="tree-l3-list"
+                            items={folderSessions}
+                            getKey={(s) => s.id}
+                            rowHeight={SIDEBAR_SESSION_ROW_HEIGHT}
+                            gap={SIDEBAR_SESSION_ROW_GAP}
+                            scrollToKey={
+                              session.sessionId &&
+                              folderSessions.some((x) => x.id === session.sessionId)
+                                ? session.sessionId
+                                : null
+                            }
+                            renderItem={(s) =>
+                              renderSessionRow(
+                                s,
+                                projects.find((p) => p.id === s.projectId) ?? null,
+                              )
+                            }
+                          />
+                        ) : (
+                          <div className="sidebar-empty" style={{ padding: "4px 10px" }}>
+                            {tr("sidebar.noChats")}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
             {/* L1 — Projects section */}
             <div className="tree-l1">
               <button
@@ -8008,207 +8444,7 @@ export default function App() {
                                 ? session.sessionId
                                 : null
                             }
-                            renderItem={(s) => {
-                              const working = busySessionId === s.id;
-                              const isSettled = !!s.settledAt;
-                              const isSnoozed = !!s.snoozedUntil && new Date(s.snoozedUntil) > new Date();
-                              const checked = selectedThreadIds.has(s.id);
-                              return (
-                                <div
-                                  className={
-                                    "tree-l3" +
-                                    (session.sessionId === s.id
-                                      ? " tree-l3--active"
-                                      : "") +
-                                    (s.archived ? " tree-l3--archived" : "") +
-                                    (working ? " tree-l3--working" : "") +
-                                    (isSettled ? " tree-l3--settled" : "") +
-                                    (isSnoozed ? " tree-l3--snoozed" : "") +
-                                    (checked ? " tree-l3--checked" : "")
-                                  }
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={(e) => handleThreadClick(e, s, proj)}
-                                  onContextMenu={(e) => openSessionMenu(e, s)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter")
-                                      void openSession(s, proj);
-                                  }}
-                                >
-                                  <span
-                                    className="tree-l3__checkbox"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleThreadClick(e, s, proj);
-                                    }}
-                                  >
-                                    {checked ? (
-                                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                                        <path d="M2 5L4 7L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                      </svg>
-                                    ) : null}
-                                  </span>
-                                  <span className="tree-l3__title">
-                                    {s.pinned ? (
-                                      <span
-                                        className="tree-l3__kind"
-                                        title={tr("session.pinned")}
-                                        aria-label={tr("session.pinned")}
-                                      >
-                                        <IconPin
-                                          size={12}
-                                          className="tree-l3__pin"
-                                        />
-                                      </span>
-                                    ) : null}
-                                    {s.scheduled ? (
-                                      <span
-                                        className="tree-l3__kind"
-                                        title={tr("automations.msgTag")}
-                                        aria-label={tr("automations.msgTag")}
-                                      >
-                                        <IconClock size={13} />
-                                      </span>
-                                    ) : null}
-                                    <span className="tree-l3__name">
-                                      {s.title || "Untitled"}
-                                    </span>
-                                  </span>
-                                  {s.prRef ? (
-                                    <span
-                                      className={
-                                        "tree-l3__pr-badge" +
-                                        (s.prState === "open" ? " tree-l3__pr-badge--open" : "") +
-                                        (s.prState === "merged" ? " tree-l3__pr-badge--merged" : "") +
-                                        (s.prState === "closed" ? " tree-l3__pr-badge--closed" : "")
-                                      }
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                      }}
-                                      title={`#${s.prRef} (${s.prState || "unknown"})`}
-                                    >
-                                      <span className="tree-l3__pr-dot" />
-                                      #{s.prRef}
-                                    </span>
-                                  ) : null}
-                                  {working ? (
-                                    <Tip label={tr("sidebar.sessionWorking")}>
-                                      <span
-                                        className="tree-l3__status"
-                                        aria-label={tr(
-                                          "sidebar.sessionWorking",
-                                        )}
-                                      >
-                                        <Spinner
-                                          size={14}
-                                          className="tree-l3__spinner"
-                                        />
-                                      </span>
-                                    </Tip>
-                                  ) : (
-                                    <span className="tree-l3__actions tree-l3__actions--triple">
-                                      <Tip
-                                        label={
-                                          isSettled
-                                            ? tr("session.unsettle")
-                                            : tr("session.settle")
-                                        }
-                                      >
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void settleSession(s, !isSettled);
-                                          }}
-                                        >
-                                          {isSettled ? (
-                                            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                              <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
-                                              <path d="M4 6.5L6 8.5L9 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                                            </svg>
-                                          ) : (
-                                            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                              <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
-                                            </svg>
-                                          )}
-                                        </button>
-                                      </Tip>
-                                      <Tip label={tr("session.snooze")}>
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const d = new Date(Date.now() + 3600000);
-                                            void snoozeSession(s, d.toISOString());
-                                          }}
-                                        >
-                                          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                            <path d="M6.5 3v3.5L9 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                                            <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
-                                          </svg>
-                                        </button>
-                                      </Tip>
-                                      <Tip
-                                        label={
-                                          s.pinned
-                                            ? tr("session.unpin")
-                                            : tr("session.pin")
-                                        }
-                                      >
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void pinSession(s, !s.pinned);
-                                          }}
-                                        >
-                                          {s.pinned ? (
-                                            <IconPinOff size={13} />
-                                          ) : (
-                                            <IconPin size={13} />
-                                          )}
-                                        </button>
-                                      </Tip>
-                                      <Tip
-                                        label={
-                                          s.archived
-                                            ? tr("sidebar.unarchive")
-                                            : tr("sidebar.archive")
-                                        }
-                                      >
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void archiveSession(
-                                              s,
-                                              !s.archived,
-                                            );
-                                          }}
-                                        >
-                                          <IconArchive size={13} />
-                                        </button>
-                                      </Tip>
-                                      <Tip label={tr("sidebar.menu")}>
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) =>
-                                            openSessionMenu(e, s)
-                                          }
-                                        >
-                                          <IconMore size={13} />
-                                        </button>
-                                      </Tip>
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            }}
+                            renderItem={(s) => renderSessionRow(s, proj)}
                           />
                         ) : null}
                         {projSessions.length === 0 && proj.trusted && (
@@ -8252,192 +8488,7 @@ export default function App() {
                     ? session.sessionId
                     : null
                 }
-                renderItem={(s) => {
-                  const working = busySessionId === s.id;
-                  const isSettled = !!s.settledAt;
-                  const isSnoozed = !!s.snoozedUntil && new Date(s.snoozedUntil) > new Date();
-                  const checked = selectedThreadIds.has(s.id);
-                  return (
-                    <div
-                      className={
-                        "tree-l3 tree-l3--orphan" +
-                        (session.sessionId === s.id
-                          ? " tree-l3--active"
-                          : "") +
-                        (working ? " tree-l3--working" : "") +
-                        (isSettled ? " tree-l3--settled" : "") +
-                        (isSnoozed ? " tree-l3--snoozed" : "") +
-                        (checked ? " tree-l3--checked" : "")
-                      }
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => handleThreadClick(e, s, null)}
-                      onContextMenu={(e) => openSessionMenu(e, s)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void openSession(s);
-                      }}
-                    >
-                      <span
-                        className="tree-l3__checkbox"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleThreadClick(e, s, null);
-                        }}
-                      >
-                        {checked ? (
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                            <path d="M2 5L4 7L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        ) : null}
-                      </span>
-                      <span className="tree-l3__title">
-                        {s.pinned ? (
-                          <span
-                            className="tree-l3__kind"
-                            title={tr("session.pinned")}
-                            aria-label={tr("session.pinned")}
-                          >
-                            <IconPin
-                              size={12}
-                              className="tree-l3__pin"
-                            />
-                          </span>
-                        ) : null}
-                        {s.scheduled ? (
-                          <span
-                            className="tree-l3__kind"
-                            title={tr("automations.msgTag")}
-                            aria-label={tr("automations.msgTag")}
-                          >
-                            <IconClock size={13} />
-                          </span>
-                        ) : null}
-                        <span className="tree-l3__name">
-                          {s.title || "Untitled"}
-                        </span>
-                      </span>
-                      {s.prRef ? (
-                        <span
-                          className={
-                            "tree-l3__pr-badge" +
-                            (s.prState === "open" ? " tree-l3__pr-badge--open" : "") +
-                            (s.prState === "merged" ? " tree-l3__pr-badge--merged" : "") +
-                            (s.prState === "closed" ? " tree-l3__pr-badge--closed" : "")
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                          }}
-                          title={`#${s.prRef} (${s.prState || "unknown"})`}
-                        >
-                          <span className="tree-l3__pr-dot" />
-                          #{s.prRef}
-                        </span>
-                      ) : null}
-                      {working ? (
-                        <Tip label={tr("sidebar.sessionWorking")}>
-                          <span
-                            className="tree-l3__status"
-                            aria-label={tr("sidebar.sessionWorking")}
-                          >
-                            <Spinner
-                              size={14}
-                              className="tree-l3__spinner"
-                            />
-                          </span>
-                        </Tip>
-                      ) : (
-                        <span className="tree-l3__actions tree-l3__actions--triple">
-                          <Tip
-                            label={
-                              isSettled
-                                ? tr("session.unsettle")
-                                : tr("session.settle")
-                            }
-                          >
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void settleSession(s, !isSettled);
-                              }}
-                            >
-                              {isSettled ? (
-                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                  <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3"/>
-                                  <path d="M4 6.5L6 8.5L9 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                                </svg>
-                              ) : (
-                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                  <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
-                                </svg>
-                              )}
-                            </button>
-                          </Tip>
-                          <Tip label={tr("session.snooze")}>
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const d = new Date(Date.now() + 3600000);
-                                void snoozeSession(s, d.toISOString());
-                              }}
-                            >
-                              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                <path d="M6.5 3v3.5L9 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                                <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.3" opacity="0.6"/>
-                              </svg>
-                            </button>
-                          </Tip>
-                          <Tip
-                            label={
-                              s.pinned
-                                ? tr("session.unpin")
-                                : tr("session.pin")
-                            }
-                          >
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void pinSession(s, !s.pinned);
-                              }}
-                            >
-                              {s.pinned ? (
-                                <IconPinOff size={13} />
-                              ) : (
-                                <IconPin size={13} />
-                              )}
-                            </button>
-                          </Tip>
-                          <Tip label={tr("sidebar.archive")}>
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void archiveSession(s, !s.archived);
-                              }}
-                            >
-                              <IconArchive size={13} />
-                            </button>
-                          </Tip>
-                          <Tip label={tr("sidebar.menu")}>
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => openSessionMenu(e, s)}
-                            >
-                              <IconMore size={13} />
-                            </button>
-                          </Tip>
-                        </span>
-                      )}
-                    </div>
-                  );
-                }}
+                renderItem={(s) => renderSessionRow(s, null, "tree-l3--orphan")}
               />
             ) : null}
           </OverlayScroll>
@@ -10567,6 +10618,51 @@ export default function App() {
               ),
             ];
           }
+        } else if (ctxMenu?.kind === "session-folder") {
+          const s = sessions.find((x) => x.id === ctxMenu.id);
+          if (s) {
+            const current = s.folderId ?? null;
+            items = [
+              {
+                id: "remove-from-folder",
+                label: tr("folder.removeFromFolder"),
+                icon: !current ? <IconCheck size={16} /> : undefined,
+                disabled: !current,
+                onClick: () => {
+                  void moveSessionToFolder(s, null);
+                },
+              },
+              ...(folders.length === 0
+                ? [
+                    {
+                      id: "no-folders",
+                      label: tr("folder.noFolders"),
+                      disabled: true,
+                      onClick: () => {},
+                    } satisfies ContextMenuItem,
+                  ]
+                : folders.map(
+                    (folder) =>
+                      ({
+                        id: `folder-${folder.id}`,
+                        label: folder.name,
+                        icon:
+                          current === folder.id ? (
+                            <IconCheck size={16} />
+                          ) : undefined,
+                        onClick: () => {
+                          void moveSessionToFolder(s, folder.id);
+                        },
+                      }) satisfies ContextMenuItem,
+                  )),
+              {
+                id: "new-folder",
+                label: tr("folder.new"),
+                icon: <IconPlus size={16} />,
+                onClick: () => createFolder(s.id),
+              },
+            ];
+          }
         } else if (ctxMenu?.kind === "space") {
           const space = spaces.find((s) => s.id === ctxMenu.id);
           if (space) {
@@ -10583,6 +10679,25 @@ export default function App() {
                 icon: <IconTrash size={16} />,
                 danger: true,
                 onClick: () => deleteSpace(space),
+              },
+            ];
+          }
+        } else if (ctxMenu?.kind === "folder") {
+          const folder = folders.find((f) => f.id === ctxMenu.id);
+          if (folder) {
+            items = [
+              {
+                id: "rename",
+                label: tr("folder.rename"),
+                icon: <IconRename size={16} />,
+                onClick: () => renameFolder(folder),
+              },
+              {
+                id: "delete",
+                label: tr("folder.delete"),
+                icon: <IconTrash size={16} />,
+                danger: true,
+                onClick: () => deleteFolder(folder),
               },
             ];
           }
@@ -10621,6 +10736,19 @@ export default function App() {
                 onClick: () => {
                   setCtxMenu({
                     kind: "session-tags",
+                    id: s.id,
+                    x: ctxMenu.x,
+                    y: ctxMenu.y,
+                  });
+                },
+              },
+              {
+                id: "move-to-folder",
+                label: tr("folder.moveToFolder"),
+                icon: <IconFolder size={16} />,
+                onClick: () => {
+                  setCtxMenu({
+                    kind: "session-folder",
                     id: s.id,
                     x: ctxMenu.x,
                     y: ctxMenu.y,
@@ -10720,7 +10848,9 @@ export default function App() {
                 ? 280
                 : ctxMenu?.kind === "project-space"
                   ? 240 + spaces.length * 32
-                  : 240
+                  : ctxMenu?.kind === "session-folder"
+                    ? 240 + folders.length * 32
+                    : 240
             }
           />
         );

@@ -26,6 +26,7 @@ const en = {
   "sidebar.spaces": "Spaces",
   "sidebar.addSpace": "New space",
   "sidebar.allSpaces": "All",
+  "sidebar.folders": "Folders",
   "sidebar.noProjectsInSpace": "No projects in this space yet.",
   "sidebar.untrusted": "untrusted",
   "sidebar.pathMissing": "missing",
@@ -70,6 +71,15 @@ const en = {
   "space.delete": "Delete space",
   "space.deleteConfirm":
     'Delete "{name}"? Projects in this space are kept, just ungrouped.',
+  "folder.new": "New folder",
+  "folder.namePlaceholder": "Folder name",
+  "folder.rename": "Rename folder",
+  "folder.delete": "Delete folder",
+  "folder.deleteConfirm":
+    'Delete "{name}"? Sessions in this folder are kept, just unfoldered.',
+  "folder.moveToFolder": "Move to folder…",
+  "folder.removeFromFolder": "Remove from folder",
+  "folder.noFolders": "No folders yet",
   "project.removeConfirmDetail":
     'Remove "{name}" from the app list? The folder on disk and related chats are kept.',
   "project.trustConfirm":
