@@ -253,6 +253,17 @@ pub struct AppSettings {
     /// Play a brief chime when voice listening starts/stops.
     #[serde(default = "default_voice_feedback_chime")]
     pub voice_feedback_chime: bool,
+    /// Automatically speak new assistant replies aloud via the browser
+    /// `SpeechSynthesis` API (regular chat, not a Live Voice session).
+    /// Default false — opt-in.
+    #[serde(default)]
+    pub auto_read_replies: bool,
+    /// Interpret a small fixed set of spoken command phrases ("send message",
+    /// "new session", "stop dictation") during dictation as app actions
+    /// instead of inserting them as literal text. Default false — opt-in,
+    /// since it changes established dictation behavior.
+    #[serde(default)]
+    pub voice_commands_enabled: bool,
     /// Timestamp display format: locale | 12-hour | 24-hour.
     #[serde(default = "default_timestamp_format")]
     pub timestamp_format: String,
@@ -409,6 +420,8 @@ impl Default for AppSettings {
             voice_sensitivity: default_voice_sensitivity(),
             voice_mic_device_id: String::new(),
             voice_feedback_chime: default_voice_feedback_chime(),
+            auto_read_replies: false,
+            voice_commands_enabled: false,
             timestamp_format: default_timestamp_format(),
             sidebar_sort_order: default_sidebar_sort_order(),
             word_wrap: true,

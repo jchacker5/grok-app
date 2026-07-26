@@ -93,6 +93,7 @@ import {
   IconUpload as TbUpload,
   IconUser as TbUser,
   IconVideo as TbVideo,
+  IconVolume2 as TbVolume2,
   IconWand as TbWand,
   IconX as TbX,
   IconZoomIn as TbZoomIn,
@@ -270,6 +271,7 @@ export const IconThumbsDown = wrap(TbThumbDown);
 export const IconRefresh = wrap(TbRefresh);
 export const IconCopy = wrap(TbCopy);
 export const IconExportMd = wrap(TbMarkdown);
+export const IconSpeak = wrap(TbVolume2);
 export const IconArchive = wrap(TbArchive);
 export const IconChat = wrap(TbMessage);
 /** Inline diff review comment (Changes panel — existing comment marker). */

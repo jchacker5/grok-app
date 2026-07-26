@@ -4083,6 +4083,18 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   color: var(--danger, #d33);
 }
 
+.settings-row__list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+.settings-row__list li {
+  margin: 1px 0;
+}
+
 .settings-acp-field {
   display: flex;
   gap: 8px;

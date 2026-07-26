@@ -1172,6 +1172,18 @@ export interface AppSettings {
   voiceMicDeviceId?: string;
   /** Play audible chime on dictation start/stop. */
   voiceFeedbackChime?: boolean;
+  /**
+   * Automatically speak new assistant replies aloud via the browser
+   * `SpeechSynthesis` API (regular chat, not a Live Voice session).
+   * Default false — opt-in.
+   */
+  autoReadReplies?: boolean;
+  /**
+   * Interpret a small fixed set of spoken command phrases ("send message",
+   * "new session", "stop dictation") during dictation as app actions instead
+   * of inserting them as literal text. Default false — opt-in.
+   */
+  voiceCommandsEnabled?: boolean;
   /** Timestamp display format. */
   timestampFormat?: string;
   /** Sidebar sort order. */

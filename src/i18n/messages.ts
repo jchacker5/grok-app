@@ -1442,6 +1442,8 @@ const en = {
   "chat.scrollBottom": "Scroll to latest",
   "chat.codeWrap": "Wrap lines",
   "chat.codeUnwrap": "No wrap",
+  "chat.speakReply": "Speak reply aloud",
+  "chat.stopSpeaking": "Stop speaking",
   "chat.codeExpand": "Expand",
   "chat.codeCollapse": "Collapse",
   "chat.codeLines": "lines",
@@ -1569,6 +1571,17 @@ const en = {
   "voice.micDefault": "System default",
   "voice.feedbackChime": "Feedback chime",
   "voice.feedbackChimeDesc": "Play a chime when voice recording starts and stops",
+
+  "settings.chatReadAloud": "Chat read-aloud",
+  "settings.autoReadReplies": "Automatically read new replies aloud",
+  "settings.autoReadRepliesDesc":
+    "Speak each new assistant reply aloud as soon as it finishes, using your device's built-in text-to-speech. Works in regular chat, not just Live Voice.",
+  "settings.voiceCommands": "Voice command hotkeys",
+  "settings.voiceCommandsDesc":
+    "During dictation, treat a small set of spoken phrases as app actions instead of inserting them as text. Off by default. Only fires when the phrase is the entire thing you said — not when mentioned mid-sentence.",
+  "settings.voiceCommandsPhraseSend": "“Send message” / “Send it” — send the current draft",
+  "settings.voiceCommandsPhraseNewSession": "“New session” / “New chat” — start a new session",
+  "settings.voiceCommandsPhraseStop": "“Stop dictation” — end dictation",
 
   "cli.updateAvailable": "Grok Build v{v} is available",
   "cli.updateNow": "Update",

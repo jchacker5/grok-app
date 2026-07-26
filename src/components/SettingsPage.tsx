@@ -225,6 +225,12 @@ export interface SettingsPageProps {
   /** Play chime on voice start/stop. */
   voiceFeedbackChime?: boolean;
   onVoiceFeedbackChime?: (v: boolean) => void;
+  /** Automatically speak new assistant replies aloud (regular chat, not Live Voice). */
+  autoReadReplies?: boolean;
+  onAutoReadReplies?: (v: boolean) => void;
+  /** Interpret a small set of spoken command phrases during dictation as app actions. */
+  voiceCommandsEnabled?: boolean;
+  onVoiceCommandsEnabled?: (v: boolean) => void;
   /** Timestamp display format. */
   timestampFormat?: string;
   onTimestampFormat?: (v: string) => void;
@@ -1071,6 +1077,10 @@ export function SettingsPage({
   onVoiceMicDeviceId,
   voiceFeedbackChime = false,
   onVoiceFeedbackChime,
+  autoReadReplies = false,
+  onAutoReadReplies,
+  voiceCommandsEnabled = false,
+  onVoiceCommandsEnabled,
   timestampFormat = "locale",
   onTimestampFormat,
   sidebarSortOrder = "updated_at",
@@ -2144,6 +2154,42 @@ export function SettingsPage({
                   checked={voiceFeedbackChime}
                   onChange={() => onVoiceFeedbackChime(!voiceFeedbackChime)}
                   ariaLabel={t("voice.feedbackChime")}
+                />
+              </div>
+            ) : null}
+
+            {onVoiceCommandsEnabled ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.voiceCommands")}</div>
+                  <div className="settings-row__desc">{t("settings.voiceCommandsDesc")}</div>
+                  <ul className="settings-row__list">
+                    <li>{t("settings.voiceCommandsPhraseSend")}</li>
+                    <li>{t("settings.voiceCommandsPhraseNewSession")}</li>
+                    <li>{t("settings.voiceCommandsPhraseStop")}</li>
+                  </ul>
+                </div>
+                <UiCheck
+                  checked={voiceCommandsEnabled}
+                  onChange={() => onVoiceCommandsEnabled(!voiceCommandsEnabled)}
+                  ariaLabel={t("settings.voiceCommands")}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <h2 className="settings-page__h2">{t("settings.chatReadAloud")}</h2>
+          <div className="settings-card">
+            {onAutoReadReplies ? (
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.autoReadReplies")}</div>
+                  <div className="settings-row__desc">{t("settings.autoReadRepliesDesc")}</div>
+                </div>
+                <UiCheck
+                  checked={autoReadReplies}
+                  onChange={() => onAutoReadReplies(!autoReadReplies)}
+                  ariaLabel={t("settings.autoReadReplies")}
                 />
               </div>
             ) : null}
