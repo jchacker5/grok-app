@@ -60,6 +60,7 @@ tauri-plugin-notification = "2"
 # macOS: requires Screen Recording TCC permission — first capture after grant
 # may be black; commands.rs surfaces an explicit permission-needed error.
 xcap = "0.9"
+portable-pty = "0.9"
 
 [profile.release]
 codegen-units = 1

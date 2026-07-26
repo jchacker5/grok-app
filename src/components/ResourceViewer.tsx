@@ -17,6 +17,7 @@ import { createT, type Locale } from "@/i18n";
 import { resolvePreviewSrc } from "@/lib/filePreviewSrc";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
 import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
+import { TerminalHost } from "@/components/TerminalHost";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { FileMediaPlayer } from "@/components/FileMediaPlayer";
@@ -84,6 +85,7 @@ import {
   isResourceDraftDirty,
   isResourceTextEditable,
 } from "@/lib/resourceEdit";
+import { generateTerminalId } from "@/lib/terminal";
 
 const TREE_WIDTH_KEY = "grok-app.resourceTreeWidth";
 const TREE_WIDTH_DEFAULT = 220;
@@ -115,7 +117,8 @@ function clampTreeWidth(w: number, containerWidth: number): number {
 /** Request from chat (or elsewhere) to open a path/URL in this pane. */
 export type ResourceOpenTarget =
   | { type: "file"; path: string; title?: string }
-  | { type: "url"; url: string; title?: string };
+  | { type: "url"; url: string; title?: string }
+  | { type: "terminal"; cwd?: string; title?: string };
 
 export interface ResourceViewerProps {
   projectPath: string | null;
@@ -202,7 +205,9 @@ interface FileTab {
   loading: boolean;
   /** External URL tab (web page). */
   url?: string;
-  tabKind?: "file" | "url";
+  terminalId?: string;
+  terminalSpawned?: boolean;
+  tabKind?: "file" | "url" | "terminal";
   /** Editable buffer (text kinds only). */
   draftText?: string | null;
   /** Last loaded/saved text — dirty = draft !== baseline. */
@@ -1471,16 +1476,47 @@ export function ResourceViewer({
     [tabs],
   );
 
-  // External open requests (from chat file/url cards)
+  const openTerminal = useCallback(
+    (cwd?: string, title?: string) => {
+      const id = generateTerminalId();
+      const terminalCwd = cwd || projectPath || "";
+      const tab: FileTab = {
+        id,
+        relativePath: terminalCwd,
+        name: title || tr("terminal.tabTitle"),
+        absolutePath: terminalCwd,
+        preview: null,
+        mediaSrc: null,
+        error: null,
+        loading: false,
+        terminalId: id,
+        terminalSpawned: false,
+        tabKind: "terminal",
+      };
+      setTabs((prev) => [tab, ...prev]);
+      setActiveId(id);
+    },
+    [projectPath, tr],
+  );
+
+  // External open requests (from chat file/url cards or pane actions)
   useEffect(() => {
     if (!openRequest) return;
     if (openRequest.type === "file") {
       void openAbsoluteFile(openRequest.path, openRequest.title);
     } else if (openRequest.type === "url") {
       openUrl(openRequest.url, openRequest.title);
+    } else if (openRequest.type === "terminal") {
+      openTerminal(openRequest.cwd, openRequest.title);
     }
     onOpenRequestConsumed?.();
-  }, [openRequest, openAbsoluteFile, openUrl, onOpenRequestConsumed]);
+  }, [
+    openRequest,
+    openAbsoluteFile,
+    openTerminal,
+    openUrl,
+    onOpenRequestConsumed,
+  ]);
 
   /** Last tab gone → collapse the right pane (user can still re-open it manually). */
   const closePaneIfNoTabs = useCallback(
@@ -1490,8 +1526,17 @@ export function ResourceViewer({
     [onClose],
   );
 
+  const killTerminalTabs = useCallback((closing: FileTab[]) => {
+    for (const tab of closing) {
+      if (tab.terminalId) {
+        void api.terminalKill(tab.terminalId).catch(() => undefined);
+      }
+    }
+  }, []);
+
   const closeTabForced = useCallback(
     (id: string) => {
+      killTerminalTabs(tabs.filter((tab) => tab.id === id));
       let remaining = -1;
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === id);
@@ -1510,7 +1555,7 @@ export function ResourceViewer({
       });
       if (remaining === 0) closePaneIfNoTabs(0);
     },
-    [activeId, closePaneIfNoTabs],
+    [activeId, closePaneIfNoTabs, killTerminalTabs, tabs],
   );
 
   const closeTab = useCallback(
@@ -1528,15 +1573,20 @@ export function ResourceViewer({
   /** Chrome-style: close every tab except `id`. */
   const closeOtherTabs = useCallback(
     (id: string) => {
+      killTerminalTabs(tabs.filter((tab) => tab.id !== id));
       setTabs((prev) => prev.filter((t) => t.id === id));
       setActiveId(id);
     },
-    [],
+    [killTerminalTabs, tabs],
   );
 
   /** Close tabs visually to the right of `id` (higher index; older tabs). */
   const closeTabsToRight = useCallback(
     (id: string) => {
+      const currentIndex = tabs.findIndex((tab) => tab.id === id);
+      if (currentIndex >= 0) {
+        killTerminalTabs(tabs.slice(currentIndex + 1));
+      }
       let remaining = -1;
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === id);
@@ -1553,12 +1603,16 @@ export function ResourceViewer({
       });
       if (remaining === 0) closePaneIfNoTabs(0);
     },
-    [activeId, closePaneIfNoTabs],
+    [activeId, closePaneIfNoTabs, killTerminalTabs, tabs],
   );
 
   /** Close tabs visually to the left of `id` (lower index; newer tabs). */
   const closeTabsToLeft = useCallback(
     (id: string) => {
+      const currentIndex = tabs.findIndex((tab) => tab.id === id);
+      if (currentIndex >= 0) {
+        killTerminalTabs(tabs.slice(0, currentIndex));
+      }
       let remaining = -1;
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === id);
@@ -1575,14 +1629,15 @@ export function ResourceViewer({
       });
       if (remaining === 0) closePaneIfNoTabs(0);
     },
-    [activeId, closePaneIfNoTabs],
+    [activeId, closePaneIfNoTabs, killTerminalTabs, tabs],
   );
 
   const closeAllTabs = useCallback(() => {
+    killTerminalTabs(tabs);
     setTabs([]);
     setActiveId(null);
     closePaneIfNoTabs(0);
-  }, [closePaneIfNoTabs]);
+  }, [closePaneIfNoTabs, killTerminalTabs, tabs]);
 
   const [tabMenu, setTabMenu] = useState<{
     x: number;
@@ -1769,7 +1824,10 @@ export function ResourceViewer({
 
     // URL tabs render via EmbeddedBrowser below (native Webview host).
     // Keep other kinds here so useMemo deps stay correct.
-    if (activeTab?.tabKind === "url" && activeTab.url) {
+    if (
+      activeTab?.tabKind === "terminal" ||
+      (activeTab?.tabKind === "url" && activeTab.url)
+    ) {
       return null;
     }
     const preview = activeTab?.preview;
@@ -2105,6 +2163,15 @@ export function ResourceViewer({
           </div>
         </div>
         <div className="rp-chrome__actions">
+          <Tip label={tr("terminal.new")}>
+            <button
+              type="button"
+              className="chrome-btn"
+              onClick={() => openTerminal(projectPath || undefined)}
+            >
+              {tr("terminal.new")}
+            </button>
+          </Tip>
           {activeTabEditable && activeTab ? (
             <>
               {activeTab.preview?.kind === "markdown" ? (
@@ -2393,6 +2460,28 @@ export function ResourceViewer({
           ) : activeTab.loading ? (
             <div className="rp__empty-state">
               <div className="rp__empty-desc">{tr("resources.loading")}</div>
+            </div>
+          ) : activeTab.tabKind === "terminal" && activeTab.terminalId ? (
+            <div className="rp-preview-terminal">
+              <TerminalHost
+                terminalId={activeTab.terminalId}
+                spawned={!!activeTab.terminalSpawned}
+                cwd={activeTab.absolutePath || undefined}
+                locale={locale}
+                onSpawned={(terminalId) => {
+                  setTabs((prev) =>
+                    prev.map((tab) =>
+                      tab.id === activeTab.id
+                        ? {
+                            ...tab,
+                            terminalId,
+                            terminalSpawned: true,
+                          }
+                        : tab,
+                    ),
+                  );
+                }}
+              />
             </div>
           ) : activeTab.tabKind === "url" && activeTab.url ? (
             /* Native child Webview over host (GitHub etc. block iframe) */

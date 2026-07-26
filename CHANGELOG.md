@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Embedded Terminal Panel**: Open a real PTY-backed shell in the resource pane, keep it alive with bounded scrollback while switching tabs, resize it with the pane, and terminate it when its tab closes. Embedded terminals have full shell access with the same trust level as opening a system terminal.
+
 ## [0.1.11] - 2026-07-25
 
 ### Added

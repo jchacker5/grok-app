@@ -10426,6 +10426,58 @@ textarea::-webkit-scrollbar-thumb:active,
   background: var(--bg-card);
 }
 
+.rp-preview-terminal {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.terminal-host {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  background: #0d0d0d;
+}
+
+.terminal-host__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.terminal-host__status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+}
+
+.terminal-host__host {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 8px;
+  overflow: hidden;
+  background: #0d0d0d;
+}
+
+.terminal-host__host .xterm {
+  height: 100%;
+}
+
 .rp-preview-browser--msg {
   align-items: center;
   justify-content: center;
