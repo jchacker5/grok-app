@@ -11,6 +11,24 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-07-26
+
+### Added
+
+- **Settings import/export**: export/import all app settings as JSON via native save/open dialogs (Settings → General). Saved GitHub PAT (in `browser_cookies`) is redacted on export and preserved on import so it's never wiped. Import re-runs the app's boot-time settings-apply logic so changes go live without a restart.
+- **Session bookmarking**: bookmark any session with an optional note from its context menu; a bookmark indicator shows in the sidebar.
+- **In-app "What's New" panel**: shows the top CHANGELOG entry once per version bump, reopenable from Settings → About.
+- **⌘P fuzzy file finder**: fuzzy-search and open any file in the current project, separate from the existing ⌘K session search and the composer's `@file:` picker.
+- **Chat read-aloud (TTS)**: speak any assistant reply aloud via the browser's native speech synthesis (fully offline), with a per-message speak button and an opt-in "read new replies aloud" auto setting.
+- **Voice command hotkeys**: opt-in spoken commands during dictation — "send message"/"send it", "new session"/"new chat", "stop dictation" — trigger the action instead of being typed as text. Only matches when it's the entire utterance, so it won't misfire mid-sentence.
+- **Session folders**: single-assignment folders for organizing sessions (distinct from multi-select tags — a session belongs to at most one folder), with their own collapsible sidebar section and rename/delete/move-to-folder actions.
+- **Inline git blame gutter**: toggle per-line author/date/commit annotations in the file preview panel (not shown in diff view).
+- **Find-in-files content search**: ⌘K gains a Files tab for searching file contents across the project (uses `rg` when available, falls back to a built-in walker), opening a hit at its exact line.
+
+### Changed
+
+- **MCP server log viewer**: scoped down to an honest "not yet available" state rather than fabricated data — this app has no stdout/stderr handle into MCP servers, which run inside the `grok` CLI's own process tree.
+
 ## [0.1.17] - 2026-07-26
 
 ### Added
