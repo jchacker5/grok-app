@@ -7549,10 +7549,11 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   display: flex;
   align-items: center;
   gap: 4px;
+  /* Single row — the toolbar was trimmed (no preset / compaction chip) so the
+     controls fit on one line. overflow-x:auto is avoided on purpose — it clips
+     absolute/portaled popovers (was hiding the model menu). */
   flex-wrap: nowrap;
   min-height: 32px;
-  /* Do not use overflow-x:auto here — it clips absolute/portaled popovers
-     and was hiding the model menu (only a bottom shadow was visible). */
   overflow: visible;
 }
 

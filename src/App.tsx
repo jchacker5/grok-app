@@ -65,13 +65,11 @@ import {
 import {
   INITIAL_CONTEXT_USAGE,
   reduceContextUsage,
-  resolveContextUsageDisplay,
   type ContextUsageState,
 } from "@/lib/contextUsage";
-import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import * as api from "@/lib/api";
-import type { SpaceDto, SessionPresetDto } from "@/lib/api";
+import type { SpaceDto } from "@/lib/api";
 import {
   colorForSpaceIndex,
   spaceForShortcutIndex,
@@ -240,7 +238,6 @@ import {
   ComposerAccessMenu,
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
-import { PresetSelector } from "@/components/PresetSelector";
 import {
   ResourceViewer,
   type ResourceOpenTarget,
@@ -384,7 +381,9 @@ export default function App() {
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   /** Context usage chip — known tokens from compact events + estimate fallback. */
-  const [contextUsage, setContextUsage] = useState<ContextUsageState>(
+  // Context-usage tracking pipeline retained for compaction events; the
+  // inline composer chip that displayed it was removed.
+  const [, setContextUsage] = useState<ContextUsageState>(
     INITIAL_CONTEXT_USAGE,
   );
   /**
@@ -477,7 +476,6 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [spaces, setSpaces] = useState<SpaceDto[]>([]);
   /** Saved model/effort/mode/permission bundles (composer preset dropdown). */
-  const [presets, setPresets] = useState<SessionPresetDto[]>([]);
   /** View filter only — not app data, so it lives in localStorage, not settings. */
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(() => {
     try {
@@ -1075,11 +1073,10 @@ export default function App() {
         cliAuthPresent: false,
       });
       void api.spacesList().then(setSpaces).catch(() => {});
-      void api.presetsList().then(setPresets).catch(() => {});
       return;
     }
     try {
-      const [p, s, settings, cli, modelsRes, spacesRes, presetsRes] =
+      const [p, s, settings, cli, modelsRes, spacesRes] =
         await Promise.all([
           api.projectsList(),
           api.sessionsList(),
@@ -1087,7 +1084,6 @@ export default function App() {
           api.probeCli(),
           api.modelsListAvailable().catch(() => null),
           api.spacesList().catch(() => []),
-          api.presetsList().catch(() => []),
         ]);
       setProjects(
         (p as Project[]).map((x) => ({
@@ -1096,7 +1092,6 @@ export default function App() {
         })),
       );
       setSpaces(spacesRes);
-      setPresets(presetsRes);
       setSessions(
         (
           s as Array<
@@ -2968,110 +2963,6 @@ export default function App() {
         }
       },
     });
-  };
-
-  // ── Session presets (model / effort / mode / permission bundles) ────────
-  // Config-only workflow templates (Plan 005); never touches message history
-  // and is never autoloaded — the user always picks a preset explicitly.
-
-  const refreshPresets = async () => {
-    try {
-      setPresets(await api.presetsList());
-    } catch (e) {
-      setLocalError(String(e));
-    }
-  };
-
-  const saveCurrentAsPreset = () => {
-    setAppDialog({
-      kind: "prompt",
-      title: tr("preset.save"),
-      initial: "",
-      placeholder: tr("preset.namePlaceholder"),
-      onSubmit: async (name) => {
-        const next = name.trim();
-        if (!next) return;
-        try {
-          await api.presetCreate({
-            name: next,
-            modelId,
-            effort,
-            mode,
-            permissionPolicy: policy,
-          });
-          await refreshPresets();
-          showToast(tr("preset.saved", { name: next }), 2500);
-        } catch (e) {
-          showToast(String(e), 4000);
-        }
-      },
-    });
-  };
-
-  const renamePreset = (preset: SessionPresetDto) => {
-    setAppDialog({
-      kind: "prompt",
-      title: tr("preset.rename"),
-      initial: preset.name,
-      onSubmit: async (name) => {
-        const next = name.trim();
-        if (!next || next === preset.name) return;
-        try {
-          await api.presetUpdate(preset.id, {
-            name: next,
-            description: preset.description ?? null,
-            modelId: preset.modelId,
-            effort: preset.effort,
-            mode: preset.mode,
-            permissionPolicy: preset.permissionPolicy,
-          });
-          await refreshPresets();
-        } catch (e) {
-          showToast(String(e), 4000);
-        }
-      },
-    });
-  };
-
-  const deletePreset = (preset: SessionPresetDto) => {
-    setAppDialog({
-      kind: "confirm",
-      title: tr("preset.delete"),
-      message: tr("preset.deleteConfirm", { name: preset.name }),
-      danger: true,
-      onConfirm: async () => {
-        try {
-          await api.presetDelete(preset.id);
-          await refreshPresets();
-        } catch (e) {
-          showToast(String(e), 4000);
-        }
-      },
-    });
-  };
-
-  const applyPreset = (preset: SessionPresetDto) => {
-    if (isValidModelId(preset.modelId, availableModels)) {
-      setModelId(preset.modelId);
-    }
-    if (isValidEffort(preset.effort)) {
-      setEffort(preset.effort);
-    }
-    setMode(preset.mode || "agent");
-    if (preset.mode === "plan") setGoalMode(false);
-    void api
-      .composerPrefsSet({
-        projectId: activeProject?.id ?? null,
-        sessionId: session.sessionId ?? null,
-        modelId: preset.modelId,
-        effort: preset.effort,
-        mode: preset.mode,
-      })
-      .catch((e) => showToast(String(e), 4000));
-    if (isValidPolicy(preset.permissionPolicy) && preset.permissionPolicy !== policy) {
-      applyPermissionPolicy(preset.permissionPolicy);
-    }
-    showToast(tr("preset.applied", { name: preset.name }), 2500);
   };
 
   const applySessionTitle = useCallback(
@@ -5614,12 +5505,6 @@ export default function App() {
     }
     syncComposerHeight();
   }, [draft, mainPane, session.sessionId, requestComposerFocus, syncComposerHeight]);
-
-  /** Context usage chip label/state from compact events + message estimate. */
-  const contextUsageDisplay = useMemo(
-    () => resolveContextUsageDisplay(contextUsage, messages),
-    [contextUsage, messages],
-  );
 
   /**
    * New empty draft only: lift composer and SuperGrok brand.
@@ -9382,6 +9267,27 @@ export default function App() {
                       return;
                     }
                   }
+                  // Shift+Tab cycles the agent mode (agent → plan → ask)
+                  // without leaving the composer input.
+                  if (e.key === "Tab" && e.shiftKey && !composerMenuOpen) {
+                    e.preventDefault();
+                    const order = ["agent", "plan", "ask"] as const;
+                    const next =
+                      order[
+                        (order.indexOf(mode as (typeof order)[number]) + 1) %
+                          order.length
+                      ];
+                    setMode(next);
+                    if (next === "plan") setGoalMode(false);
+                    void api
+                      .composerPrefsSet({
+                        projectId: activeProject?.id ?? null,
+                        sessionId: session.sessionId ?? null,
+                        mode: next,
+                      })
+                      .catch((err) => showToast(String(err), 4000));
+                    return;
+                  }
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     const hasBody =
@@ -9520,27 +9426,6 @@ export default function App() {
                       .catch((e) => showToast(String(e), 4000));
                   }}
                 />
-                <PresetSelector
-                  presets={presets}
-                  current={{
-                    modelId,
-                    effort,
-                    mode,
-                    permissionPolicy: policy,
-                  }}
-                  labels={{
-                    trigger: tr("preset.trigger"),
-                    hint: tr("preset.hint"),
-                    empty: tr("preset.empty"),
-                    saveCurrent: tr("preset.saveCurrent"),
-                    rename: tr("preset.rename"),
-                    delete: tr("preset.delete"),
-                  }}
-                  onApply={applyPreset}
-                  onSaveCurrent={saveCurrentAsPreset}
-                  onRename={renamePreset}
-                  onDelete={deletePreset}
-                />
                 <ComposerAccessMenu
                   mode={mode}
                   policy={policy}
@@ -9596,31 +9481,6 @@ export default function App() {
                     <IconPromptLibrary size={16} />
                   </button>
                 </Tip>
-                <ContextUsageChip
-                  display={contextUsageDisplay}
-                  labels={{
-                    aria: tr("context.chipAria"),
-                    tipUnknown: tr("context.chipTipUnknown"),
-                    tipEstimated: tr("context.chipTipEstimated"),
-                    tipKnown: tr("context.chipTipKnown"),
-                    menuTitle: tr("context.menuTitle"),
-                    current: tr("context.current"),
-                    sourceKnown: tr("context.sourceKnown"),
-                    sourceEstimated: tr("context.sourceEstimated"),
-                    sourceUnknown: tr("context.sourceUnknown"),
-                    lastCompact: tr("context.lastCompact"),
-                    lastCompactNone: tr("context.lastCompactNone"),
-                    tokensRange: tr("compact.tokensRange"),
-                    compactAction: tr("context.compactAction"),
-                    heuristicNote: tr("context.heuristicNote"),
-                    auto: tr("context.triggerAuto"),
-                    manual: tr("context.triggerManual"),
-                  }}
-                  onCompact={() => {
-                    setCompactNote("");
-                    setShowCompactModal(true);
-                  }}
-                />
                 <span className="composer__spacer" />
                 <Tip label={tr("voice.start")}>
                   <button
