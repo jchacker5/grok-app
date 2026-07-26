@@ -11,6 +11,8 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-07-26
+
 ### Fixed
 
 - **New chat killed an in-flight turn**: starting a new chat while the current chat was still streaming (or awaiting a permission decision) hard-killed that agent process instead of letting it finish, losing the response. Now the outgoing session is parked/backgrounded instead of killed — same behavior already used when switching between two existing chats — so a turn that just started keeps running in the background.
