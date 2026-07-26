@@ -1220,6 +1220,14 @@ export interface AppSettings {
    * (`<style id="user-custom-css">`). `null`/unset = no override, local-only.
    */
   customCss?: string | null;
+  /** Local file path for a custom background image/video behind the main chat pane. */
+  wallpaperPath?: string | null;
+  /** Wallpaper opacity, 0-100 (default 35). */
+  wallpaperOpacity?: number;
+  /** Wallpaper blur radius in px, 0-40 (default 0). */
+  wallpaperBlur?: number;
+  /** Custom accent color override (hex). `null`/unset = theme default. */
+  accentColor?: string | null;
 }
 
 export interface VoiceSessionState {

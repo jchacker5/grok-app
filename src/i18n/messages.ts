@@ -855,6 +855,17 @@ const en = {
   "settings.customCssReset": "Reset",
   "settings.customCssResetHint":
     "If applied CSS makes the app unusable, quit Grok App, open settings.json in the app's data folder, remove the \"customCss\" field, and relaunch.",
+  "settings.wallpaper": "Chat background",
+  "settings.wallpaperDesc":
+    "Local image or video file shown behind the chat pane. Paste an absolute path (drag-and-drop file pickers aren't supported yet).",
+  "settings.wallpaperPlaceholder": "/Users/you/Pictures/background.jpg",
+  "settings.wallpaperClear": "Clear",
+  "settings.wallpaperOpacity": "Background opacity",
+  "settings.wallpaperBlur": "Background blur",
+  "settings.accentColor": "Accent color",
+  "settings.accentColorDesc":
+    "Override the theme's default accent color used for buttons, links, and highlights.",
+  "settings.accentColorReset": "Reset to theme default",
   "settings.customModels": "Custom model IDs",
   "settings.customModelsDesc":
     "Additional model slugs to show for this provider (one per line).",

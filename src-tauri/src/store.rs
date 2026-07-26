@@ -312,6 +312,24 @@ pub struct AppSettings {
     /// no override. Local-only, never sent anywhere.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_css: Option<String>,
+    /// Local file path for a custom background image/video rendered behind
+    /// the main chat pane. `None`/unset = no wallpaper (default chrome).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallpaper_path: Option<String>,
+    /// Wallpaper opacity, 0-100 (renderer clamps; default 35).
+    #[serde(default = "default_wallpaper_opacity")]
+    pub wallpaper_opacity: u32,
+    /// Wallpaper blur radius in px, 0-40 (renderer clamps; default 0).
+    #[serde(default)]
+    pub wallpaper_blur: u32,
+    /// Custom accent color override (hex, e.g. `"#8aa4ff"`). `None` = the
+    /// active theme's default accent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent_color: Option<String>,
+}
+
+fn default_wallpaper_opacity() -> u32 {
+    35
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -428,6 +446,10 @@ impl Default for AppSettings {
             notification_settings: NotificationSettings::default(),
             sync_path: None,
             custom_css: None,
+            wallpaper_path: None,
+            wallpaper_opacity: default_wallpaper_opacity(),
+            wallpaper_blur: 0,
+            accent_color: None,
         }
     }
 }

@@ -283,6 +283,18 @@ export interface SettingsPageProps {
   onCustomCssApply?: (css: string) => void;
   /** Clear custom CSS immediately (persist null + remove live style tag). */
   onCustomCssReset?: () => void;
+  /** Local file path for a custom background image/video behind the chat pane. */
+  wallpaperPath?: string | null;
+  onWallpaperPath?: (path: string) => void;
+  /** Wallpaper opacity, 0-100. */
+  wallpaperOpacity?: number;
+  onWallpaperOpacity?: (v: number) => void;
+  /** Wallpaper blur radius in px, 0-40. */
+  wallpaperBlur?: number;
+  onWallpaperBlur?: (v: number) => void;
+  /** Custom accent color override (hex). `null`/unset = theme default. */
+  accentColor?: string | null;
+  onAccentColor?: (hex: string | null) => void;
 }
 
 const NAV: {
@@ -1106,6 +1118,14 @@ export function SettingsPage({
   customCss = "",
   onCustomCssApply,
   onCustomCssReset,
+  wallpaperPath = null,
+  onWallpaperPath,
+  wallpaperOpacity = 35,
+  onWallpaperOpacity,
+  wallpaperBlur = 0,
+  onWallpaperBlur,
+  accentColor = null,
+  onAccentColor,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [voiceOptions, setVoiceOptions] = useState<api.VoiceOption[]>([]);
@@ -1974,6 +1994,104 @@ export function SettingsPage({
                 onReset={() => onCustomCssReset?.()}
                 t={t}
               />
+            ) : null}
+            {onWallpaperPath ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.wallpaper")}</div>
+                  <div className="settings-row__desc">{t("settings.wallpaperDesc")}</div>
+                </div>
+                <div className="settings-row__control" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    className="settings-input"
+                    type="text"
+                    value={wallpaperPath ?? ""}
+                    onChange={(e) => onWallpaperPath(e.target.value)}
+                    placeholder={t("settings.wallpaperPlaceholder")}
+                    spellCheck={false}
+                    style={{ flex: 1 }}
+                    aria-label={t("settings.wallpaper")}
+                  />
+                  {wallpaperPath ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => onWallpaperPath("")}
+                    >
+                      {t("settings.wallpaperClear")}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {wallpaperPath && onWallpaperOpacity ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.wallpaperOpacity")}</div>
+                </div>
+                <div className="settings-row__control" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <output style={{ minWidth: 40, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
+                    {wallpaperOpacity}%
+                  </output>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={wallpaperOpacity}
+                    onChange={(e) => onWallpaperOpacity(Number(e.target.value))}
+                    style={{ flex: 1, accentColor: 'var(--accent)' }}
+                    aria-label={t("settings.wallpaperOpacity")}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {wallpaperPath && onWallpaperBlur ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.wallpaperBlur")}</div>
+                </div>
+                <div className="settings-row__control" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <output style={{ minWidth: 40, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
+                    {wallpaperBlur}px
+                  </output>
+                  <input
+                    type="range"
+                    min={0}
+                    max={40}
+                    step={1}
+                    value={wallpaperBlur}
+                    onChange={(e) => onWallpaperBlur(Number(e.target.value))}
+                    style={{ flex: 1, accentColor: 'var(--accent)' }}
+                    aria-label={t("settings.wallpaperBlur")}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {onAccentColor ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">{t("settings.accentColor")}</div>
+                  <div className="settings-row__desc">{t("settings.accentColorDesc")}</div>
+                </div>
+                <div className="settings-row__control" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="color"
+                    value={accentColor ?? "#8aa4ff"}
+                    onChange={(e) => onAccentColor(e.target.value)}
+                    aria-label={t("settings.accentColor")}
+                  />
+                  {accentColor ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => onAccentColor(null)}
+                    >
+                      {t("settings.accentColorReset")}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
           </div>
         )}

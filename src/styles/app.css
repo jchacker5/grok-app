@@ -4534,6 +4534,33 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   z-index: 2;
 }
 
+/*
+ * Custom chat background (wallpaper): the layer sits at z-index -1 inside
+ * `.main` (a positioned ancestor), i.e. behind `.main`'s own background box
+ * but in front of nothing else — so `.main.has-wallpaper` must also make
+ * that background box see-through or the layer is invisible. `color-mix()`
+ * is used so this degrades gracefully (declaration dropped, falls back to
+ * the opaque `.main` background above) on a webview that doesn't support it.
+ */
+.wallpaper-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.wallpaper-layer__media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.main.has-wallpaper,
+html.platform-mac[data-theme="light"] .main.has-wallpaper {
+  background: color-mix(in srgb, var(--bg-main) 70%, transparent);
+}
+
 /* Center title bar — same height as sidebar-chrome + rv__head so dividers align */
 .main__top {
   display: flex;

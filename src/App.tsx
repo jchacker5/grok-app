@@ -18,6 +18,9 @@ import {
   type Theme,
 } from "@/lib/theme";
 import { applyCustomCss } from "@/lib/customCss";
+import { deriveAccentVars, isValidAccentColor } from "@/lib/accentColor";
+import { clampWallpaperBlur, clampWallpaperOpacity } from "@/lib/wallpaper";
+import { WallpaperLayer } from "@/components/WallpaperLayer";
 import {
   QUOTA_ALERT_THRESHOLDS,
   baselineForPeriod,
@@ -951,6 +954,10 @@ export default function App() {
   notificationsEnabledRef.current = notificationsEnabled;
   /** User-authored CSS injected into this window's renderer (Settings → Appearance). */
   const [customCss, setCustomCss] = useState("");
+  const [wallpaperPath, setWallpaperPath] = useState<string | null>(null);
+  const [wallpaperOpacity, setWallpaperOpacity] = useState(35);
+  const [wallpaperBlur, setWallpaperBlur] = useState(0);
+  const [accentColor, setAccentColor] = useState<string | null>(null);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -997,6 +1004,20 @@ export default function App() {
   useEffect(() => {
     applyCustomCss(customCss);
   }, [customCss]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const vars = accentColor ? deriveAccentVars(accentColor) : null;
+    if (vars) {
+      root.style.setProperty("--accent", vars.accent);
+      root.style.setProperty("--accent-muted", vars.accentMuted);
+      root.style.setProperty("--accent-hover", vars.accentHover);
+    } else {
+      root.style.removeProperty("--accent");
+      root.style.removeProperty("--accent-muted");
+      root.style.removeProperty("--accent-hover");
+    }
+  }, [accentColor]);
 
   useEffect(() => {
     document.documentElement.classList.remove(
@@ -1225,6 +1246,16 @@ export default function App() {
       setVoiceFeedbackChime(!!settings.voiceFeedbackChime);
       setNotificationsEnabled(settings.notificationsEnabled !== false);
       setCustomCss(settings.customCss || "");
+      setWallpaperPath(settings.wallpaperPath || null);
+      setWallpaperOpacity(
+        typeof settings.wallpaperOpacity === "number"
+          ? settings.wallpaperOpacity
+          : 35,
+      );
+      setWallpaperBlur(
+        typeof settings.wallpaperBlur === "number" ? settings.wallpaperBlur : 0,
+      );
+      setAccentColor(settings.accentColor || null);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -7558,6 +7589,38 @@ export default function App() {
               api.settingsSet({ ...s, customCss: null }),
             );
           }}
+          wallpaperPath={wallpaperPath}
+          onWallpaperPath={(path) => {
+            const next = path.trim() || null;
+            setWallpaperPath(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, wallpaperPath: next }),
+            );
+          }}
+          wallpaperOpacity={wallpaperOpacity}
+          onWallpaperOpacity={(v) => {
+            const next = clampWallpaperOpacity(v);
+            setWallpaperOpacity(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, wallpaperOpacity: next }),
+            );
+          }}
+          wallpaperBlur={wallpaperBlur}
+          onWallpaperBlur={(v) => {
+            const next = clampWallpaperBlur(v);
+            setWallpaperBlur(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, wallpaperBlur: next }),
+            );
+          }}
+          accentColor={accentColor}
+          onAccentColor={(hex) => {
+            const next = hex && isValidAccentColor(hex) ? hex : null;
+            setAccentColor(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, accentColor: next }),
+            );
+          }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           versionFooter={tr("app.versionFooter")}
@@ -8667,9 +8730,15 @@ export default function App() {
             "main" +
             (layout.sidebarCollapsed ? " main--sidebar-hidden" : "") +
             (dragZone === "main" ? " is-drop-target" : "") +
-            (dragZone === "sidebar" ? " is-drop-idle" : "")
+            (dragZone === "sidebar" ? " is-drop-idle" : "") +
+            (wallpaperPath ? " has-wallpaper" : "")
           }
         >
+          <WallpaperLayer
+            path={wallpaperPath}
+            opacity={wallpaperOpacity}
+            blur={wallpaperBlur}
+          />
           {dragZone === "main" && (
             <div className="drop-overlay drop-overlay--attach" aria-hidden>
               <div className="drop-overlay__card">
