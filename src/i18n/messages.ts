@@ -664,6 +664,9 @@ const en = {
   "settings.maxConcurrentAgents": "Max concurrent agents",
   "settings.maxConcurrentAgentsDesc":
     "Warm agent processes kept for open chats (default 3). Opening more than this prompts you to wait or free a session.",
+  "settings.maxConcurrentTerminals": "Max concurrent terminals",
+  "settings.maxConcurrentTerminalsDesc":
+    "Live embedded terminal shells kept open at once (default 4). Opening more than this is blocked until one is closed.",
   "settings.agentIdleMinutes": "Idle recycle (minutes)",
   "settings.agentIdleMinutesDesc":
     "After this many minutes without activity, the agent process is recycled. Chat history is kept; the next message reconnects.",
@@ -2154,6 +2157,9 @@ const zh: Record<MessageKey, string> = {
   "settings.maxConcurrentAgents": "最大并发 Agent 数",
   "settings.maxConcurrentAgentsDesc":
     "为打开的对话保留的热 Agent 进程数（默认 3）。超过上限时会提示等待或释放其他会话。",
+  "settings.maxConcurrentTerminals": "最大并发终端数",
+  "settings.maxConcurrentTerminalsDesc":
+    "同时保持打开的嵌入式终端数量（默认 4）。超过上限需先关闭一个才能再开新终端。",
   "settings.agentIdleMinutes": "闲置回收（分钟）",
   "settings.agentIdleMinutesDesc":
     "超过该分钟数无活动后回收 Agent 进程。对话记录保留，下次发送会自动重连。",

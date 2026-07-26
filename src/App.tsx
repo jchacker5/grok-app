@@ -198,6 +198,7 @@ import {
   IconMic,
   IconHeadset,
   IconLayoutGrid,
+  IconTerminal,
   IconFolder,
   IconFolderPlus,
   IconClock,
@@ -824,6 +825,7 @@ export default function App() {
   const [sshTunnelIdentityFile, setSshTunnelIdentityFile] = useState("");
   const [wslDistro, setWslDistro] = useState("");
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(3);
+  const [maxConcurrentTerminals, setMaxConcurrentTerminals] = useState(4);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
@@ -1075,6 +1077,12 @@ export default function App() {
           settings.maxConcurrentAgents >= 1
           ? Math.min(8, Math.round(settings.maxConcurrentAgents))
           : 3,
+      );
+      setMaxConcurrentTerminals(
+        typeof settings.maxConcurrentTerminals === "number" &&
+          settings.maxConcurrentTerminals >= 1
+          ? Math.min(8, Math.round(settings.maxConcurrentTerminals))
+          : 4,
       );
       setAgentIdleMinutes(
         typeof settings.agentIdleMinutes === "number" &&
@@ -6895,6 +6903,13 @@ export default function App() {
               api.settingsSet({ ...s, maxConcurrentAgents: v }),
             );
           }}
+          maxConcurrentTerminals={maxConcurrentTerminals}
+          onMaxConcurrentTerminals={(v) => {
+            setMaxConcurrentTerminals(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, maxConcurrentTerminals: v }),
+            );
+          }}
           agentIdleMinutes={agentIdleMinutes}
           onAgentIdleMinutes={(v) => {
             setAgentIdleMinutes(v);
@@ -9760,6 +9775,18 @@ export default function App() {
                   void api
                     .projectReveal(proj.id)
                     .catch((e) => setLocalError(String(e)));
+                },
+              },
+              {
+                id: "open-terminal",
+                label: tr("terminal.openHere"),
+                icon: <IconTerminal size={16} />,
+                onClick: () => {
+                  setCtxMenu(null);
+                  setResourceOpenTarget({
+                    type: "terminal",
+                    cwd: proj.path,
+                  });
                 },
               },
               {

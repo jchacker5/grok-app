@@ -48,6 +48,7 @@ import {
   IconLanguage as TbLanguage,
   IconExternalLink as TbExternalLink,
   IconLayoutGrid as TbLayoutGrid,
+  IconTerminal2 as TbTerminal2,
   IconLayoutSidebar as TbLayoutSidebar,
   IconLayoutSidebarRight as TbLayoutSidebarRight,
   IconLink as TbLink,
@@ -222,6 +223,7 @@ export const IconChevronLeft = wrap(TbChevronLeft);
 export const IconChevronRight = wrap(TbChevronRight);
 export const IconFolderPlus = wrap(TbFolderPlus);
 export const IconLayoutGrid = wrap(TbLayoutGrid);
+export const IconTerminal = wrap(TbTerminal2);
 export const IconPlus = wrap(TbPlus);
 export const IconMore = wrap(TbDots);
 export const IconFolder = wrap(TbFolder);
