@@ -820,6 +820,14 @@ const en = {
   "settings.confirmDelete": "Confirm before deleting",
   "settings.confirmDeleteDesc":
     "Ask before permanently deleting a chat or session.",
+  "settings.customCss": "Custom CSS",
+  "settings.customCssDesc":
+    "Inject your own CSS into the app's interface. Edits apply only when you click Apply — broken rules (e.g. a rule that hides everything) could make the whole app unusable, so nothing changes live as you type.",
+  "settings.customCssPlaceholder": "/* e.g. */\n.sidebar { background: #111; }",
+  "settings.customCssApply": "Apply",
+  "settings.customCssReset": "Reset",
+  "settings.customCssResetHint":
+    "If applied CSS makes the app unusable, quit Grok App, open settings.json in the app's data folder, remove the \"customCss\" field, and relaunch.",
   "settings.customModels": "Custom model IDs",
   "settings.customModelsDesc":
     "Additional model slugs to show for this provider (one per line).",
@@ -1161,6 +1169,10 @@ const en = {
   "notify.turnDoneBody": "Session is ready for the next message.",
   "notify.permissionTitle": "Permission needed",
   "notify.permissionBody": "The agent is waiting for your approval.",
+  "notify.quotaWarningTitle": "Quota usage warning",
+  "notify.quotaWarningBody": "You've used {percent}% of your quota for this billing period.",
+  "notify.quotaCriticalTitle": "Quota nearly exhausted",
+  "notify.quotaCriticalBody": "You've used {percent}% of your quota for this billing period.",
 
   // Slash palette
   "slash.section.commands": "Commands",
@@ -2574,6 +2586,10 @@ const zh: Record<MessageKey, string> = {
   "notify.turnDoneBody": "会话已就绪，可继续输入。",
   "notify.permissionTitle": "需要授权",
   "notify.permissionBody": "Agent 正在等待你的批准。",
+  "notify.quotaWarningTitle": "配额使用提醒",
+  "notify.quotaWarningBody": "本计费周期已使用 {percent}% 的配额。",
+  "notify.quotaCriticalTitle": "配额即将用尽",
+  "notify.quotaCriticalBody": "本计费周期已使用 {percent}% 的配额。",
 
   "slash.section.commands": "命令",
   "slash.section.cli": "CLI",
@@ -2954,6 +2970,14 @@ const zh: Record<MessageKey, string> = {
   "settings.homePathPh": "~/.grok-app-override",
   "settings.homePath": "配置目录",
   "settings.homePathDesc": "此提供商的自定义配置目录",
+  "settings.customCss": "自定义 CSS",
+  "settings.customCssDesc":
+    "将你自己的 CSS 注入应用界面。仅在点击“应用”后才会生效——错误的规则（例如隐藏全部内容的规则）可能导致整个应用无法使用，因此输入时不会实时生效。",
+  "settings.customCssPlaceholder": "/* 例如 */\n.sidebar { background: #111; }",
+  "settings.customCssApply": "应用",
+  "settings.customCssReset": "重置",
+  "settings.customCssResetHint":
+    "如果应用的 CSS 导致应用无法使用，请退出 Grok App，打开应用数据目录中的 settings.json，删除 “customCss” 字段，然后重新启动。",
   "settings.customModels": "自定义模型 ID",
   "settings.customModelsDesc": "为此提供商显示的额外模型代号（每行一个）",
   "settings.customModelsPh": "例如：gpt-5-turbo",

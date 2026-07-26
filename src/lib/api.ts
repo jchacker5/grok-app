@@ -1165,6 +1165,11 @@ export interface AppSettings {
   addProjectBaseDir?: string;
   /** Check provider CLIs for updates. */
   enableProviderUpdateChecks?: boolean;
+  /**
+   * User-authored CSS injected into the app's own renderer at runtime
+   * (`<style id="user-custom-css">`). `null`/unset = no override, local-only.
+   */
+  customCss?: string | null;
 }
 
 export interface VoiceSessionState {
