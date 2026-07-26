@@ -101,6 +101,12 @@ pub fn spaces_file() -> PathBuf {
     app_data_root().join("spaces.json")
 }
 
+/// Named session groupings ("session folders" — a session belongs to at
+/// most one folder, unlike the multi-assignment `tags` field).
+pub fn folders_file() -> PathBuf {
+    app_data_root().join("folders.json")
+}
+
 /// App MCP/Skills enable prefs (`extensions.json`).
 pub fn extensions_file() -> PathBuf {
     app_data_root().join("extensions.json")

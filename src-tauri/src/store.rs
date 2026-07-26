@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::paths::{
-    automations_file, ensure_app_dirs, projects_file, session_dir, sessions_index_file,
-    settings_file, spaces_file,
+    automations_file, ensure_app_dirs, folders_file, projects_file, session_dir,
+    sessions_index_file, settings_file, spaces_file,
 };
 
 /// Where composer model / effort / mode / permission choices are remembered.
@@ -143,6 +143,11 @@ pub struct SessionMeta {
     /// `tags` — does not bump `updated_at` when changed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bookmark_note: Option<String>,
+    /// Session folder membership — a session belongs to at most one folder
+    /// (unlike `tags`, which allow multiple). Organizational metadata, like
+    /// `pinned` — does not bump `updated_at` when changed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -837,6 +842,87 @@ pub fn reorder_spaces(ordered_ids: Vec<String>) -> Result<Vec<Space>, String> {
     Ok(next)
 }
 
+/// A named grouping of sessions ("session folders"). Unlike Grok Spaces
+/// (project groupings) or `tags` (multi-assignment session labels), a
+/// session belongs to at most one folder — single-assignment, like a
+/// directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionFolder {
+    pub id: String,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}
+
+pub fn load_folders() -> Vec<SessionFolder> {
+    let _ = ensure_app_dirs();
+    let mut list: Vec<SessionFolder> = read_json(&folders_file());
+    list.sort_by_key(|f| f.created_at);
+    list
+}
+
+pub fn save_folders(list: &[SessionFolder]) -> Result<(), String> {
+    let _ = ensure_app_dirs();
+    write_json(&folders_file(), &list)
+}
+
+pub fn create_folder(name: String) -> Result<SessionFolder, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("name empty".into());
+    }
+    let mut list = load_folders();
+    let folder = SessionFolder {
+        id: Uuid::new_v4().to_string(),
+        name,
+        created_at: Utc::now(),
+    };
+    list.push(folder.clone());
+    save_folders(&list)?;
+    Ok(folder)
+}
+
+pub fn rename_folder(id: &str, name: &str) -> Result<SessionFolder, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("name empty".into());
+    }
+    let mut list = load_folders();
+    let f = list
+        .iter_mut()
+        .find(|f| f.id == id)
+        .ok_or_else(|| "folder not found".to_string())?;
+    f.name = name.to_string();
+    let clone = f.clone();
+    save_folders(&list)?;
+    Ok(clone)
+}
+
+/// Delete a folder and clear its membership from any sessions that pointed at
+/// it (sessions themselves are never deleted — they become folder-less).
+pub fn delete_folder(id: &str) -> Result<(), String> {
+    let mut list = load_folders();
+    let before = list.len();
+    list.retain(|f| f.id != id);
+    if list.len() == before {
+        return Err("folder not found".into());
+    }
+    save_folders(&list)?;
+
+    let mut sessions = load_sessions_index();
+    let mut changed = false;
+    for s in &mut sessions {
+        if s.folder_id.as_deref() == Some(id) {
+            s.folder_id = None;
+            changed = true;
+        }
+    }
+    if changed {
+        save_sessions_index(&sessions)?;
+    }
+    Ok(())
+}
+
 /// Pinned first, then newest `updated_at` (mirrors project pin sort).
 pub fn sort_sessions_by_pin_then_updated(list: &mut [SessionMeta]) {
     list.sort_by(|a, b| {
@@ -895,6 +981,7 @@ pub fn create_session(
         pr_state: None,
         tags: Vec::new(),
         bookmark_note: None,
+        folder_id: None,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -1003,6 +1090,20 @@ pub fn set_session_bookmark(id: &str, note: Option<String>) -> Result<SessionMet
         .ok_or_else(|| "session not found".to_string())?;
     s.bookmark_note = note;
     // Do not bump updated_at — bookmarking is organizational (same as pin/tags).
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+/// Assign (or clear, with `folder_id = None`) a session's folder membership.
+pub fn set_session_folder(id: &str, folder_id: Option<String>) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.folder_id = folder_id;
+    // Do not bump updated_at — folder membership is organizational (same as pin/tags).
     let clone = s.clone();
     save_sessions_index(&list)?;
     Ok(clone)
@@ -2028,6 +2129,7 @@ mod tests {
             pr_state: None,
             tags: Vec::new(),
             bookmark_note: None,
+            folder_id: None,
         }
     }
 
@@ -2120,6 +2222,100 @@ mod tests {
 
         let missing = set_session_bookmark("does-not-exist", Some("x".into()));
         assert!(missing.is_err());
+
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn folder_crud_create_rename_delete() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-folders-crud-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+
+        assert!(load_folders().is_empty());
+
+        let folder = create_folder("Research".into()).expect("create folder");
+        assert_eq!(folder.name, "Research");
+        let listed = load_folders();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, folder.id);
+
+        let renamed = rename_folder(&folder.id, "Deep Research").expect("rename folder");
+        assert_eq!(renamed.name, "Deep Research");
+        assert_eq!(load_folders()[0].name, "Deep Research");
+
+        assert!(create_folder("   ".into()).is_err());
+        assert!(rename_folder(&folder.id, "").is_err());
+        assert!(rename_folder("does-not-exist", "x").is_err());
+
+        delete_folder(&folder.id).expect("delete folder");
+        assert!(load_folders().is_empty());
+        assert!(delete_folder(&folder.id).is_err());
+
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn set_session_folder_assigns_and_clears_without_bumping_updated_at() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-session-folder-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+
+        let folder = create_folder("Work".into()).expect("create folder");
+        let created = create_session(None, Some("Foldered chat".into()), false)
+            .expect("create session");
+        let before_updated_at = created.updated_at;
+
+        let assigned = set_session_folder(&created.id, Some(folder.id.clone()))
+            .expect("assign folder");
+        assert_eq!(assigned.folder_id, Some(folder.id.clone()));
+        assert_eq!(assigned.updated_at, before_updated_at);
+
+        let cleared = set_session_folder(&created.id, None).expect("clear folder");
+        assert_eq!(cleared.folder_id, None);
+
+        let missing = set_session_folder("does-not-exist", Some(folder.id.clone()));
+        assert!(missing.is_err());
+
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn delete_folder_clears_membership_on_member_sessions() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-folder-cascade-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+
+        let folder = create_folder("Archive".into()).expect("create folder");
+        let s1 = create_session(None, Some("one".into()), false).expect("create session 1");
+        let s2 = create_session(None, Some("two".into()), false).expect("create session 2");
+        set_session_folder(&s1.id, Some(folder.id.clone())).expect("assign s1");
+        set_session_folder(&s2.id, Some(folder.id.clone())).expect("assign s2");
+
+        delete_folder(&folder.id).expect("delete folder");
+
+        let after = load_sessions_index();
+        assert_eq!(after.iter().find(|s| s.id == s1.id).unwrap().folder_id, None);
+        assert_eq!(after.iter().find(|s| s.id == s2.id).unwrap().folder_id, None);
+        assert!(load_folders().is_empty());
 
         std::env::remove_var("GROK_APP_HOME");
         let _ = fs::remove_dir_all(&tmp);

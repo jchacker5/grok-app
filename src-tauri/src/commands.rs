@@ -1669,6 +1669,15 @@ pub async fn session_set_bookmark(
     store::set_session_bookmark(&id, note)
 }
 
+/// Assign (or clear, with `folder_id = None`) a session's folder membership.
+#[tauri::command]
+pub async fn session_set_folder(
+    session_id: String,
+    folder_id: Option<String>,
+) -> Result<SessionMeta, String> {
+    store::set_session_folder(&session_id, folder_id)
+}
+
 #[tauri::command]
 pub async fn session_set_settled(id: String, settled_at: Option<String>) -> Result<SessionMeta, String> {
     let parsed = settled_at
@@ -1901,6 +1910,32 @@ pub async fn project_set_space(
     space_id: Option<String>,
 ) -> Result<store::Project, String> {
     store::set_project_space(&id, space_id)
+}
+
+// ─── Session folders ────────────────────────────────────────────────────────
+// Ad-hoc named groupings of *sessions* — distinct from Grok Spaces (which
+// group *projects*) and from `tags` (which allow multiple labels per
+// session). A session belongs to at most one folder.
+
+#[tauri::command]
+pub async fn folders_list() -> Result<Vec<store::SessionFolder>, String> {
+    Ok(store::load_folders())
+}
+
+#[tauri::command]
+pub async fn folder_create(name: String) -> Result<store::SessionFolder, String> {
+    store::create_folder(name)
+}
+
+#[tauri::command]
+pub async fn folder_rename(id: String, name: String) -> Result<(), String> {
+    store::rename_folder(&id, &name)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn folder_delete(id: String) -> Result<(), String> {
+    store::delete_folder(&id)
 }
 
 #[tauri::command]

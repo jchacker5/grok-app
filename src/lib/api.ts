@@ -1001,6 +1001,8 @@ export async function sessionsList() {
       tags?: string[];
       /** Bookmark note; `undefined`/absent = not bookmarked, "" = bookmarked with no note. */
       bookmarkNote?: string | null;
+      /** Session folder membership — at most one folder (unlike `tags`). */
+      folderId?: string;
     }>
   >("sessions_list");
 }
@@ -1113,6 +1115,11 @@ export async function sessionSetTags(id: string, tags: string[]) {
  */
 export async function sessionSetBookmark(id: string, note: string | null) {
   return invoke("session_set_bookmark", { id, note });
+}
+
+/** Assign (or clear, with `folderId = null`) a session's folder membership. */
+export async function sessionSetFolder(sessionId: string, folderId: string | null) {
+  return invoke("session_set_folder", { sessionId, folderId });
 }
 
 export async function sessionSetSettled(id: string, settledAt: string | null) {
@@ -2569,6 +2576,34 @@ export async function projectSetSpace(
 ): Promise<void> {
   if (!isTauri()) return;
   await invoke("project_set_space", { id, spaceId });
+}
+
+// ─── Session folders ────────────────────────────────────────────────────────
+// Ad-hoc named groupings of *sessions* — distinct from Grok Spaces (which
+// group projects) and from session `tags` (multi-assignment labels). A
+// session belongs to at most one folder.
+
+export interface SessionFolderDto {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export async function foldersList(): Promise<SessionFolderDto[]> {
+  if (!isTauri()) return [];
+  return invoke<SessionFolderDto[]>("folders_list");
+}
+
+export async function folderCreate(name: string): Promise<SessionFolderDto> {
+  return invoke<SessionFolderDto>("folder_create", { name });
+}
+
+export async function folderRename(id: string, name: string): Promise<void> {
+  await invoke("folder_rename", { id, name });
+}
+
+export async function folderDelete(id: string): Promise<void> {
+  await invoke("folder_delete", { id });
 }
 
 // ─── Call Logs, Presets, Export, Plugin Install with Progress ─────────────
