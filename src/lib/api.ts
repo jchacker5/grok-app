@@ -934,6 +934,8 @@ export async function sessionsList() {
       prState?: string;
       /** User-defined labels for sidebar filtering. */
       tags?: string[];
+      /** Bookmark note; `undefined`/absent = not bookmarked, "" = bookmarked with no note. */
+      bookmarkNote?: string | null;
     }>
   >("sessions_list");
 }
@@ -1038,6 +1040,14 @@ export async function sessionSetPinned(id: string, pinned: boolean) {
 
 export async function sessionSetTags(id: string, tags: string[]) {
   return invoke("session_set_tags", { id, tags });
+}
+
+/**
+ * Bookmark (or unbookmark) a session with an attached note.
+ * `note: null` clears the bookmark; `note: ""` bookmarks with no note.
+ */
+export async function sessionSetBookmark(id: string, note: string | null) {
+  return invoke("session_set_bookmark", { id, note });
 }
 
 export async function sessionSetSettled(id: string, settledAt: string | null) {
@@ -1400,6 +1410,28 @@ export async function composerPrefsSet(body: {
 
 export async function settingsSet(settings: Record<string, unknown>) {
   return invoke("settings_set", { settings });
+}
+
+/**
+ * Export current app settings as pretty JSON. Prompts a native save dialog
+ * (defaulting to `grok-app-settings.json`) on the Rust side; the returned
+ * string is the JSON that was (or would have been) written, regardless of
+ * whether the user picked a destination. Never includes `browserCookies`
+ * (may hold secrets like a saved GitHub PAT) — everything else in
+ * `AppSettings` is non-sensitive.
+ */
+export async function exportSettings() {
+  return invoke<string>("export_settings");
+}
+
+/**
+ * Import app settings. With no argument, prompts a native open-file dialog
+ * filtered to `.json`; pass `json` directly to import programmatically
+ * (e.g. tests) without a dialog. Throws if the dialog is cancelled or the
+ * file does not parse as `AppSettings`.
+ */
+export async function importSettings(json?: string) {
+  return invoke<void>("import_settings", { json: json ?? null });
 }
 
 /** Update live Host permission policy + persist at configured prefs scope. */

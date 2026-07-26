@@ -15,6 +15,7 @@ import {
   IconCornerUpRight as TbCornerUpRight,
   IconBell as TbBell,
   IconBolt as TbBolt,
+  IconBookmark as TbBookmark,
   IconGitBranch as TbGitBranch,
   IconBox as TbBox,
   IconBrandWindows as TbBrandWindows,
@@ -285,6 +286,8 @@ export const IconMaximize = wrap(TbSquare);
 export const IconPlan = wrap(TbList);
 export const IconPin = wrap(TbPinned);
 export const IconPinOff = wrap(TbPinnedOff);
+/** Session bookmark w/ note indicator. */
+export const IconBookmark = wrap(TbBookmark);
 export const IconHandStop = wrap(TbHandStop);
 export const IconShield = wrap(TbShield);
 export const IconShieldCheck = wrap(TbShieldCheck);

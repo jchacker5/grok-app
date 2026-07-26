@@ -888,6 +888,15 @@ const en = {
     "Reset all settings to defaults? This cannot be undone.",
   "settings.restoreDefaultsDesc":
     "Reset all settings to their factory defaults.",
+  "settings.exportSettings": "Export settings…",
+  "settings.exportSettingsDesc":
+    "Save all app settings to a JSON file you can back up or move to another machine.",
+  "settings.importSettings": "Import settings…",
+  "settings.importSettingsDesc":
+    "Load app settings from a previously exported JSON file.",
+  "settings.importSettingsSuccess": "Settings imported.",
+  "settings.importSettingsError": "Import failed: {error}",
+  "settings.exportSettingsSuccess": "Settings exported.",
   "settings.sidebar.previewCount": "Message preview lines",
   "settings.sidebar.previewCountDesc":
     "How many message lines to show per chat in the sidebar (1-15).",
@@ -1587,6 +1596,12 @@ const en = {
   "session.tagsLabel": "Tags",
   "session.newTagPlaceholder": "New tag… (Enter to add)",
   "session.noTags": "No tags yet",
+
+  // Session bookmarking with notes
+  "session.bookmark": "Bookmark this session…",
+  "session.bookmarkNote": "Bookmark note",
+  "session.bookmarkNotePlaceholder": "Note… (optional)",
+  "session.removeBookmark": "Remove bookmark",
 
   // Sidebar tag-chip filter row
   "sidebar.tagFilter.all": "All tags",
