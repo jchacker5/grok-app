@@ -544,7 +544,7 @@ export function ConversationThread({
             if (m.isError) {
               const friendly = formatTurnErrorBody(
                 { content: m.content, code: undefined, message: undefined },
-                locale === "en" ? "en" : "zh",
+                "en",
               );
               return (
                 <div

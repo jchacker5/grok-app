@@ -11,6 +11,31 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-07-26
+
+### Added
+
+- **Notification Preferences & Quiet Hours**: Per-channel desktop notification toggles, sound chimes, in-app badges, Do Not Disturb quiet hours scheduler, and event completion/error triggers.
+- **Plugin Dependency Topology Graph**: Visual SVG node graph for installed plugin dependencies with relation arrows, status indicators, and topology view.
+- **Agent Memory & State Inspector**: Read-only inspector panel for agent long-term memories (`memory.json`) with category filtering, search, confidence star ratings, and memory clearing.
+- **GitHub Integration & Issue Creator**: Fetch GitHub issue, PR, and commit context via URL parser; create GitHub issues directly from session transcripts.
+- **Multi-Machine Storage Sync**: Configurable shared storage directory manager for syncing sessions, settings, presets, prompts, and commands across devices (iCloud / Dropbox / OneDrive).
+- **Goal Mode & Autonomous Plan Tracker**: Interactive goal indicator, subgoal step checklist, and Goal Panel.
+- **Call Log History Panel**: Token usage, cost, and duration metrics history table in Account panel.
+- **Enhanced Transcript Exporter**: Export chat sessions as clean Markdown (`.md`) or JSON (`.json`) files.
+- **Streaming CLI Install Progress**: Real-time terminal log output modal during provider CLI installations.
+- **Grouped Snippet Search**: Search code snippets across all chat sessions, grouped by project with term highlighting.
+- **Session Presets Manager**: Save model, effort, yolo, and system prompt configurations with Quick Preset selector in composer toolbar and Settings.
+- **Workspace Diff & Selective Staging Panel**: Visual Git diff viewer (unified & side-by-side) with file/hunk staging and commit panel.
+- **Community & Custom Prompt Library**: Library of built-in system prompts (Code Review, Refactor, Unit Tests, Copywriting, Analysis) and custom prompt manager.
+- **Custom Slash Commands Manager**: Define custom slash commands (`/name`) for text template insertion and shell script execution with test runner.
+- **Embedded Browser Preview**: Embedded browser panel with navigation controls, reload, and domain cookie extractor.
+- **Per-Project AGENTS.md Rules Editor**: In-app rules editor for `AGENTS.md`, `CLAUDE.md`, and `.grok/AGENTS.md` with starter templates and ⌘S save.
+- **Export Chat as PNG Image**: Carbon-style styled PNG image generator with message selection, themes (Dark, Light, Sepia), and metadata toggle.
+- **Session Diff & Branch Comparison**: Compare two chat sessions side-by-side or unified to view prompt and response diffs.
+- **Session Analytics & Token Usage Dashboard**: Token usage dashboard with overview statistics, model distribution breakdown, and per-session analytics.
+- **Multi-Model Parallel Comparison**: Side-by-side card grid for comparing responses from multiple AI models simultaneously.
+
 ## [0.1.13] - 2026-07-26
 
 ### Added

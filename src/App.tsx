@@ -9810,7 +9810,7 @@ export default function App() {
                                   if (blob.size < 32) return;
                                   const b64 = await blobToBase64(blob);
                                   const lang = voiceDictationLanguage === "auto"
-                                    ? (locale === "zh" || locale === "zh-TW" ? "zh" : "en")
+                                    ? "en"
                                     : voiceDictationLanguage;
                                   const result =
                                     await api.voiceDictationTranscribe(

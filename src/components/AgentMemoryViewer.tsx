@@ -331,8 +331,7 @@ export const AgentMemoryViewer: React.FC<AgentMemoryViewerProps> = ({
     }
   };
 
-  const dateLocale =
-    locale === "zh" ? "zh-CN" : locale === "zh-TW" ? "zh-TW" : "en-US";
+  const dateLocale = "en-US";
   const sectionLabels: Record<MemorySection, string> = {
     global: tr("memory.global"),
     workspace: tr("memory.workspace"),

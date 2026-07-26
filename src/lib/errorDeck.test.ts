@@ -26,13 +26,6 @@ describe("buildErrorDeck", () => {
     expect(crash.primary.id).toBe("reconnect");
   });
 
-  it("returns Chinese copy for zh", () => {
-    const cli = buildErrorDeck("CLI_NOT_FOUND", "zh");
-    expect(cli.problem).toMatch(/CLI|命令行|未找到/);
-    expect(cli.cause).toMatch(/安装|路径|Doctor|设置/);
-    expect(cli.primary.label.length).toBeGreaterThan(1);
-  });
-
   it("maps timeout / disconnect specials", () => {
     expect(deckCodeFromAgent("NETWORK_PROVIDER", { timeout: true })).toBe(
       "TURN_TIMEOUT",

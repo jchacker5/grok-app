@@ -181,7 +181,7 @@ function MessageResponseImpl({
         }
         projectPath={projectPath}
         kind="file"
-        subtitle={fileSubtitle(raw, locale === "en" ? "en" : "zh")}
+        subtitle={fileSubtitle(raw, "en")}
         labels={fileLabels}
         onOpenInPanel={(t) => {
           if (t.type === "file" && t.path) {

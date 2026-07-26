@@ -66,11 +66,11 @@ function checkTitle(
   return key ? t(key) : check.title;
 }
 
-function formatGeneratedAt(iso: string, locale: Locale): string {
+function formatGeneratedAt(iso: string): string {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString(locale === "zh" || locale === "zh-TW" ? "zh-CN" : "en-US", {
+    return d.toLocaleString("en-US", {
       dateStyle: "medium",
       timeStyle: "medium",
     });
@@ -299,7 +299,7 @@ export function DoctorModal({
             {report?.generatedAt && (
               <span className="doctor-modal__ts">
                 {t("doctor.generatedAt", {
-                  time: formatGeneratedAt(report.generatedAt, locale),
+                  time: formatGeneratedAt(report.generatedAt),
                 })}
               </span>
             )}

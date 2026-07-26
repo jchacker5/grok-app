@@ -218,7 +218,7 @@ export const MarkdownChat = memo(function MarkdownChat({
         }
         projectPath={projectPath}
         kind="file"
-        subtitle={fileSubtitle(pathToken, locale === "en" ? "en" : "zh")}
+        subtitle={fileSubtitle(pathToken, "en")}
         labels={fileLabels}
         onOpenInPanel={(t) => {
           if (t.type === "file" && t.path) {

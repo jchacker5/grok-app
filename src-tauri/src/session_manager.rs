@@ -562,7 +562,8 @@ impl SessionManager {
         let mode = s.product_mode.clone().unwrap_or_else(|| "agent".into());
         let app_sid = s.app_session_id.clone();
         let empty = tools == 0
-            && (had_body || had_thought)
+            && !had_body
+            && !had_thought
             && mode != "ask"
             && !s.provider_retry_aborted
             && stop_reason != "cancelled"
