@@ -357,6 +357,7 @@ pub struct AppSettings {
 
 fn default_wallpaper_opacity() -> u32 {
     35
+}
 
 fn default_composer_prefs_scope() -> String {
     "global".into()
