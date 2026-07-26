@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyMentionAtTrigger,
   applySkillAtSlash,
+  detectMentionQuery,
+  detectMentionQueryFromEditor,
   detectSlashQuery,
   detectSlashQueryFromEditor,
   draftFromPlainText,
@@ -133,6 +136,133 @@ describe("detectSlashQuery", () => {
 describe("detectSlashQueryFromEditor", () => {
   it("returns null for null element", () => {
     expect(detectSlashQueryFromEditor(null)).toBeNull();
+  });
+});
+
+describe("detectMentionQuery", () => {
+  it("triggers at start (bare @)", () => {
+    expect(detectMentionQuery("@")).toEqual({
+      start: 0,
+      kind: null,
+      query: "",
+    });
+  });
+
+  it('triggers after whitespace ("hello @fi")', () => {
+    expect(detectMentionQuery("hello @fi")).toEqual({
+      start: 6,
+      kind: null,
+      query: "fi",
+    });
+    expect(detectMentionQuery("hello\n@x")).toEqual({
+      start: 6,
+      kind: null,
+      query: "x",
+    });
+  });
+
+  it("does NOT trigger mid-word — user@host is not a mention", () => {
+    // The `@` in an email/handle is preceded by a word character (not
+    // start-of-string, not whitespace) — this is the exact false-positive
+    // case the start-of-word trigger rule exists to avoid.
+    expect(detectMentionQuery("user@host")).toBeNull();
+    expect(detectMentionQuery("contact me at user@host.com")).toBeNull();
+    expect(detectMentionQuery("foo@bar")).toBeNull();
+  });
+
+  it("null when no trailing @ token", () => {
+    expect(detectMentionQuery("")).toBeNull();
+    expect(detectMentionQuery("hello")).toBeNull();
+    expect(detectMentionQuery("@x more")).toBeNull();
+  });
+
+  it("captures file: kind prefix with partial query", () => {
+    expect(detectMentionQuery("@file:")).toEqual({
+      start: 0,
+      kind: "file",
+      query: "",
+    });
+    expect(detectMentionQuery("@file:App")).toEqual({
+      start: 0,
+      kind: "file",
+      query: "App",
+    });
+    expect(detectMentionQuery("please see @file:src/App.tsx")).toEqual({
+      start: 11,
+      kind: "file",
+      query: "src/App.tsx",
+    });
+  });
+
+  it("captures model: kind prefix", () => {
+    expect(detectMentionQuery("@model:gro")).toEqual({
+      start: 0,
+      kind: "model",
+      query: "gro",
+    });
+  });
+
+  it("captures session: kind prefix", () => {
+    expect(detectMentionQuery("@session:")).toEqual({
+      start: 0,
+      kind: "session",
+      query: "",
+    });
+    expect(detectMentionQuery("@session:fix")).toEqual({
+      start: 0,
+      kind: "session",
+      query: "fix",
+    });
+  });
+
+  it("null when the @token is not at the end (cursor moved past it)", () => {
+    // Mirrors detectSlashQuery: only the token immediately before the caret
+    // is "active" — trailing text after it means the trigger is stale.
+    expect(detectMentionQuery("@session:fix login")).toBeNull();
+  });
+
+  it("unrecognized prefix stays a plain query (no kind narrowing)", () => {
+    expect(detectMentionQuery("@filex")).toEqual({
+      start: 0,
+      kind: null,
+      query: "filex",
+    });
+  });
+
+  it("ignores trailing newlines/nbsp from contenteditable <br>", () => {
+    expect(detectMentionQuery("@file:App\n")).toEqual({
+      start: 0,
+      kind: "file",
+      query: "App",
+    });
+  });
+});
+
+describe("detectMentionQueryFromEditor", () => {
+  it("returns null for null element", () => {
+    expect(detectMentionQueryFromEditor(null)).toBeNull();
+  });
+});
+
+describe("applyMentionAtTrigger", () => {
+  it("replaces the mention range with insertText (already trailing-spaced)", () => {
+    const stored = "please look at @file:App";
+    // "@file:App" starts at 15, ends at 25 (string length)
+    expect(
+      applyMentionAtTrigger(stored, 15, 25, "@file:src/App.tsx "),
+    ).toBe("please look at @file:src/App.tsx ");
+  });
+
+  it("works at start of string", () => {
+    expect(applyMentionAtTrigger("@mo", 0, 3, "@model:grok-4.5 ")).toBe(
+      "@model:grok-4.5 ",
+    );
+  });
+
+  it("preserves trailing text after the replaced range", () => {
+    expect(
+      applyMentionAtTrigger("hi @se and thanks", 3, 6, '@session:"Fix bug" '),
+    ).toBe('hi @session:"Fix bug"  and thanks');
   });
 });
 
