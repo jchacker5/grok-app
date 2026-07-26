@@ -148,12 +148,22 @@ import {
 import { buildElementPickSummary } from "@/lib/elementPickSummary";
 import {
   applySkillAtSlash,
+  applyMentionAtTrigger,
   isDraftEmpty,
   hydrateDisplayContent,
   detectSlashQueryFromEditor,
+  detectMentionQueryFromEditor,
   parseStoredContent,
   serializeForAgent,
 } from "@/lib/draftDoc";
+import {
+  buildFileMentionItems,
+  buildMentionEntries,
+  buildModelMentionItems,
+  buildSessionMentionItems,
+  type MentionItem,
+  type MentionKind,
+} from "@/lib/mentionCatalog";
 import {
   queuePreviewText,
   shouldEnqueueSend,
@@ -180,7 +190,7 @@ import {
 } from "@/lib/virtualList";
 import { GrokLogo } from "@/components/GrokLogo";
 import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
-import { ComposerEditor } from "@/components/ComposerEditor";
+import { ComposerEditor, insertTextAtCursor } from "@/components/ComposerEditor";
 import { VoiceOverlay } from "@/components/VoiceOverlay";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import { blobToBase64, startPcmCapture } from "@/lib/voiceAudio";
@@ -191,6 +201,8 @@ import {
   buildComposerPlusEntries,
   uploadMatchesQuery,
 } from "@/components/ComposerPlusPanel";
+import { EmojiPickerPanel } from "@/components/EmojiPickerPanel";
+import { MentionPanel } from "@/components/MentionPanel";
 import { StatusModal } from "@/components/StatusModal";
 import { McpStatusModal } from "@/components/McpStatusModal";
 import {
@@ -227,6 +239,7 @@ import {
   IconShield,
   IconCheck,
   IconTag,
+  IconMoodSmile,
 } from "@/components/icons";
 import { AutomationsPage } from "@/components/AutomationsPage";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
@@ -461,6 +474,34 @@ export default function App() {
   const slashDismissedSigRef = useRef<string | null>(null);
   const showComposerPlusRef = useRef(false);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiQuery, setEmojiQuery] = useState("");
+  const emojiTriggerRef = useRef<HTMLButtonElement>(null);
+  const emojiPanelRef = useRef<HTMLDivElement>(null);
+  /**
+   * Live `@`-mention token from contenteditable.innerText (rAF poll) —
+   * same independent-of-React-draft approach as `liveSlash` so IME / `<br>`
+   * cannot desync it. `present` is true for bare `@` as well as `@kind:query`.
+   */
+  const [liveMention, setLiveMention] = useState<{
+    present: boolean;
+    kind: MentionKind | null;
+    query: string;
+    start: number;
+    end: number;
+  }>({ present: false, kind: null, query: "", start: 0, end: 0 });
+  const liveMentionRef = useRef(liveMention);
+  liveMentionRef.current = liveMention;
+  /** After Escape, suppress re-open until the `@token` text changes. */
+  const mentionDismissedSigRef = useRef<string | null>(null);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  const mentionPanelRef = useRef<HTMLDivElement>(null);
+  const [mentionFileEntries, setMentionFileEntries] = useState<api.FsEntry[]>(
+    [],
+  );
+  const [mentionFilesLoading, setMentionFilesLoading] = useState(false);
+  /** Project path already listed for `@file:` — avoids re-listing every keystroke. */
+  const mentionFilesLoadedForRef = useRef<string | null>(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMcpModal, setShowMcpModal] = useState(false);
   const [mcpServers, setMcpServers] = useState<api.McpDto[]>([]);
@@ -4668,6 +4709,54 @@ export default function App() {
           setSlashQuery((q) => (q == null ? q : null));
         }
       }
+
+      // Parallel `@`-mention detection — same rAF poll, independent state.
+      const detectedMention = detectMentionQueryFromEditor(el);
+      let nextMention = detectedMention
+        ? {
+            present: true as const,
+            kind: detectedMention.kind,
+            query: detectedMention.query,
+            start: detectedMention.start,
+            end: detectedMention.end,
+          }
+        : {
+            present: false as const,
+            kind: null,
+            query: "",
+            start: 0,
+            end: 0,
+          };
+      // Honor Escape dismiss until the user edits the `@token`.
+      if (nextMention.present && mentionDismissedSigRef.current != null) {
+        const sig = `${nextMention.start}:${nextMention.kind ?? ""}:${nextMention.query}`;
+        if (sig === mentionDismissedSigRef.current) {
+          nextMention = {
+            present: false,
+            kind: null,
+            query: "",
+            start: 0,
+            end: 0,
+          };
+        } else {
+          mentionDismissedSigRef.current = null;
+        }
+      }
+      if (!nextMention.present && detectedMention == null) {
+        mentionDismissedSigRef.current = null;
+      }
+      const prevMention = liveMentionRef.current;
+      if (
+        prevMention.present !== nextMention.present ||
+        prevMention.kind !== nextMention.kind ||
+        prevMention.query !== nextMention.query ||
+        prevMention.start !== nextMention.start ||
+        prevMention.end !== nextMention.end
+      ) {
+        liveMentionRef.current = nextMention;
+        setLiveMention(nextMention);
+      }
+
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -4711,6 +4800,150 @@ export default function App() {
         : i;
     });
   }, [composerMenuEntries.length]);
+
+  const closeMentionMenu = useCallback(() => {
+    const live = liveMentionRef.current;
+    if (live.present) {
+      mentionDismissedSigRef.current = `${live.start}:${live.kind ?? ""}:${live.query}`;
+    }
+    const cleared = {
+      present: false,
+      kind: null as MentionKind | null,
+      query: "",
+      start: 0,
+      end: 0,
+    };
+    setLiveMention(cleared);
+    liveMentionRef.current = cleared;
+  }, []);
+
+  /** Bare `@` shows the combined panel; suppress it while the `/`+menu is open. */
+  const mentionMenuOpen = liveMention.present && !composerMenuOpen;
+
+  const mentionModelItems = useMemo(
+    () => buildModelMentionItems(availableModels),
+    [availableModels],
+  );
+  const mentionSessionItems = useMemo(
+    () => buildSessionMentionItems(sessions.filter((s) => !s.archived)),
+    [sessions],
+  );
+  const mentionFileItems = useMemo(
+    () => buildFileMentionItems(mentionFileEntries),
+    [mentionFileEntries],
+  );
+  const mentionEntries = useMemo(
+    () =>
+      buildMentionEntries({
+        kind: liveMention.kind,
+        query: liveMention.query,
+        files: mentionFileItems,
+        models: mentionModelItems,
+        sessions: mentionSessionItems,
+      }),
+    [
+      liveMention.kind,
+      liveMention.query,
+      mentionFileItems,
+      mentionModelItems,
+      mentionSessionItems,
+    ],
+  );
+  const mentionEntriesRef = useRef(mentionEntries);
+  mentionEntriesRef.current = mentionEntries;
+
+  /**
+   * Lazily list the current project directory for `@file:` candidates —
+   * only when the Files section is actually visible (bare `@` or `@file:`),
+   * and only once per project path (not on every keystroke).
+   */
+  useEffect(() => {
+    if (!mentionMenuOpen) return;
+    if (liveMention.kind === "model" || liveMention.kind === "session") return;
+    const path = activeProject?.path;
+    if (!path) return;
+    if (mentionFilesLoadedForRef.current === path) return;
+    mentionFilesLoadedForRef.current = path;
+    setMentionFilesLoading(true);
+    void api
+      .fsListDir(path, "")
+      .then((entries) => setMentionFileEntries(entries))
+      .catch(() => setMentionFileEntries([]))
+      .finally(() => setMentionFilesLoading(false));
+  }, [mentionMenuOpen, liveMention.kind, activeProject?.path]);
+
+  const { pos: mentionPos, style: mentionStyle } = useFloatingMenu({
+    open: mentionMenuOpen,
+    triggerRef: composerShellRef,
+    panelRef: mentionPanelRef,
+    roots: [composerShellRef, composerInputRef],
+    onClose: closeMentionMenu,
+    placement: "up",
+    fitContent: false,
+    matchTriggerWidth: true,
+    minWidth: 280,
+    estHeight: 220,
+    gap: 8,
+    deps: [liveMention.kind, liveMention.query, mentionEntries.length],
+  });
+
+  // Reset highlight when the kind or filter string changes.
+  const prevMentionFilterRef = useRef({
+    kind: liveMention.kind,
+    query: liveMention.query,
+  });
+  useEffect(() => {
+    if (
+      prevMentionFilterRef.current.kind === liveMention.kind &&
+      prevMentionFilterRef.current.query === liveMention.query
+    ) {
+      return;
+    }
+    prevMentionFilterRef.current = {
+      kind: liveMention.kind,
+      query: liveMention.query,
+    };
+    setMentionActiveIndex(0);
+  }, [liveMention.kind, liveMention.query]);
+
+  useEffect(() => {
+    setMentionActiveIndex((i) => {
+      if (mentionEntries.length === 0) return 0;
+      return i >= mentionEntries.length ? mentionEntries.length - 1 : i;
+    });
+  }, [mentionEntries.length]);
+
+  const applyMentionItem = useCallback(
+    (item: MentionItem) => {
+      const live = liveMentionRef.current;
+      if (live.present) {
+        setDraft((d) =>
+          applyMentionAtTrigger(d, live.start, live.end, item.insertText),
+        );
+      }
+      closeMentionMenu();
+    },
+    [closeMentionMenu],
+  );
+
+  const closeEmojiPicker = useCallback(() => {
+    setShowEmojiPicker(false);
+  }, []);
+
+  const { pos: emojiPos, style: emojiStyle } = useFloatingMenu({
+    open: showEmojiPicker,
+    triggerRef: emojiTriggerRef,
+    panelRef: emojiPanelRef,
+    roots: [emojiTriggerRef],
+    onClose: closeEmojiPicker,
+    placement: "up",
+    fitContent: false,
+    width: 300,
+    minWidth: 280,
+    estHeight: 320,
+    gap: 8,
+    deps: [emojiQuery],
+  });
 
   const openMcpModal = useCallback(async () => {
     setShowMcpModal(true);
@@ -9000,6 +9233,50 @@ export default function App() {
                   />,
                   document.body,
                 )}
+              {mentionMenuOpen &&
+                mentionPos &&
+                typeof document !== "undefined" &&
+                createPortal(
+                  <MentionPanel
+                    open
+                    panelRef={mentionPanelRef}
+                    locale={locale}
+                    entries={mentionEntries}
+                    kind={liveMention.kind}
+                    query={liveMention.query}
+                    filesLoading={mentionFilesLoading}
+                    activeIndex={mentionActiveIndex}
+                    onActiveIndexChange={setMentionActiveIndex}
+                    onSelect={applyMentionItem}
+                    style={{
+                      ...mentionStyle,
+                      zIndex: 10050,
+                    }}
+                  />,
+                  document.body,
+                )}
+              {showEmojiPicker &&
+                emojiPos &&
+                typeof document !== "undefined" &&
+                createPortal(
+                  <EmojiPickerPanel
+                    open
+                    panelRef={emojiPanelRef}
+                    locale={locale}
+                    query={emojiQuery}
+                    onQueryChange={setEmojiQuery}
+                    onSelect={(char) => {
+                      insertTextAtCursor(char);
+                      setShowEmojiPicker(false);
+                      setEmojiQuery("");
+                    }}
+                    style={{
+                      ...emojiStyle,
+                      zIndex: 10050,
+                    }}
+                  />,
+                  document.body,
+                )}
               <ComposerEditor
                 editorRef={composerInputRef}
                 className="composer__input"
@@ -9076,6 +9353,47 @@ export default function App() {
                       return;
                     }
                   }
+                  if (mentionMenuOpen) {
+                    // Ref = same array the panel renders (never desync).
+                    const flat = mentionEntriesRef.current;
+                    const n = flat.length;
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      if (!n) return;
+                      setMentionActiveIndex((i) => (i + 1) % n);
+                      return;
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      if (!n) return;
+                      setMentionActiveIndex((i) => (i - 1 + n) % n);
+                      return;
+                    }
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      const entry =
+                        flat[
+                          Math.min(
+                            Math.max(0, mentionActiveIndex),
+                            Math.max(0, n - 1),
+                          )
+                        ];
+                      if (entry) applyMentionItem(entry);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      closeMentionMenu();
+                      return;
+                    }
+                    if (e.key === "Tab" && n > 0) {
+                      e.preventDefault();
+                      const entry =
+                        flat[Math.min(Math.max(0, mentionActiveIndex), n - 1)]!;
+                      applyMentionItem(entry);
+                      return;
+                    }
+                  }
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     const hasBody =
@@ -9129,6 +9447,26 @@ export default function App() {
                     }}
                   >
                     <IconPlus size={18} />
+                  </button>
+                </Tip>
+                <Tip label={tr("composer.emoji")}>
+                  <button
+                    ref={emojiTriggerRef}
+                    type="button"
+                    aria-label={tr("composer.emoji")}
+                    className={
+                      "icon-btn" + (showEmojiPicker ? " is-open" : "")
+                    }
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setShowEmojiPicker((v) => {
+                        const next = !v;
+                        if (!next) setEmojiQuery("");
+                        return next;
+                      });
+                    }}
+                  >
+                    <IconMoodSmile size={18} />
                   </button>
                 </Tip>
                 <ComposerProjectMenu

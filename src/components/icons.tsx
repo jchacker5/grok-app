@@ -58,7 +58,9 @@ import {
   IconMessagePlus as TbMessagePlus,
   IconMicrophone as TbMicrophone,
   IconMinus as TbMinus,
+  IconMoodSmile as TbMoodSmile,
   IconMoon as TbMoon,
+  IconAt as TbAt,
   IconNetwork as TbNetwork,
   IconNotes as TbNotes,
   IconPaperclip as TbPaperclip,
@@ -323,3 +325,8 @@ export const IconCrosshair = wrap(TbCrosshair);
 export const IconCamera = wrap(TbCamera);
 export const IconRecord = wrap(TbPlayerRecordFilled, { className: "g-icon--danger" });
 export const IconVideo = wrap(TbVideo);
+
+/** Composer emoji picker toggle. */
+export const IconMoodSmile = wrap(TbMoodSmile);
+/** Composer `@`-mention section marker. */
+export const IconAt = wrap(TbAt);

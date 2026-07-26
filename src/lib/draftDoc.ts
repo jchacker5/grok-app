@@ -268,6 +268,78 @@ export function detectSlashQueryFromEditor(
   return null;
 }
 
+/** `@`-mention kind prefix \u2014 text-only draft splice, no protocol changes. */
+export type MentionKind = "file" | "model" | "session";
+
+const MENTION_KIND_RE = /^(file|model|session):/;
+
+/**
+ * Detect an active `@`-mention token at the end of `textBeforeCursor`.
+ * Same start-of-word trigger rule as {@link detectSlashQuery}: `@` must be at
+ * index 0 or immediately after whitespace \u2014 avoids false positives on emails
+ * (`user@host`) or code (`foo@bar`) where `@` is preceded by a word character.
+ * Captures an optional `file:` / `model:` / `session:` kind prefix plus the
+ * remaining query text after it (e.g. `@`, `@file:`, `@file:App`, `@model:gro`).
+ */
+export function detectMentionQuery(
+  textBeforeCursor: string,
+): { start: number; kind: MentionKind | null; query: string } | null {
+  const text = textBeforeCursor
+    .replace(/\uff0f/g, "/")
+    .replace(/[\u200b-\u200d\ufeff\u2060]/g, "")
+    .replace(/[\s\u00a0]+$/u, "");
+  const m = /(^|[\s])@([^\s]*)$/u.exec(text);
+  if (!m) return null;
+  const start = m.index + m[1]!.length;
+  const rest = m[2]!;
+  const kindMatch = MENTION_KIND_RE.exec(rest);
+  if (kindMatch) {
+    return {
+      start,
+      kind: kindMatch[1] as MentionKind,
+      query: rest.slice(kindMatch[0].length),
+    };
+  }
+  return { start, kind: null, query: rest };
+}
+
+/** Live `@`-mention token from a contenteditable element (what the user sees). */
+export function detectMentionQueryFromEditor(
+  el: HTMLElement | null | undefined,
+): { start: number; kind: MentionKind | null; query: string; end: number } | null {
+  if (!el) return null;
+  const raw = readPlainEditorText(el);
+  const candidates = [
+    raw,
+    raw.replace(/\n+/g, "\n"),
+    raw.replace(/\n/g, ""),
+    raw.split("\n").filter(Boolean).pop() ?? raw,
+  ];
+  for (const text of candidates) {
+    const q = detectMentionQuery(text);
+    if (q) {
+      const trimmed = text.replace(/[\s\u00a0]+$/u, "");
+      return { start: q.start, kind: q.kind, query: q.query, end: trimmed.length };
+    }
+  }
+  return null;
+}
+
+/**
+ * Replace the active mention range `[mentionStart, mentionEnd)` with plain
+ * text (already includes a trailing space) \u2014 same plain-string-splice
+ * approach as the CLI-builtin slash branch (`applySlashItem` in App.tsx),
+ * since mentions serialize as plain readable text, not a chip/segment.
+ */
+export function applyMentionAtTrigger(
+  stored: string,
+  mentionStart: number,
+  mentionEnd: number,
+  insertText: string,
+): string {
+  return stored.slice(0, mentionStart) + insertText + stored.slice(mentionEnd);
+}
+
 /** Collapse consecutive text segments into one. */
 export function mergeAdjacentText(segments: DraftSegment[]): DraftSegment[] {
   if (segments.length === 0) return [];

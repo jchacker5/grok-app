@@ -138,10 +138,13 @@ function placeCaretAtEnd(el: HTMLElement) {
 }
 
 /**
- * Paste as plain text only — strip HTML / rich styles from clipboard.
- * Uses insertText when available (keeps undo); falls back to Range insert.
+ * Insert plain text at the current cursor/selection via
+ * `document.execCommand("insertText", ...)` when supported (preserves native
+ * undo), falling back to a manual Range insert otherwise. Used by the paste
+ * handler below and exported so other composer affordances (emoji picker,
+ * `@`-mention panel) can insert plain text without bypassing native undo.
  */
-function insertPlainTextAtSelection(text: string) {
+export function insertTextAtCursor(text: string) {
   if (!text) return;
   const plain = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
@@ -375,7 +378,7 @@ export function ComposerEditor({
     const plain = clipboardPlainText(cd);
     if (!plain) return;
     if (files.length && isFileUrlOnlyText(plain)) return;
-    insertPlainTextAtSelection(plain);
+    insertTextAtCursor(plain);
     const el = elRef.current;
     if (el) commitFromDom(el);
   };

@@ -1474,6 +1474,8 @@ html.platform-mac[data-theme="light"] .settings-page__content {
  */
 .glass-surface,
 .composer-plus,
+.emoji-picker,
+.mention-panel,
 .c-select__menu,
 .user-menu__pop,
 .slash-palette,
@@ -1553,6 +1555,8 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 ) {
   .glass-surface,
   .composer-plus,
+  .emoji-picker,
+  .mention-panel,
   .c-select__menu,
   .user-menu__pop,
   .slash-palette,
@@ -7897,6 +7901,164 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 .composer-plus__item:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/*
+ * Emoji picker — search input + OverlayScroll-wrapped category grid.
+ * Shares composer-plus's sizing discipline (fixed max-height, own scroll).
+ */
+.emoji-picker {
+  z-index: 10000;
+  max-width: min(320px, calc(100vw - 16px)) !important;
+  min-width: 0;
+  max-height: min(360px, calc(100vh - 24px)) !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.emoji-picker--portal {
+  position: fixed;
+}
+
+.emoji-picker__search-row {
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 2px;
+}
+
+.emoji-picker__search {
+  width: 100%;
+  border: none;
+  background: var(--bg-hover);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.emoji-picker__search:focus,
+.emoji-picker__search:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--border-subtle);
+}
+
+.emoji-picker__scroll {
+  min-height: 0;
+}
+
+.emoji-picker__scroll .overlay-scroll__viewport {
+  overflow-x: hidden;
+}
+
+.emoji-picker__section {
+  padding: 6px 8px 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+.emoji-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 2px 4px 6px;
+}
+
+.emoji-picker__cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  font-size: 20px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.emoji-picker__cell:hover,
+.emoji-picker__cell:focus-visible {
+  background: var(--menu-hover);
+  outline: none;
+}
+
+.emoji-picker__empty {
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+/*
+ * `@`-mention panel — sectioned Files / Models / Sessions, reuses
+ * composer-plus row/section classes for visual consistency.
+ */
+.mention-panel {
+  z-index: 10000;
+  max-width: calc(100vw - 16px) !important;
+  min-width: 0;
+  max-height: min(360px, calc(100vh - 24px)) !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.mention-panel--portal {
+  position: fixed;
+}
+
+.mention-panel__scroll {
+  min-height: 0;
+}
+
+.mention-panel__scroll .overlay-scroll__viewport {
+  overflow-x: hidden;
+}
+
+.mention-panel__filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 2px;
+  user-select: none;
+}
+
+.mention-panel__filter-ico {
+  display: inline-flex;
+  color: var(--text-secondary);
+}
+
+.mention-panel__filter-q {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-panel__filter-count {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
 }
 
 /* Buttons
