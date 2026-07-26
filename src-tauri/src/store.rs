@@ -294,6 +294,11 @@ pub struct AppSettings {
     /// Saved browser domain cookies.
     #[serde(default)]
     pub browser_cookies: std::collections::HashMap<String, String>,
+    /// User-authored CSS injected into the app's own renderer at runtime
+    /// (`<style id="user-custom-css">` in `document.head`). `None`/unset =
+    /// no override. Local-only, never sent anywhere.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_css: Option<String>,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -402,6 +407,7 @@ impl Default for AppSettings {
             custom_prompts: Vec::new(),
             custom_commands: Vec::new(),
             browser_cookies: std::collections::HashMap::new(),
+            custom_css: None,
         }
     }
 }
@@ -1841,6 +1847,42 @@ mod tests {
         }"#;
         let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
         assert!(!s.notifications_enabled);
+    }
+
+    #[test]
+    fn custom_css_defaults_none_when_missing_from_json() {
+        // Old settings files without the field must deserialize to None (no override).
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "en",
+            "sessionDataMode": "independent",
+            "manualCliPath": null,
+            "permissionPolicy": "ask",
+            "modelId": null,
+            "effort": "medium",
+            "mode": "agent",
+            "onboardingDone": true,
+            "setupSkipped": false
+        }"#;
+        let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
+        assert!(s.custom_css.is_none());
+        assert!(AppSettings::default().custom_css.is_none());
+    }
+
+    #[test]
+    fn custom_css_roundtrips_and_omits_when_none() {
+        let mut s = AppSettings::default();
+        s.custom_css = Some("body { color: red; }".into());
+        let json = serde_json::to_string(&s).expect("serialize");
+        assert!(json.contains("customCss"));
+        let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.custom_css.as_deref(), Some("body { color: red; }"));
+
+        // None is skipped entirely (skip_serializing_if), matching the
+        // convention used for other optional string settings fields.
+        let none_settings = AppSettings::default();
+        let none_json = serde_json::to_string(&none_settings).expect("serialize");
+        assert!(!none_json.contains("customCss"));
     }
 
     fn sample_session(id: &str, pinned: bool, updated: DateTime<Utc>) -> SessionMeta {

@@ -752,6 +752,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.confirmArchiveDesc": "封存對話前需要再次點擊確認",
   "settings.confirmDelete": "刪除前確認",
   "settings.confirmDeleteDesc": "永久刪除對話或工作階段前先詢問",
+  "settings.customCss": "自訂 CSS",
+  "settings.customCssDesc":
+    "將你自己的 CSS 注入應用程式介面。僅在點擊「套用」後才會生效——錯誤的規則（例如隱藏全部內容的規則）可能導致整個應用程式無法使用，因此輸入時不會即時生效。",
+  "settings.customCssPlaceholder": "/* 例如 */\n.sidebar { background: #111; }",
+  "settings.customCssApply": "套用",
+  "settings.customCssReset": "重設",
+  "settings.customCssResetHint":
+    "如果套用的 CSS 導致應用程式無法使用，請結束 Grok App，開啟應用程式資料目錄中的 settings.json，移除「customCss」欄位，然後重新啟動。",
   "settings.customModels": "自訂模型 ID",
   "settings.customModelsDesc": "為此供應商顯示的額外模型代號（每行一個）",
   "settings.customModelsPh": "例如：gpt-5-turbo",
@@ -1072,6 +1080,10 @@ export const zhTW: Record<MessageKey, string> = {
   "notify.turnDoneBody": "對話已就緒，可繼續輸入。",
   "notify.permissionTitle": "需要授權",
   "notify.permissionBody": "Agent 正在等待你的批准。",
+  "notify.quotaWarningTitle": "配額使用提醒",
+  "notify.quotaWarningBody": "本計費週期已使用 {percent}% 的配額。",
+  "notify.quotaCriticalTitle": "配額即將用盡",
+  "notify.quotaCriticalBody": "本計費週期已使用 {percent}% 的配額。",
 
   "slash.section.commands": "指令",
   "slash.section.cli": "CLI",

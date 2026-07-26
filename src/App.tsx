@@ -17,6 +17,14 @@ import {
   toggleTheme,
   type Theme,
 } from "@/lib/theme";
+import { applyCustomCss } from "@/lib/customCss";
+import {
+  QUOTA_ALERT_THRESHOLDS,
+  baselineForPeriod,
+  loadQuotaAlertState,
+  resolveThresholdCrossed,
+  saveQuotaAlertState,
+} from "@/lib/quotaAlerts";
 import {
   DEFAULT_LAYOUT,
   clampAsideWidth,
@@ -272,6 +280,7 @@ import {
   resolveWelcomeBrandKind,
   saveCachedSuperGrokBrand,
   superGrokBrandKind,
+  usagePercent,
 } from "@/lib/accountUi";
 import {
   SuperGrokMark,
@@ -840,6 +849,8 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const notificationsEnabledRef = useRef(notificationsEnabled);
   notificationsEnabledRef.current = notificationsEnabled;
+  /** User-authored CSS injected into this window's renderer (Settings → Appearance). */
+  const [customCss, setCustomCss] = useState("");
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -882,6 +893,10 @@ export default function App() {
     applyThemeToDocument(theme);
     void applyNativeWindowTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    applyCustomCss(customCss);
+  }, [customCss]);
 
   useEffect(() => {
     document.documentElement.classList.remove(
@@ -1102,6 +1117,7 @@ export default function App() {
       setVoiceMicDeviceId(settings.voiceMicDeviceId || "");
       setVoiceFeedbackChime(!!settings.voiceFeedbackChime);
       setNotificationsEnabled(settings.notificationsEnabled !== false);
+      setCustomCss(settings.customCss || "");
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -5924,6 +5940,43 @@ export default function App() {
           auth: isAccountConnected(st),
           cli: st.cliFound || s.cli,
         }));
+        // Proactive quota alerts (80% / 95%) — dedup per billing period so a
+        // long-running session isn't re-notified on every poll.
+        try {
+          const usedPct = st.billing ? usagePercent(st.billing) : null;
+          if (usedPct != null) {
+            const periodKey =
+              st.billing.billingPeriodStart || st.billing.resetsAt || "";
+            const stored = loadQuotaAlertState(localStorage);
+            const baseline = baselineForPeriod(stored, periodKey);
+            const crossed = resolveThresholdCrossed(
+              usedPct,
+              [...QUOTA_ALERT_THRESHOLDS],
+              baseline,
+            );
+            if (crossed != null && notificationsEnabledRef.current) {
+              const critical = crossed >= 95;
+              void showDesktopNotification({
+                title: trRef.current(
+                  critical
+                    ? "notify.quotaCriticalTitle"
+                    : "notify.quotaWarningTitle",
+                ),
+                body: trRef.current(
+                  critical
+                    ? "notify.quotaCriticalBody"
+                    : "notify.quotaWarningBody",
+                  { percent: String(crossed) },
+                ),
+                tag: `quota-${crossed}`,
+                force: true,
+              });
+              saveQuotaAlertState(localStorage, periodKey, crossed);
+            }
+          }
+        } catch {
+          // quota alert dedup is best-effort — never block account refresh
+        }
         try {
           const list = await api.accountsList();
           setSavedAccounts(list.profiles ?? []);
@@ -6484,6 +6537,21 @@ export default function App() {
     }
   }, [appView, settingsSection, refreshAccount, refreshSavedAccounts]);
 
+  // Proactive quota polling: while signed in, periodically re-check billing
+  // so threshold alerts (80% / 95%) fire during a work session rather than
+  // only at boot / manual refresh / Settings→Account navigation.
+  const signedIn = !!account?.profile?.signedIn;
+  useEffect(() => {
+    if (!api.isTauri() || !signedIn) return;
+    const id = window.setInterval(
+      () => void refreshAccount({ refreshBilling: true }),
+      12 * 60 * 1000,
+    );
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [signedIn, refreshAccount]);
+
   // Keyboard jump hints (Cmd/Ctrl held → show jump numbers on visible rows)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -6996,6 +7064,19 @@ export default function App() {
             setNotificationsEnabled(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, notificationsEnabled: v }),
+            );
+          }}
+          customCss={customCss}
+          onCustomCssApply={(css) => {
+            setCustomCss(css);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, customCss: css || null }),
+            );
+          }}
+          onCustomCssReset={() => {
+            setCustomCss("");
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, customCss: null }),
             );
           }}
           cliInfo={cliInfo}

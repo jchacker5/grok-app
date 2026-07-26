@@ -19,6 +19,7 @@ import {
   IconArrowLeft,
   IconBell,
   IconCheck,
+  IconDevtools,
   IconDoctor,
   IconHeadset,
   IconInfo,
@@ -266,6 +267,16 @@ export interface SettingsPageProps {
   /** Native OS notifications (turn done, background permission requests). */
   notificationsEnabled?: boolean;
   onNotificationsEnabled?: (v: boolean) => void;
+  /**
+   * Currently-applied custom CSS (empty string = none). The textarea keeps
+   * its own local draft state; this is only the last-Applied value used to
+   * seed/reset that draft.
+   */
+  customCss?: string;
+  /** Apply a new custom CSS value (persist + live-apply). */
+  onCustomCssApply?: (css: string) => void;
+  /** Clear custom CSS immediately (persist null + remove live style tag). */
+  onCustomCssReset?: () => void;
 }
 
 const NAV: {
@@ -328,6 +339,73 @@ function formatSessionWhen(iso: string, locale: string): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * Custom CSS textarea with explicit Apply/Reset (never live/debounced).
+ * Broken CSS (e.g. `* { display: none }`) could hide the whole app chrome
+ * including this Settings page, so edits stay in a local, unapplied "draft"
+ * until the user deliberately clicks Apply — navigating away without
+ * clicking Apply changes nothing live or persisted.
+ */
+function CustomCssField({
+  value,
+  onApply,
+  onReset,
+  t,
+}: {
+  value: string;
+  onApply: (css: string) => void;
+  onReset: () => void;
+  t: (k: string, vars?: Vars) => string;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  const dirty = draft !== value;
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">
+          <IconDevtools size={16} />
+          {t("settings.customCss")}
+        </div>
+        <div className="settings-row__desc">{t("settings.customCssDesc")}</div>
+      </div>
+      <textarea
+        className="settings-textarea"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={t("settings.customCssPlaceholder")}
+        rows={8}
+        spellCheck={false}
+        aria-label={t("settings.customCss")}
+      />
+      <div className="settings-row__actions">
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={() => {
+            setDraft("");
+            onReset();
+          }}
+        >
+          {t("settings.customCssReset")}
+        </button>
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={!dirty}
+          onClick={() => onApply(draft)}
+        >
+          {t("settings.customCssApply")}
+        </button>
+      </div>
+      <div className="settings-row__hint">{t("settings.customCssResetHint")}</div>
+    </div>
+  );
 }
 
 /**
@@ -1017,6 +1095,9 @@ export function SettingsPage({
   onCustomModels,
   notificationsEnabled = true,
   onNotificationsEnabled,
+  customCss = "",
+  onCustomCssApply,
+  onCustomCssReset,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [voiceOptions, setVoiceOptions] = useState<api.VoiceOption[]>([]);
@@ -1876,6 +1957,14 @@ export function SettingsPage({
                   ariaLabel={t("settings.diffWhitespace")}
                 />
               </div>
+            ) : null}
+            {onCustomCssApply ? (
+              <CustomCssField
+                value={customCss}
+                onApply={onCustomCssApply}
+                onReset={() => onCustomCssReset?.()}
+                t={t}
+              />
             ) : null}
           </div>
         )}
