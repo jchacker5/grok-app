@@ -884,6 +884,8 @@ export async function sessionsList() {
       branch?: string;
       prRef?: string;
       prState?: string;
+      /** User-defined labels for sidebar filtering. */
+      tags?: string[];
     }>
   >("sessions_list");
 }
@@ -984,6 +986,10 @@ export async function sessionSetArchived(id: string, archived: boolean) {
 
 export async function sessionSetPinned(id: string, pinned: boolean) {
   return invoke("session_set_pinned", { id, pinned });
+}
+
+export async function sessionSetTags(id: string, tags: string[]) {
+  return invoke("session_set_tags", { id, tags });
 }
 
 export async function sessionSetSettled(id: string, settledAt: string | null) {

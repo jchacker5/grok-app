@@ -1409,4 +1409,18 @@ export const zhTW: Record<MessageKey, string> = {
   "cli.updateError": "更新失敗",
   "cli.retry": "重試",
   "cli.dismiss": "關閉",
+
+  "session.addTag": "管理標籤",
+  "session.removeTag": "移除標籤",
+  "session.tagsLabel": "標籤",
+  "session.newTagPlaceholder": "新標籤…（按 Enter 新增）",
+  "session.noTags": "尚無標籤",
+
+  "sidebar.tagFilter.all": "所有標籤",
+  "sidebar.tagFilter.clear": "清除標籤篩選",
+
+  "sidebar.reopenLastClosed": "重新開啟上次關閉的對話",
+  "sidebar.reopenLastClosedEmpty": "沒有最近關閉的對話",
+  "shortcuts.reopenClosed": "重新開啟上次關閉的對話",
+  "toast.sessionReopened": "已重新開啟「{title}」",
 };

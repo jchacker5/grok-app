@@ -1569,6 +1569,11 @@ pub async fn session_set_pinned(id: String, pinned: bool) -> Result<SessionMeta,
 }
 
 #[tauri::command]
+pub async fn session_set_tags(id: String, tags: Vec<String>) -> Result<SessionMeta, String> {
+    store::set_session_tags(&id, tags)
+}
+
+#[tauri::command]
 pub async fn session_set_settled(id: String, settled_at: Option<String>) -> Result<SessionMeta, String> {
     let parsed = settled_at
         .map(|s| {

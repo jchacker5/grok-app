@@ -1479,6 +1479,23 @@ const en = {
   "cli.updateError": "Update failed",
   "cli.retry": "Retry",
   "cli.dismiss": "Dismiss",
+
+  // Session tags / labels
+  "session.addTag": "Manage tags",
+  "session.removeTag": "Remove tag",
+  "session.tagsLabel": "Tags",
+  "session.newTagPlaceholder": "New tag… (Enter to add)",
+  "session.noTags": "No tags yet",
+
+  // Sidebar tag-chip filter row
+  "sidebar.tagFilter.all": "All tags",
+  "sidebar.tagFilter.clear": "Clear tag filters",
+
+  // Undo close session (reopen last-closed)
+  "sidebar.reopenLastClosed": "Reopen last closed chat",
+  "sidebar.reopenLastClosedEmpty": "No recently closed chats",
+  "shortcuts.reopenClosed": "Reopen last closed chat",
+  "toast.sessionReopened": "Reopened “{title}”",
 } as const;
 
 const zh: Record<MessageKey, string> = {
@@ -2890,6 +2907,20 @@ const zh: Record<MessageKey, string> = {
   "settings.keybindings": "键盘快捷键",
   "settings.keybindingsDesc": "自定义键盘快捷键。JSON 文件位于 ~/.grok-app/keybindings.json",
   "settings.keybindingsOpen": "编辑 keybindings.json",
+
+  "session.addTag": "管理标签",
+  "session.removeTag": "移除标签",
+  "session.tagsLabel": "标签",
+  "session.newTagPlaceholder": "新标签…（按 Enter 添加）",
+  "session.noTags": "暂无标签",
+
+  "sidebar.tagFilter.all": "所有标签",
+  "sidebar.tagFilter.clear": "清除标签筛选",
+
+  "sidebar.reopenLastClosed": "重新打开上次关闭的对话",
+  "sidebar.reopenLastClosedEmpty": "没有最近关闭的对话",
+  "shortcuts.reopenClosed": "重新打开上次关闭的对话",
+  "toast.sessionReopened": "已重新打开「{title}」",
 };
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {

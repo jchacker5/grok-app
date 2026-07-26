@@ -80,6 +80,7 @@ import {
   IconSquare as TbSquare,
   IconStack2 as TbStack2,
   IconSun as TbSun,
+  IconTag as TbTag,
   IconTarget as TbTarget,
   IconThumbDown as TbThumbDown,
   IconThumbUp as TbThumbUp,
@@ -290,6 +291,8 @@ export const IconLanguage = wrap(TbLanguage);
 export const IconInfo = wrap(TbInfoCircle);
 /** Slash palette / goal mode */
 export const IconTarget = wrap(TbTarget);
+/** Session tags / labels */
+export const IconTag = wrap(TbTag);
 export const IconClipboardList = wrap(TbClipboardList);
 export const IconArrowsMinimize = wrap(TbArrowsMinimize);
 export const IconCircleDashed = wrap(TbCircleDashed);

@@ -217,10 +217,12 @@ import {
   IconRewind,
   IconShield,
   IconCheck,
+  IconTag,
 } from "@/components/icons";
 import { AutomationsPage } from "@/components/AutomationsPage";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
+import { SessionTagsPopover } from "@/components/SessionTagsPopover";
 import {
   aiCreateSeedPrompt,
   computeNextRunAt,
@@ -283,6 +285,17 @@ import {
   toggleMaximizeFromTitlebar,
 } from "@/components/WindowControls";
 import { CliUpdateBanner } from "@/components/CliUpdateBanner";
+import {
+  addTag as addSessionTag,
+  computeKnownTags,
+  matchesTagFilters,
+  toggleTag as toggleSessionTag,
+} from "@/lib/sessionTags";
+import {
+  popClosedSession,
+  pushClosedSession,
+  type ClosedSessionEntry,
+} from "@/lib/closedSessionStack";
 
 interface Project {
   id: string;
@@ -317,6 +330,8 @@ interface SessionRow {
   prRef?: string;
   /** PR state: "open" | "merged" | "closed". */
   prState?: string;
+  /** User-defined labels for sidebar filtering. */
+  tags?: string[];
 }
 
 type ContextMenuState =
@@ -325,6 +340,7 @@ type ContextMenuState =
   | { kind: "project-space"; id: string; x: number; y: number }
   | { kind: "space"; id: string; x: number; y: number }
   | { kind: "session"; id: string; x: number; y: number }
+  | { kind: "session-tags"; id: string; x: number; y: number }
   | null;
 
 /** In-app dialogs — window.prompt/confirm are unreliable in Tauri WebView. */
@@ -477,6 +493,18 @@ export default function App() {
   );
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [selectedThreadIds, setSelectedThreadIds] = useState<Set<string>>(new Set());
+  /** Active sidebar tag-chip filters (multi-select, OR semantics). */
+  const [activeTagFilters, setActiveTagFilters] = useState<Set<string>>(
+    new Set(),
+  );
+  /**
+   * Undo-close-session fast path — in-memory only (NOT persisted). Archive
+   * state itself is already durably persisted/restorable via
+   * Settings → Archived; this ref is purely a "⌘⇧T reopens the last one"
+   * shortcut, so losing it on app restart is fine and expected.
+   */
+  const closedStackRef = useRef<ClosedSessionEntry[]>([]);
+  const [closedStackCount, setClosedStackCount] = useState(0);
   const [showingJumpHints, setShowingJumpHints] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try { return parseInt(localStorage.getItem("sidebar-width") || "260", 10); } catch { return 260; }
@@ -688,6 +716,7 @@ export default function App() {
     newChat: () => {},
     openSettings: () => {},
     switchSpace: (_index: number) => {},
+    reopenLastClosed: () => {},
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -724,6 +753,13 @@ export default function App() {
       if (key === "d" && e.shiftKey) {
         e.preventDefault();
         setShowDoctor(true);
+        return;
+      }
+      // Undo close session (reopen last-archived chat). Deliberately not ⌘Z,
+      // which stays reserved for native text-field undo in the composer.
+      if (key === "t" && e.shiftKey) {
+        e.preventDefault();
+        shortcutHandlersRef.current.reopenLastClosed();
         return;
       }
       // Grok Spaces: Cmd/Ctrl+Alt+0-9. Use e.code (layout-independent) since
@@ -999,6 +1035,7 @@ export default function App() {
           branch: x.branch,
           prRef: x.prRef,
           prState: x.prState,
+          tags: x.tags,
         })),
       );
       void api.trayRefresh();
@@ -2398,13 +2435,26 @@ export default function App() {
     requestComposerFocus();
   };
 
+  /**
+   * Known tags across all loaded sessions — derived client-side (no separate
+   * Rust "known tags" registry, avoids a second source of truth drifting from
+   * the per-session `tags` arrays persisted in `SessionMeta`).
+   */
+  const knownTags = useMemo(() => computeKnownTags(sessions), [sessions]);
+
   const sessionsForProject = (projectId: string) =>
-    sessions.filter((s) => s.projectId === projectId && !s.archived);
+    sessions.filter(
+      (s) =>
+        s.projectId === projectId &&
+        !s.archived &&
+        matchesTagFilters(s, activeTagFilters),
+    );
 
   const orphanSessions = sessions.filter(
     (s) =>
       (!s.projectId || !projects.some((p) => p.id === s.projectId)) &&
-      !s.archived,
+      !s.archived &&
+      matchesTagFilters(s, activeTagFilters),
   );
 
   /** Archived chats grouped by project for Settings → Archived. */
@@ -2472,6 +2522,7 @@ export default function App() {
           branch: s.branch,
           prRef: s.prRef,
           prState: s.prState,
+          tags: s.tags,
         })),
       );
       void api.trayRefresh();
@@ -3063,6 +3114,18 @@ export default function App() {
     try {
       await api.sessionSetArchived(s.id, archived);
       await refreshSessions();
+      if (archived) {
+        // "Closing" a session = archiving it (no distinct close concept in
+        // this app). Track it for the ⌘⇧T undo-close fast path — in-memory
+        // only, capped at 5; archive state itself is already durably
+        // persisted/restorable via Settings → Archived.
+        closedStackRef.current = pushClosedSession(closedStackRef.current, {
+          id: s.id,
+          title: s.title,
+          projectId: s.projectId,
+        });
+        setClosedStackCount(closedStackRef.current.length);
+      }
       if (wasViewing) {
         const proj = s.projectId
           ? projects.find((p) => p.id === s.projectId) ?? null
@@ -3073,6 +3136,74 @@ export default function App() {
       } else if (!archived && s.projectId) {
         setExpandedProjects((e) => ({ ...e, [s.projectId!]: true }));
       }
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /**
+   * Reopen the most-recently-closed (archived) session — ⌘⇧T fast path.
+   * No-op when the stack is empty (no toast/error, per spec).
+   */
+  const reopenLastClosed = async () => {
+    const { entry, rest } = popClosedSession(closedStackRef.current);
+    if (!entry) return;
+    closedStackRef.current = rest;
+    setClosedStackCount(rest.length);
+    try {
+      await api.sessionSetArchived(entry.id, false);
+      await refreshSessions();
+      if (entry.projectId) {
+        setExpandedProjects((e) => ({ ...e, [entry.projectId!]: true }));
+      }
+      const list = await api.sessionsList();
+      const hit = list.find((r) => r.id === entry.id);
+      if (hit) {
+        const proj = hit.projectId
+          ? projects.find((p) => p.id === hit.projectId) ?? null
+          : null;
+        const row: SessionRow = {
+          id: hit.id,
+          title: hit.title,
+          projectId: hit.projectId,
+          updatedAt: hit.updatedAt,
+          archived: !!hit.archived,
+          pinned: !!hit.pinned,
+          scheduled: !!hit.scheduled,
+          settledAt: hit.settledAt,
+          snoozedUntil: hit.snoozedUntil,
+          branch: hit.branch,
+          prRef: hit.prRef,
+          prState: hit.prState,
+          tags: hit.tags,
+        };
+        await openSession(row, proj ?? undefined);
+      }
+      showToast(
+        tr("toast.sessionReopened", {
+          title: entry.title || tr("session.untitled"),
+        }),
+      );
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /** Toggle a tag in/out of the active sidebar filter set (multi-select). */
+  const toggleTagFilter = (tag: string) => {
+    setActiveTagFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  };
+
+  /** Add/remove tags on a session (context-menu tags popover). */
+  const setSessionTags = async (s: SessionRow, tags: string[]) => {
+    try {
+      await api.sessionSetTags(s.id, tags);
+      await refreshSessions();
     } catch (e) {
       setLocalError(String(e));
     }
@@ -5689,6 +5820,9 @@ export default function App() {
       if (target === null) return;
       selectSpace(target === "all" ? null : target);
     },
+    reopenLastClosed: () => {
+      void reopenLastClosed();
+    },
   };
   trayHandlersRef.current = {
     newChat: () => {
@@ -5715,6 +5849,7 @@ export default function App() {
                 branch: hit.branch,
                 prRef: hit.prRef,
                 prState: hit.prState,
+                tags: hit.tags,
               };
               setSessions(
                 list.map((s) => ({
@@ -5730,6 +5865,7 @@ export default function App() {
                   branch: s.branch,
                   prRef: s.prRef,
                   prState: s.prState,
+                  tags: s.tags,
                 })),
               );
             }
@@ -7227,6 +7363,59 @@ export default function App() {
                 }}
               >
                 <IconSearch size={16} />
+              </button>
+            </Tip>
+          </div>
+
+          {/* Session tag-chip filter row (multi-select) + reopen-last-closed shortcut */}
+          <div className="sidebar-tagbar">
+            {knownTags.length > 0 && (
+              <div
+                className="sidebar-tagbar__chips"
+                role="group"
+                aria-label={tr("session.tagsLabel")}
+              >
+                {knownTags.map((tag) => {
+                  const active = activeTagFilters.has(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      className={
+                        "chip tag-chip" + (active ? " is-active" : "")
+                      }
+                      aria-pressed={active}
+                      onClick={() => toggleTagFilter(tag)}
+                    >
+                      <span className="chip__label">{tag}</span>
+                    </button>
+                  );
+                })}
+                {activeTagFilters.size > 0 && (
+                  <button
+                    type="button"
+                    className="chip tag-chip tag-chip--clear"
+                    onClick={() => setActiveTagFilters(new Set())}
+                  >
+                    {tr("sidebar.tagFilter.clear")}
+                  </button>
+                )}
+              </div>
+            )}
+            <Tip
+              label={
+                closedStackCount > 0
+                  ? tr("sidebar.reopenLastClosed")
+                  : tr("sidebar.reopenLastClosedEmpty")
+              }
+            >
+              <button
+                type="button"
+                className="chrome-btn sidebar-tagbar__reopen"
+                disabled={closedStackCount === 0}
+                onClick={() => void reopenLastClosed()}
+              >
+                <IconRewind size={16} />
               </button>
             </Tip>
           </div>
@@ -9718,6 +9907,35 @@ export default function App() {
           document.body,
         )}
 
+      {/* Session tags popover — checkbox multi-select + freeform add (not a
+          `ContextMenu` items list: needs toggle-without-close behavior). */}
+      {ctxMenu?.kind === "session-tags" &&
+        (() => {
+          const s = sessions.find((x) => x.id === ctxMenu.id);
+          if (!s) return null;
+          const currentTags = s.tags ?? [];
+          return (
+            <SessionTagsPopover
+              x={ctxMenu.x}
+              y={ctxMenu.y}
+              tags={currentTags}
+              knownTags={knownTags}
+              onClose={() => setCtxMenu(null)}
+              onToggleTag={(tag) =>
+                void setSessionTags(s, toggleSessionTag(currentTags, tag))
+              }
+              onAddTag={(tag) =>
+                void setSessionTags(s, addSessionTag(currentTags, tag))
+              }
+              labels={{
+                tagsLabel: tr("session.tagsLabel"),
+                noTags: tr("session.noTags"),
+                newTagPlaceholder: tr("session.newTagPlaceholder"),
+              }}
+            />
+          );
+        })()}
+
       {/* Floating context menu (project / session) — unified ContextMenu */}
       {(() => {
         let items: ContextMenuItem[] = [];
@@ -9926,6 +10144,19 @@ export default function App() {
                 ),
                 onClick: () => {
                   void pinSession(s, !s.pinned);
+                },
+              },
+              {
+                id: "tags",
+                label: tr("session.addTag"),
+                icon: <IconTag size={16} />,
+                onClick: () => {
+                  setCtxMenu({
+                    kind: "session-tags",
+                    id: s.id,
+                    x: ctxMenu.x,
+                    y: ctxMenu.y,
+                  });
                 },
               },
               {
