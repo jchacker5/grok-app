@@ -14,8 +14,9 @@ import {
 } from "@/lib/api";
 import { playPcm16Base64, startPcmCapture } from "@/lib/voiceAudio";
 import { fakeRms } from "@/lib/voiceOrbDemo";
-import { VoiceOrb, type VoiceOrbState } from "@/components/VoiceOrb";
 import type { Locale, MessageKey } from "@/i18n";
+
+type VoicePhase = "idle" | "connecting" | "listening" | "speaking";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +35,8 @@ export type VoiceOverlayProps = {
   projectName?: string | null;
   onClose: () => void;
   onOpenSession?: (sessionId: string) => void;
+  /** Live phase + mic level, so the composer aura can react (replaces orb). */
+  onVisual?: (v: { phase: VoicePhase; level: number }) => void;
 };
 
 export function VoiceOverlay({
@@ -44,6 +47,7 @@ export function VoiceOverlay({
   projectName,
   onClose,
   onOpenSession,
+  onVisual,
 }: VoiceOverlayProps) {
   const tt = useCallback(
     (key: MessageKey, vars?: Record<string, string | number>) => t(locale, key, vars),
@@ -235,13 +239,18 @@ export function VoiceOverlay({
         ? tt("voice.listening")
         : tt("voice.live");
 
-  const orbState: VoiceOrbState = busy
+  const voicePhase: VoicePhase = busy
     ? "connecting"
     : state?.speaking
       ? "speaking"
       : state?.listening
         ? "listening"
         : "idle";
+
+  // Push live phase + mic level up so the composer aura reacts to the voice.
+  useEffect(() => {
+    onVisual?.({ phase: voicePhase, level });
+  }, [voicePhase, level, onVisual]);
 
   return (
     <div
@@ -261,10 +270,6 @@ export function VoiceOverlay({
         </header>
 
         {error ? <div className="voice-overlay__error">{error}</div> : null}
-
-        <div className="voice-overlay__orb-wrap">
-          <VoiceOrb state={orbState} level={level} size={96} />
-        </div>
 
         <div className="voice-overlay__transcript">
           {lines.map((l) => (

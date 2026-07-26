@@ -406,6 +406,11 @@ export default function App() {
   /** Live voice overlay (GPT-Live-style delegate mode). */
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voiceDictating, setVoiceDictating] = useState(false);
+  // Live realtime-voice visual state → drives the composer aura (replaces orb).
+  const [voiceVisual, setVoiceVisual] = useState<{
+    phase: "idle" | "connecting" | "listening" | "speaking";
+    level: number;
+  }>({ phase: "idle", level: 0 });
   const [dictationLevel, setDictationLevel] = useState(0);
   const dictationLevelIntervalRef = useRef<number | null>(null);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
@@ -9061,7 +9066,16 @@ export default function App() {
               className={
                 "composer" +
                 (dragZone === "main" ? " composer--drop-ready" : "") +
-                (voiceDictating ? " composer--dictating" : "")
+                (voiceDictating ? " composer--dictating" : "") +
+                (voiceOpen ? " composer--voice" : "")
+              }
+              data-voice-phase={voiceVisual.phase}
+              style={
+                {
+                  "--voice-level": String(
+                    voiceOpen || voiceDictating ? voiceVisual.level : 0,
+                  ),
+                } as CSSProperties
               }
             >
               {sendQueue.activeQueue.length > 0 && (
@@ -10745,7 +10759,11 @@ export default function App() {
         projectPath={activeProject?.path}
         projectId={activeProject?.id}
         projectName={activeProject?.name}
-        onClose={() => setVoiceOpen(false)}
+        onVisual={setVoiceVisual}
+        onClose={() => {
+          setVoiceOpen(false);
+          setVoiceVisual({ phase: "idle", level: 0 });
+        }}
         onOpenSession={(sessionId) => {
           setVoiceOpen(false);
           void (async () => {

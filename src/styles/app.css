@@ -6669,6 +6669,83 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   box-shadow: 0 0 0 2px rgba(80, 140, 255, 0.12);
 }
 
+/* ── Realtime-voice glow — the composer IS the voice UI (replaces the orb) ──
+   Driven from JS: `--voice-level` (0..1 live mic level) + [data-voice-phase]. */
+.composer {
+  --voice-accent: #7dd645; /* listening / idle: Grok green */
+  --voice-level: 0;
+}
+.composer--voice[data-voice-phase="speaking"],
+.composer--dictating[data-voice-phase="speaking"] {
+  --voice-accent: #34d0c4; /* assistant speaking: teal shift */
+}
+.composer--voice[data-voice-phase="connecting"] {
+  --voice-accent: #9aa0a6; /* connecting: neutral */
+}
+.composer--voice,
+.composer--dictating {
+  border-color: color-mix(in oklab, var(--voice-accent) 55%, var(--border-subtle));
+}
+
+/* Ambient aura — blurred gradient bleeding from behind the pill, breathing
+   with the live mic level. */
+.composer--voice::before,
+.composer--dictating::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      135% 165% at 50% 130%,
+      color-mix(in oklab, var(--voice-accent) 70%, transparent),
+      transparent 60%
+    ),
+    conic-gradient(
+      from 200deg at 50% 120%,
+      transparent,
+      color-mix(in oklab, var(--voice-accent) 55%, transparent),
+      transparent 62%
+    );
+  filter: blur(16px);
+  opacity: calc(0.5 + var(--voice-level) * 0.4); /* fallback (reduced-motion) */
+  animation: voice-aura 5.5s ease-in-out infinite;
+}
+
+/* Crisp inner ring so the pill edge reads as "live". */
+.composer--voice::after,
+.composer--dictating::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--voice-accent) 45%, transparent),
+    0 0 26px color-mix(in oklab, var(--voice-accent) 22%, transparent);
+}
+
+@keyframes voice-aura {
+  0%,
+  100% {
+    opacity: calc(0.42 + var(--voice-level) * 0.45);
+    transform: translateY(2px) scale(calc(1 + var(--voice-level) * 0.03));
+  }
+  50% {
+    opacity: calc(0.62 + var(--voice-level) * 0.45);
+    transform: translateY(-3px) scale(calc(1 + var(--voice-level) * 0.05));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer--voice::before,
+  .composer--dictating::before {
+    animation: none;
+  }
+}
+
 /* Dictation mode — waveform bars shown inline when voiceDictating is active */
 .composer--dictating .composer__input::placeholder {
   color: var(--accent, #3794ff);
