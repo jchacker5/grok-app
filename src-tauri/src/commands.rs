@@ -5356,6 +5356,105 @@ pub async fn git_file_diff(
     })
 }
 
+/// Per-line `git blame` annotations for a tracked file (ResourceViewer file
+/// preview gutter — distinct from the Changes-panel diff view). Soft-fails
+/// with a clear error string on any failure (untracked file, not a git
+/// repo, git missing, …) — the frontend shows `resources.blameUnavailable`.
+#[tauri::command]
+pub async fn git_blame_file(
+    project_path: String,
+    relative_path: String,
+) -> Result<Vec<crate::git_blame::BlameLine>, String> {
+    let project = normalize_fs_path(&project_path);
+    let target = normalize_fs_path(&relative_path);
+    if project.is_empty() || target.is_empty() {
+        return Err("empty path".into());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Err("project not a directory".into());
+    }
+    git_probe_work_tree(&project)?;
+
+    // Accept either a project-relative or an absolute path (same tolerant
+    // handling as `git_file_diff`) so callers don't need to pre-compute it.
+    let rel = {
+        let t = std::path::PathBuf::from(&target);
+        match t.strip_prefix(&proj) {
+            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Err(_) => {
+                let p = project.trim_end_matches('/').replace('\\', "/");
+                let a = target.replace('\\', "/");
+                if a.starts_with(&(p.clone() + "/")) {
+                    a[p.len() + 1..].to_string()
+                } else {
+                    target.clone()
+                }
+            }
+        }
+    };
+    if rel.is_empty() || rel == "." {
+        return Err("not a file path".into());
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let out = std::process::Command::new("git")
+            .args(["-C", &project, "blame", "--line-porcelain", "--", &rel])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(if err.is_empty() {
+                "git blame failed".to_string()
+            } else {
+                err.chars().take(200).collect()
+            });
+        }
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        Ok(crate::git_blame::parse_blame_porcelain(&text))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Find-in-files content search across a project's workspace (greps file
+/// bodies — distinct from `sessions_search`, which greps chat journals, and
+/// from any filename-only fuzzy finder). Prefers `rg` when present on PATH;
+/// falls back to a hand-rolled recursive walker otherwise. Infallible by
+/// design — worst case returns an empty vec.
+#[tauri::command]
+pub async fn search_workspace_content(
+    project_path: String,
+    query: String,
+    max_results: Option<u32>,
+) -> Result<Vec<crate::workspace_search::WorkspaceSearchHit>, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Ok(Vec::new());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Ok(Vec::new());
+    }
+    let cap = max_results
+        .unwrap_or(crate::workspace_search::DEFAULT_MAX_RESULTS)
+        .clamp(1, crate::workspace_search::DEFAULT_MAX_RESULTS);
+    let q = query;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::workspace_search::search_workspace_content(&proj, &q, cap)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Whether `rg` (ripgrep) is on PATH — the frontend shows a soft note
+/// (`search.ripgrepUnavailable`) when falling back to the slower walker.
+#[tauri::command]
+pub async fn workspace_search_rg_available() -> Result<bool, String> {
+    Ok(which::which("rg").is_ok())
+}
+
 // ── Workspace git status (Changes panel: Session + Workspace) ──────────────
 
 /// Soft-check git on PATH + project is inside a work tree.

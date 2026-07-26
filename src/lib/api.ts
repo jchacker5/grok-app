@@ -669,6 +669,53 @@ export async function gitShowFile(projectPath: string, path: string) {
   return invoke<GitShowFileResult>("git_show_file", { projectPath, path });
 }
 
+/** Per-line `git blame` annotation (ResourceViewer file-preview gutter). */
+export interface BlameLine {
+  lineNumber: number;
+  author: string;
+  date: string;
+  commitShort: string;
+  summary?: string | null;
+}
+
+/**
+ * Soft-fails by throwing a clear error string (untracked file, not a git
+ * repo, git missing, …) — callers should catch and show
+ * `resources.blameUnavailable`.
+ */
+export async function gitBlameFile(projectPath: string, relativePath: string) {
+  return invoke<BlameLine[]>("git_blame_file", { projectPath, relativePath });
+}
+
+/** Find-in-files content search hit (greps file bodies, not filenames). */
+export interface WorkspaceSearchHit {
+  path: string;
+  lineNumber: number;
+  lineText: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+/** Content search across a project's workspace — prefers `rg`, falls back to a built-in walker. */
+export async function searchWorkspaceContent(
+  projectPath: string,
+  query: string,
+  maxResults = 500,
+) {
+  if (!isTauri()) return [] as WorkspaceSearchHit[];
+  return invoke<WorkspaceSearchHit[]>("search_workspace_content", {
+    projectPath,
+    query,
+    maxResults,
+  });
+}
+
+/** Whether `rg` (ripgrep) is on PATH — drives the `search.ripgrepUnavailable` hint. */
+export async function workspaceSearchRgAvailable() {
+  if (!isTauri()) return false;
+  return invoke<boolean>("workspace_search_rg_available", {});
+}
+
 // ── Git mutating operations (stage / commit / push / PR) ───────────────────
 // Unlike the read-only helpers above, these throw / reject on failure — the
 // Changes panel toolbar + CommitDialog surface the error directly.

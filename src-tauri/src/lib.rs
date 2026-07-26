@@ -36,6 +36,8 @@ mod secrets;
 mod session_import;
 mod session_content_search;
 mod session_title;
+mod git_blame;
+mod workspace_search;
 #[cfg(test)]
 mod permission_host_test;
 #[cfg(test)]
@@ -307,6 +309,9 @@ pub fn run() {
             commands::path_open,
             commands::path_reveal,
             commands::git_file_diff,
+            commands::git_blame_file,
+            commands::search_workspace_content,
+            commands::workspace_search_rg_available,
             commands::git_status,
             commands::git_worktrees_list,
             commands::git_show_file,

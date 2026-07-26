@@ -116,7 +116,7 @@ function clampTreeWidth(w: number, containerWidth: number): number {
 
 /** Request from chat (or elsewhere) to open a path/URL in this pane. */
 export type ResourceOpenTarget =
-  | { type: "file"; path: string; title?: string }
+  | { type: "file"; path: string; title?: string; line?: number }
   | { type: "url"; url: string; title?: string }
   | { type: "terminal"; cwd?: string; title?: string };
 
@@ -331,6 +331,26 @@ export function ResourceViewer({
   const [workspaceReason, setWorkspaceReason] = useState<string | null>(null);
   const [workspaceBranch, setWorkspaceBranch] = useState<string | null>(null);
   const [pathCopyFlash, setPathCopyFlash] = useState(false);
+  /**
+   * Inline git-blame gutter — plain file-view case only (ResourceViewer file
+   * tab), never the Changes-panel diff view. Reset whenever the active tab
+   * changes so blame from a previous file never leaks onto a new one.
+   */
+  const [blameEnabled, setBlameEnabled] = useState(false);
+  const [blameLines, setBlameLines] = useState<api.BlameLine[] | null>(null);
+  const [blameLoading, setBlameLoading] = useState(false);
+  const [blameError, setBlameError] = useState<string | null>(null);
+  const blameLoadSeq = useRef(0);
+  /**
+   * "Open file at line" scroll target (find-in-files search results, etc.).
+   * Reused generic mechanism — works whether the file lands in the raw
+   * textarea editor or a CodePreview-rendered gutter.
+   */
+  const [pendingScrollLine, setPendingScrollLine] = useState<{
+    tabId: string;
+    line: number;
+  } | null>(null);
+  const previewPaneRef = useRef<HTMLDivElement>(null);
   /** Git-index-backed staged paths (Changes → Workspace stage toolbar). */
   const [stagedPaths, setStagedPaths] = useState<Set<string>>(new Set());
   const [stageBusyPaths, setStageBusyPaths] = useState<Set<string>>(new Set());
@@ -357,6 +377,61 @@ export function ResourceViewer({
   });
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
+
+  // Blame is per-tab, in-memory only — never carry it across a tab switch.
+  useEffect(() => {
+    setBlameEnabled(false);
+    setBlameLines(null);
+    setBlameError(null);
+    setBlameLoading(false);
+  }, [activeId]);
+
+  /** Eligible for the blame gutter: a plain (non-diff) tracked text file tab. */
+  const blameEligible = useMemo(() => {
+    if (!activeTab || activeTab.tabKind !== "file") return false;
+    if (sideMode === "changes" && diffView) return false;
+    const kind = (activeTab.preview?.kind || "").toLowerCase();
+    if (!activeTab.preview || typeof activeTab.preview.text !== "string") return false;
+    if (["image", "pdf", "audio", "video", "html"].includes(kind)) return false;
+    if (isOfficeKind(kind)) return false;
+    return true;
+  }, [activeTab, sideMode, diffView]);
+
+  const fetchBlame = useCallback(async () => {
+    if (!activeTab || !projectPath || !api.isTauri()) {
+      setBlameError(tr("resources.blameUnavailable"));
+      return;
+    }
+    const relOrAbs = activeTab.absolutePath || activeTab.relativePath;
+    if (!relOrAbs) {
+      setBlameError(tr("resources.blameUnavailable"));
+      return;
+    }
+    const seq = ++blameLoadSeq.current;
+    setBlameLoading(true);
+    setBlameError(null);
+    try {
+      const lines = await api.gitBlameFile(projectPath, relOrAbs);
+      if (seq !== blameLoadSeq.current) return;
+      setBlameLines(lines);
+    } catch (e) {
+      if (seq !== blameLoadSeq.current) return;
+      setBlameLines(null);
+      setBlameError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (seq === blameLoadSeq.current) setBlameLoading(false);
+    }
+  }, [activeTab, projectPath, tr]);
+
+  const toggleBlame = useCallback(() => {
+    setBlameEnabled((prev) => {
+      const next = !prev;
+      if (next && blameLines == null && !blameLoading) {
+        void fetchBlame();
+      }
+      return next;
+    });
+  }, [blameLines, blameLoading, fetchBlame]);
   const changeCount = sessionChanges.length;
   const workspaceCount = workspaceFiles.length;
   const totalChangeBadge = changeCount + workspaceCount;
@@ -1376,7 +1451,7 @@ export function ResourceViewer({
    * (handles monorepo: agent writes `05-handoff/next.md` under a subfolder).
    */
   const openAbsoluteFile = useCallback(
-    async (absolutePath: string, title?: string) => {
+    async (absolutePath: string, title?: string, line?: number) => {
       if (!api.isTauri()) {
         setError(tr("resources.openFailed"));
         return;
@@ -1396,6 +1471,7 @@ export function ResourceViewer({
           return [hit, ...prev.filter((t) => t.id !== existing.id)];
         });
         setActiveId(existing.id);
+        if (line != null) setPendingScrollLine({ tabId: existing.id, line });
         return;
       }
       const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -1412,6 +1488,7 @@ export function ResourceViewer({
       };
       setTabs((prev) => [tab, ...prev]);
       setActiveId(id);
+      if (line != null) setPendingScrollLine({ tabId: id, line });
       try {
         const r = await api.fsOpenPath(norm, projectPath);
         const src = await resolvePreviewSrc(r);
@@ -1441,6 +1518,40 @@ export function ResourceViewer({
     },
     [projectPath, tabs, tr],
   );
+
+  // "Open file at line" — scroll/select the target line once the tab has
+  // finished loading. Works for both the raw textarea editor (default for
+  // code files) and CodePreview's read-only gutter (blame mode, json, …).
+  useEffect(() => {
+    if (!pendingScrollLine) return;
+    if (!activeTab || activeTab.id !== pendingScrollLine.tabId) return;
+    if (activeTab.loading) return;
+    const targetLine = pendingScrollLine.line;
+    setPendingScrollLine(null);
+    const raf = requestAnimationFrame(() => {
+      const container = previewPaneRef.current;
+      if (!container) return;
+      const ta = container.querySelector<HTMLTextAreaElement>(
+        "textarea.rp-editor__textarea",
+      );
+      if (ta) {
+        const linesArr = ta.value.split("\n");
+        const idx = Math.max(0, Math.min(targetLine - 1, linesArr.length - 1));
+        let offset = 0;
+        for (let i = 0; i < idx; i++) offset += linesArr[i].length + 1;
+        const lineLen = linesArr[idx]?.length ?? 0;
+        ta.focus();
+        ta.setSelectionRange(offset, offset + lineLen);
+        const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 18;
+        ta.scrollTop = Math.max(0, idx * lineHeight - ta.clientHeight / 2);
+        return;
+      }
+      const marks = container.querySelectorAll(".rp-code__ln, .rp-code__blame-ln");
+      const el = marks[targetLine - 1] as HTMLElement | undefined;
+      el?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeTab, pendingScrollLine]);
 
   const openUrl = useCallback(
     (url: string, title?: string) => {
@@ -1503,7 +1614,7 @@ export function ResourceViewer({
   useEffect(() => {
     if (!openRequest) return;
     if (openRequest.type === "file") {
-      void openAbsoluteFile(openRequest.path, openRequest.title);
+      void openAbsoluteFile(openRequest.path, openRequest.title, openRequest.line);
     } else if (openRequest.type === "url") {
       openUrl(openRequest.url, openRequest.title);
     } else if (openRequest.type === "terminal") {
@@ -1847,6 +1958,30 @@ export function ResourceViewer({
         : null;
     const src = mediaSrc || dataUrl;
 
+    // Blame gutter (plain file-view case only — see `blameEligible`/toggle
+    // button in the chrome toolbar). Overrides the editor/preview split
+    // below: while blame is on, the file always renders read-only through
+    // CodePreview's per-line blame mode so each row can carry a gutter
+    // annotation.
+    if (blameEnabled && blameEligible && typeof preview.text === "string") {
+      return (
+        <CodePreview
+          code={activeTab?.draftText ?? preview.text}
+          fileName={preview.name}
+          blame={blameLines ?? undefined}
+          footer={
+            blameLoading
+              ? tr("resources.loading")
+              : blameError || (blameLines && blameLines.length === 0)
+                ? tr("resources.blameUnavailable")
+                : preview.truncated
+                  ? tr("resources.truncated")
+                  : null
+          }
+        />
+      );
+    }
+
     // Text edit mode (Save writes disk; conflict if mtime changed).
     const canEdit = isResourceTextEditable({
       kind: preview.kind,
@@ -2040,6 +2175,11 @@ export function ResourceViewer({
     pathCopyFlash,
     updateActiveDraft,
     saveActiveFile,
+    blameEnabled,
+    blameEligible,
+    blameLines,
+    blameLoading,
+    blameError,
   ]);
 
   // No project and no open tabs → empty; allow absolute/url tabs without a project.
@@ -2232,6 +2372,29 @@ export function ResourceViewer({
               </Tip>
             </>
           ) : null}
+          {blameEligible ? (
+            <Tip
+              label={
+                blameEnabled
+                  ? tr("resources.blameHide")
+                  : tr("resources.blameShow")
+              }
+            >
+              <button
+                type="button"
+                className={"chrome-btn" + (blameEnabled ? " is-on" : "")}
+                onClick={toggleBlame}
+                aria-pressed={blameEnabled}
+                aria-label={
+                  blameEnabled
+                    ? tr("resources.blameHide")
+                    : tr("resources.blameShow")
+                }
+              >
+                <IconGitCommit size={14} />
+              </button>
+            </Tip>
+          ) : null}
           {absPath ? (
             <OpenLocationButton
               path={absPath}
@@ -2380,7 +2543,7 @@ export function ResourceViewer({
           (resizingTree ? " is-resizing" : "")
         }
       >
-        <div className="rp-split__preview">
+        <div className="rp-split__preview" ref={previewPaneRef}>
           {sideMode === "plan" && plan?.visible ? (
             <PlanReviewPanel
               plan={plan}
