@@ -2249,6 +2249,55 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 /* Primary actions under logo (new session / scheduled) */
+/* Session tag-chip filter row + reopen-last-closed shortcut (sidebar nav area) */
+.sidebar-tagbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 4px;
+  flex-shrink: 0;
+}
+
+.sidebar-tagbar__chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sidebar-tagbar__chips::-webkit-scrollbar {
+  display: none;
+}
+
+.tag-chip {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  white-space: nowrap;
+}
+
+.tag-chip.is-active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.tag-chip--clear {
+  color: var(--text-tertiary);
+}
+
+.sidebar-tagbar__reopen {
+  flex-shrink: 0;
+}
+
+.sidebar-tagbar__reopen:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -7473,6 +7522,95 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   color: var(--text-primary);
 }
 
+/* Session tags popover — checkbox list + freeform add ("Manage tags") */
+.session-tags-popover {
+  min-width: 200px;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-tags-popover__head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 2px 6px 4px;
+}
+
+.session-tags-popover__empty {
+  padding: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.session-tags-popover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.session-tags-popover__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: left;
+}
+
+.session-tags-popover__item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.session-tags-popover__item.is-checked {
+  color: var(--text-primary);
+}
+
+.session-tags-popover__check {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.session-tags-popover__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-tags-popover__add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  margin-top: 2px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  color: var(--text-tertiary);
+}
+
+.session-tags-popover__add input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
 
 .composer__spacer {
   flex: 1;

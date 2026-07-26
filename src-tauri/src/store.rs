@@ -134,6 +134,10 @@ pub struct SessionMeta {
     /// PR state: "open", "merged", "closed", or None.
     #[serde(default)]
     pub pr_state: Option<String>,
+    /// User-defined labels for sidebar filtering. Organizational metadata,
+    /// like `pinned` — does not bump `updated_at` when changed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -863,6 +867,7 @@ pub fn create_session(
         branch: None,
         pr_ref: None,
         pr_state: None,
+        tags: Vec::new(),
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -943,6 +948,19 @@ pub fn set_session_pinned(id: &str, pinned: bool) -> Result<SessionMeta, String>
         .ok_or_else(|| "session not found".to_string())?;
     s.pinned = pinned;
     // Do not bump updated_at — pin is organizational (same as project pin).
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+pub fn set_session_tags(id: &str, tags: Vec<String>) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.tags = tags;
+    // Do not bump updated_at — tags are organizational (same as pin).
     let clone = s.clone();
     save_sessions_index(&list)?;
     Ok(clone)
@@ -1910,6 +1928,7 @@ mod tests {
             branch: None,
             pr_ref: None,
             pr_state: None,
+            tags: Vec::new(),
         }
     }
 
@@ -1938,5 +1957,35 @@ mod tests {
         let m: SessionMeta = serde_json::from_str(raw).expect("deserialize legacy session");
         assert!(!m.pinned);
         assert!(!m.archived);
+        assert!(m.tags.is_empty());
+    }
+
+    #[test]
+    fn set_session_tags_updates_tags_without_bumping_updated_at() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-tags-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+
+        let created = create_session(None, Some("Tagged chat".into()), false).expect("create session");
+        let before_updated_at = created.updated_at;
+
+        let updated = set_session_tags(&created.id, vec!["work".into(), "urgent".into()])
+            .expect("set tags");
+        assert_eq!(updated.tags, vec!["work".to_string(), "urgent".to_string()]);
+        assert_eq!(updated.updated_at, before_updated_at);
+
+        let cleared = set_session_tags(&created.id, Vec::new()).expect("clear tags");
+        assert!(cleared.tags.is_empty());
+
+        let missing = set_session_tags("does-not-exist", vec!["x".into()]);
+        assert!(missing.is_err());
+
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

@@ -193,6 +193,7 @@ pub fn run() {
             commands::session_rename,
             commands::session_set_archived,
             commands::session_set_pinned,
+            commands::session_set_tags,
             commands::session_set_settled,
             commands::session_set_snoozed,
             commands::session_set_branch_pr,

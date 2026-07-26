@@ -14,6 +14,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingDef[] = [
   { id: "send", labelKey: "shortcuts.send", defaultMac: "⌘ ↵", defaultWin: "Ctrl Enter" },
   { id: "help", labelKey: "shortcuts.help", defaultMac: "⌘ /", defaultWin: "Ctrl /" },
   { id: "spaceSwitch", labelKey: "shortcuts.spaceSwitch", defaultMac: "⌘ ⌥ 1-9", defaultWin: "Ctrl Alt 1-9" },
+  { id: "reopenClosed", labelKey: "shortcuts.reopenClosed", defaultMac: "⌘ ⇧ T", defaultWin: "Ctrl Shift T" },
 ];
 
 export interface UserKeybindingOverrides {
