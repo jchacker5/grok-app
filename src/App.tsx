@@ -231,6 +231,7 @@ import {
   IconArchive,
   IconPin,
   IconPinOff,
+  IconBookmark,
   IconRename,
   IconCopy,
   IconTrash,
@@ -356,6 +357,8 @@ interface SessionRow {
   prState?: string;
   /** User-defined labels for sidebar filtering. */
   tags?: string[];
+  /** Bookmark note; undefined/null = not bookmarked, "" = bookmarked with no note. */
+  bookmarkNote?: string | null;
 }
 
 type ContextMenuState =
@@ -1096,6 +1099,7 @@ export default function App() {
           prRef: x.prRef,
           prState: x.prState,
           tags: x.tags,
+          bookmarkNote: x.bookmarkNote,
         })),
       );
       void api.trayRefresh();
@@ -2590,6 +2594,7 @@ export default function App() {
           prRef: s.prRef,
           prState: s.prState,
           tags: s.tags,
+          bookmarkNote: s.bookmarkNote,
         })),
       );
       void api.trayRefresh();
@@ -3243,6 +3248,7 @@ export default function App() {
           prRef: hit.prRef,
           prState: hit.prState,
           tags: hit.tags,
+          bookmarkNote: hit.bookmarkNote,
         };
         await openSession(row, proj ?? undefined);
       }
@@ -3281,6 +3287,36 @@ export default function App() {
     setCtxMenu(null);
     try {
       await api.sessionSetPinned(s.id, pinned);
+      await refreshSessions();
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /** Set/update a session's bookmark note via the shared prompt dialog. */
+  const bookmarkSession = (s: SessionRow) => {
+    setCtxMenu(null);
+    setAppDialog({
+      kind: "prompt",
+      title: tr("session.bookmarkNote"),
+      initial: s.bookmarkNote ?? "",
+      placeholder: tr("session.bookmarkNotePlaceholder"),
+      onSubmit: async (note) => {
+        try {
+          await api.sessionSetBookmark(s.id, note);
+          await refreshSessions();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
+  };
+
+  /** Remove a session's bookmark entirely. */
+  const removeBookmark = async (s: SessionRow) => {
+    setCtxMenu(null);
+    try {
+      await api.sessionSetBookmark(s.id, null);
       await refreshSessions();
     } catch (e) {
       setLocalError(String(e));
@@ -6120,6 +6156,7 @@ export default function App() {
                 prRef: hit.prRef,
                 prState: hit.prState,
                 tags: hit.tags,
+                bookmarkNote: hit.bookmarkNote,
               };
               setSessions(
                 list.map((s) => ({
@@ -6136,6 +6173,7 @@ export default function App() {
                   prRef: s.prRef,
                   prState: s.prState,
                   tags: s.tags,
+                  bookmarkNote: s.bookmarkNote,
                 })),
               );
             }
@@ -7239,6 +7277,12 @@ export default function App() {
           onCliSessionsImported={() => {
             void refreshSessions();
           }}
+          onSettingsImported={() => {
+            // Reuse the same "apply settings to app state" boot logic so the
+            // whole UI (theme, locale, voice, runtime knobs, projects,
+            // sessions...) reflects the imported values without a restart.
+            void refreshLists();
+          }}
           onSessionDataMode={(v) => {
             const commit = () => {
               setSessionDataMode(v);
@@ -8061,6 +8105,22 @@ export default function App() {
                                         />
                                       </span>
                                     ) : null}
+                                    {s.bookmarkNote != null ? (
+                                      <span
+                                        className="tree-l3__kind"
+                                        title={
+                                          s.bookmarkNote
+                                            ? s.bookmarkNote
+                                            : tr("session.bookmark")
+                                        }
+                                        aria-label={tr("session.bookmark")}
+                                      >
+                                        <IconBookmark
+                                          size={12}
+                                          className="tree-l3__pin"
+                                        />
+                                      </span>
+                                    ) : null}
                                     {s.scheduled ? (
                                       <span
                                         className="tree-l3__kind"
@@ -8298,6 +8358,22 @@ export default function App() {
                             aria-label={tr("session.pinned")}
                           >
                             <IconPin
+                              size={12}
+                              className="tree-l3__pin"
+                            />
+                          </span>
+                        ) : null}
+                        {s.bookmarkNote != null ? (
+                          <span
+                            className="tree-l3__kind"
+                            title={
+                              s.bookmarkNote
+                                ? s.bookmarkNote
+                                : tr("session.bookmark")
+                            }
+                            aria-label={tr("session.bookmark")}
+                          >
+                            <IconBookmark
                               size={12}
                               className="tree-l3__pin"
                             />
@@ -10627,6 +10703,28 @@ export default function App() {
                   });
                 },
               },
+              {
+                id: "bookmark",
+                label:
+                  s.bookmarkNote != null
+                    ? tr("session.removeBookmark")
+                    : tr("session.bookmark"),
+                icon: <IconBookmark size={16} />,
+                onClick: () => {
+                  if (s.bookmarkNote != null) void removeBookmark(s);
+                  else bookmarkSession(s);
+                },
+              },
+              ...(s.bookmarkNote != null
+                ? [
+                    {
+                      id: "bookmark-edit",
+                      label: tr("session.bookmarkNote"),
+                      icon: <IconBookmark size={16} />,
+                      onClick: () => bookmarkSession(s),
+                    },
+                  ]
+                : []),
               {
                 id: "rename",
                 label: tr("session.rename"),

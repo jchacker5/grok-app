@@ -110,6 +110,12 @@ export interface SettingsPageProps {
   onSessionDataMode: (v: string) => void;
   /** After importing CLI sessions (shared mode) — refresh sidebar. */
   onCliSessionsImported?: () => void;
+  /**
+   * After a successful full-settings import (Export/Import settings panel) —
+   * reload all in-memory app state from disk so the UI reflects the
+   * imported values immediately, without requiring a restart.
+   */
+  onSettingsImported?: () => void;
   policy: string;
   onPolicy: (v: PermissionPolicyId) => void;
   /** Where model / permission choices are remembered. */
@@ -991,6 +997,7 @@ export function SettingsPage({
   sessionDataMode,
   onSessionDataMode,
   onCliSessionsImported,
+  onSettingsImported,
   policy,
   onPolicy,
   prefsScope = "global",
@@ -1865,6 +1872,10 @@ export function SettingsPage({
               <NotificationSettingsSection />
               <GitHubIntegrationSection />
               <SyncSettingsSection />
+              <ExportImportSettingsPanel
+                t={t}
+                onImported={onSettingsImported}
+              />
             </div>
           </>
         )}
@@ -2861,6 +2872,86 @@ function CliSessionsPanel({
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Export/import the full app settings blob as a JSON file (native dialogs). */
+function ExportImportSettingsPanel({
+  t,
+  onImported,
+}: {
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string;
+  onImported?: () => void;
+}) {
+  const [busy, setBusy] = useState<"export" | "import" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const doExport = async () => {
+    setBusy("export");
+    setError(null);
+    setStatus(null);
+    try {
+      await api.exportSettings();
+      setStatus(t("settings.exportSettingsSuccess"));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doImport = async () => {
+    setBusy("import");
+    setError(null);
+    setStatus(null);
+    try {
+      await api.importSettings();
+      setStatus(t("settings.importSettingsSuccess"));
+      onImported?.();
+    } catch (e) {
+      setError(t("settings.importSettingsError", { error: String(e) }));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">{t("settings.exportSettings")}</div>
+        <div className="settings-row__desc">{t("settings.exportSettingsDesc")}</div>
+      </div>
+      <div className="settings-cli-sessions__actions">
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={!!busy}
+          onClick={() => void doExport()}
+        >
+          {t("settings.exportSettings")}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={!!busy}
+          onClick={() => void doImport()}
+          title={t("settings.importSettingsDesc")}
+        >
+          {t("settings.importSettings")}
+        </button>
+      </div>
+      {error ? (
+        <div className="settings-cli-sessions__err" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {status ? (
+        <div className="settings-cli-sessions__ok" role="status">
+          {status}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1627,6 +1627,16 @@ pub async fn session_set_tags(id: String, tags: Vec<String>) -> Result<SessionMe
     store::set_session_tags(&id, tags)
 }
 
+/// Bookmark (or unbookmark) a session with an attached note. `note: None`
+/// clears the bookmark; `Some(note)` sets it (note may be an empty string).
+#[tauri::command]
+pub async fn session_set_bookmark(
+    id: String,
+    note: Option<String>,
+) -> Result<SessionMeta, String> {
+    store::set_session_bookmark(&id, note)
+}
+
 #[tauri::command]
 pub async fn session_set_settled(id: String, settled_at: Option<String>) -> Result<SessionMeta, String> {
     let parsed = settled_at
@@ -1910,6 +1920,180 @@ pub async fn settings_set(
         tracing::warn!("settings_set tray refresh: {e}");
     }
     Ok(settings)
+}
+
+/// Build the pretty-JSON export of `AppSettings`, redacting fields that may
+/// carry raw secrets. Everything else in `AppSettings` is non-sensitive
+/// (API keys / tokens normally live in `secrets.json` or the OS keychain —
+/// see `store::AppSettings::store_api_keys_in_keychain`), but
+/// `browser_cookies` is a general-purpose KV bag also used to stash the
+/// GitHub PAT (`set_github_pat` inserts it under `__github_pat__`), so it
+/// must never leave the machine via export.
+fn settings_export_json() -> Result<String, String> {
+    let mut settings = store::load_settings();
+    settings.browser_cookies.clear();
+    serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())
+}
+
+/// Parse an exported settings JSON blob and persist it via the normal
+/// settings-write path. Since export deliberately omits `browser_cookies`
+/// (see `settings_export_json`), the current value is preserved here rather
+/// than being wiped by the import.
+fn settings_import_json(json: &str) -> Result<AppSettings, String> {
+    let mut settings: AppSettings =
+        serde_json::from_str(json).map_err(|e| format!("invalid settings file: {e}"))?;
+    settings.browser_cookies = store::load_settings().browser_cookies;
+    store::save_settings(&settings)?;
+    Ok(settings)
+}
+
+/// Export current app settings as pretty JSON and prompt a native save
+/// dialog (defaults to `grok-app-settings.json`) to write it to disk.
+/// Returns the JSON regardless of whether the user picked a destination
+/// (cancelling the dialog just skips the file write).
+#[tauri::command]
+pub async fn export_settings() -> Result<String, String> {
+    let json = settings_export_json()?;
+    let json_for_dialog = json.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(dest) = rfd::FileDialog::new()
+            .set_title("Export settings")
+            .set_file_name("grok-app-settings.json")
+            .add_filter("JSON", &["json"])
+            .save_file()
+        {
+            let _ = std::fs::write(&dest, json_for_dialog.as_bytes());
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(json)
+}
+
+/// Import app settings. When `json` is provided (non-empty), it is parsed
+/// and persisted directly — used for programmatic/round-trip callers. When
+/// omitted, prompts a native open-file dialog filtered to `.json` and reads
+/// the picked file. Errors if the dialog is cancelled or the file fails to
+/// parse as `AppSettings`.
+#[tauri::command]
+pub async fn import_settings(json: Option<String>) -> Result<(), String> {
+    let text = match json.filter(|s| !s.trim().is_empty()) {
+        Some(j) => j,
+        None => {
+            let path = tauri::async_runtime::spawn_blocking(|| {
+                rfd::FileDialog::new()
+                    .set_title("Import settings")
+                    .add_filter("JSON", &["json"])
+                    .pick_file()
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+            let Some(path) = path else {
+                return Err("import cancelled".into());
+            };
+            std::fs::read_to_string(&path).map_err(|e| format!("read file: {e}"))?
+        }
+    };
+    settings_import_json(&text)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod settings_export_import_tests {
+    use super::*;
+    use crate::test_env_lock::ENV_LOCK;
+
+    fn with_temp_home<F: FnOnce()>(name: &str, f: F) {
+        let tmp = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        f();
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn export_then_import_round_trips_settings() {
+        let _g = ENV_LOCK.lock().unwrap();
+        with_temp_home("grok-app-settings-export-test", || {
+            let mut settings = AppSettings::default();
+            settings.theme = "dark".into();
+            settings.locale = "zh-TW".into();
+            settings.voice_id = "custom-voice".into();
+            settings.max_concurrent_agents = 5;
+            store::save_settings(&settings).expect("save settings");
+
+            let exported = settings_export_json().expect("export settings");
+            let parsed: serde_json::Value =
+                serde_json::from_str(&exported).expect("export is valid json");
+            assert_eq!(parsed["theme"], "dark");
+            assert_eq!(parsed["locale"], "zh-TW");
+            assert_eq!(parsed["voiceId"], "custom-voice");
+            assert_eq!(parsed["maxConcurrentAgents"], 5);
+
+            // Mutate on-disk settings so we can prove import actually restores them.
+            let mut other = AppSettings::default();
+            other.theme = "light".into();
+            store::save_settings(&other).expect("save other settings");
+
+            let imported = settings_import_json(&exported).expect("import settings");
+            assert_eq!(imported.theme, "dark");
+            assert_eq!(imported.locale, "zh-TW");
+            assert_eq!(imported.voice_id, "custom-voice");
+            assert_eq!(imported.max_concurrent_agents, 5);
+
+            let reloaded = store::load_settings();
+            assert_eq!(reloaded.theme, "dark");
+            assert_eq!(reloaded.voice_id, "custom-voice");
+        });
+    }
+
+    #[test]
+    fn export_redacts_browser_cookies_and_import_preserves_existing_ones() {
+        let _g = ENV_LOCK.lock().unwrap();
+        with_temp_home("grok-app-settings-redact-test", || {
+            let mut settings = AppSettings::default();
+            settings
+                .browser_cookies
+                .insert("__github_pat__".into(), "ghp_supersecret".into());
+            settings
+                .browser_cookies
+                .insert("example.com".into(), "session=abc".into());
+            store::save_settings(&settings).expect("save settings with cookies");
+
+            let exported = settings_export_json().expect("export settings");
+            assert!(
+                !exported.contains("ghp_supersecret"),
+                "exported settings must never contain the GitHub PAT"
+            );
+            assert!(
+                !exported.contains("session=abc"),
+                "exported settings must never contain saved browser cookies"
+            );
+
+            // Importing a settings file that (correctly) omits browserCookies
+            // must not wipe out the current cookie/PAT store.
+            let imported = settings_import_json(&exported).expect("import settings");
+            assert_eq!(
+                imported.browser_cookies.get("__github_pat__").map(String::as_str),
+                Some("ghp_supersecret")
+            );
+            assert_eq!(
+                imported.browser_cookies.get("example.com").map(String::as_str),
+                Some("session=abc")
+            );
+        });
+    }
+
+    #[test]
+    fn import_rejects_invalid_json() {
+        let _g = ENV_LOCK.lock().unwrap();
+        with_temp_home("grok-app-settings-invalid-test", || {
+            let err = settings_import_json("not valid json").unwrap_err();
+            assert!(err.contains("invalid settings file"));
+        });
+    }
 }
 
 #[tauri::command]

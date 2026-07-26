@@ -889,6 +889,15 @@ const en = {
     "Reset all settings to defaults? This cannot be undone.",
   "settings.restoreDefaultsDesc":
     "Reset all settings to their factory defaults.",
+  "settings.exportSettings": "Export settings…",
+  "settings.exportSettingsDesc":
+    "Save all app settings to a JSON file you can back up or move to another machine.",
+  "settings.importSettings": "Import settings…",
+  "settings.importSettingsDesc":
+    "Load app settings from a previously exported JSON file.",
+  "settings.importSettingsSuccess": "Settings imported.",
+  "settings.importSettingsError": "Import failed: {error}",
+  "settings.exportSettingsSuccess": "Settings exported.",
   "settings.sidebar.previewCount": "Message preview lines",
   "settings.sidebar.previewCountDesc":
     "How many message lines to show per chat in the sidebar (1-15).",
@@ -1588,6 +1597,12 @@ const en = {
   "session.tagsLabel": "Tags",
   "session.newTagPlaceholder": "New tag… (Enter to add)",
   "session.noTags": "No tags yet",
+
+  // Session bookmarking with notes
+  "session.bookmark": "Bookmark this session…",
+  "session.bookmarkNote": "Bookmark note",
+  "session.bookmarkNotePlaceholder": "Note… (optional)",
+  "session.removeBookmark": "Remove bookmark",
 
   // Sidebar tag-chip filter row
   "sidebar.tagFilter.all": "All tags",
@@ -3075,6 +3090,13 @@ const zh: Record<MessageKey, string> = {
   "settings.restoreDefaultsDesc": "将所有设置重置为出厂默认值",
   "settings.restoreDefaultsBtn": "全部恢复",
   "settings.restoreDefaultsConfirm": "重置所有设置为默认值？此操作无法撤销。",
+  "settings.exportSettings": "导出设置…",
+  "settings.exportSettingsDesc": "将所有应用设置保存为 JSON 文件，用于备份或迁移到其他设备。",
+  "settings.importSettings": "导入设置…",
+  "settings.importSettingsDesc": "从之前导出的 JSON 文件加载应用设置。",
+  "settings.importSettingsSuccess": "设置已导入。",
+  "settings.importSettingsError": "导入失败：{error}",
+  "settings.exportSettingsSuccess": "设置已导出。",
   "settings.threadAutoSettle": "自动归档（天数）",
   "settings.threadAutoSettleDesc": "对话闲置此天数后自动归档（1-90，或关闭）",
   "settings.threadAutoSettleOff": "关闭",
@@ -3111,6 +3133,11 @@ const zh: Record<MessageKey, string> = {
   "session.tagsLabel": "标签",
   "session.newTagPlaceholder": "新标签…（按 Enter 添加）",
   "session.noTags": "暂无标签",
+
+  "session.bookmark": "收藏此会话…",
+  "session.bookmarkNote": "收藏备注",
+  "session.bookmarkNotePlaceholder": "备注…（可选）",
+  "session.removeBookmark": "取消收藏",
 
   "sidebar.tagFilter.all": "所有标签",
   "sidebar.tagFilter.clear": "清除标签筛选",

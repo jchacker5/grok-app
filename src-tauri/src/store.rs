@@ -138,6 +138,11 @@ pub struct SessionMeta {
     /// like `pinned` — does not bump `updated_at` when changed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// Bookmark with an attached note. `None` = not bookmarked; `Some("")` =
+    /// bookmarked with no note. Organizational metadata, like `pinned` /
+    /// `tags` — does not bump `updated_at` when changed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bookmark_note: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -882,6 +887,7 @@ pub fn create_session(
         pr_ref: None,
         pr_state: None,
         tags: Vec::new(),
+        bookmark_note: None,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -975,6 +981,21 @@ pub fn set_session_tags(id: &str, tags: Vec<String>) -> Result<SessionMeta, Stri
         .ok_or_else(|| "session not found".to_string())?;
     s.tags = tags;
     // Do not bump updated_at — tags are organizational (same as pin).
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+/// Bookmark (or unbookmark) a session with an attached note.
+/// `None` clears the bookmark; `Some(note)` sets/updates it (note may be "").
+pub fn set_session_bookmark(id: &str, note: Option<String>) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.bookmark_note = note;
+    // Do not bump updated_at — bookmarking is organizational (same as pin/tags).
     let clone = s.clone();
     save_sessions_index(&list)?;
     Ok(clone)
@@ -1968,6 +1989,7 @@ mod tests {
             pr_ref: None,
             pr_state: None,
             tags: Vec::new(),
+            bookmark_note: None,
         }
     }
 
@@ -2022,6 +2044,43 @@ mod tests {
         assert!(cleared.tags.is_empty());
 
         let missing = set_session_tags("does-not-exist", vec!["x".into()]);
+        assert!(missing.is_err());
+
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn set_session_bookmark_sets_clears_and_preserves_updated_at() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-bookmark-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+
+        let created =
+            create_session(None, Some("Bookmarked chat".into()), false).expect("create session");
+        let before_updated_at = created.updated_at;
+        assert_eq!(created.bookmark_note, None);
+
+        let bookmarked =
+            set_session_bookmark(&created.id, Some("follow up later".into()))
+                .expect("set bookmark");
+        assert_eq!(bookmarked.bookmark_note.as_deref(), Some("follow up later"));
+        assert_eq!(bookmarked.updated_at, before_updated_at);
+
+        // Empty-string note is a valid "bookmarked, no note" state.
+        let empty_note = set_session_bookmark(&created.id, Some(String::new()))
+            .expect("set empty bookmark note");
+        assert_eq!(empty_note.bookmark_note.as_deref(), Some(""));
+
+        let cleared = set_session_bookmark(&created.id, None).expect("clear bookmark");
+        assert_eq!(cleared.bookmark_note, None);
+
+        let missing = set_session_bookmark("does-not-exist", Some("x".into()));
         assert!(missing.is_err());
 
         std::env::remove_var("GROK_APP_HOME");
