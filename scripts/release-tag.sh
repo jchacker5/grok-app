@@ -98,7 +98,10 @@ for rel in ("src/i18n/messages.ts", "src/i18n/zh-tw.ts"):
         print(f"warn: versionFooter pattern not found in {rel}")
 PY
 
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src/i18n/messages.ts src/i18n/zh-tw.ts
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src/i18n/messages.ts
+if [[ -f src/i18n/zh-tw.ts ]]; then
+  git add src/i18n/zh-tw.ts
+fi
 if [[ -n "$(git status --porcelain)" ]]; then
   git commit -m "chore: release $TAG"
 fi
