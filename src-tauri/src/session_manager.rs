@@ -3130,6 +3130,69 @@ impl SessionManager {
         Ok(self.snapshot())
     }
 
+    /// Force-finalize a busy turn: flush the partial assistant text/thought
+    /// already accumulated, write a `marker`-tagged journal entry so the UI
+    /// history explains the interruption, and transition the FSM back to
+    /// `Ready`. Shared by `stop()` (marker `"turn_cancelled"`) and `steer()`
+    /// (marker `"turn_steered"`) — the only difference is the label. Returns
+    /// whether a turn was actually in flight (i.e. whether the caller still
+    /// needs to send `session/cancel` to the agent).
+    fn finalize_busy_turn_locked(
+        s: &mut LiveSession,
+        app: &AppHandle,
+        marker: &'static str,
+        reason: &'static str,
+    ) -> bool {
+        let was_busy = s.fsm.state() == SessionState::Streaming
+            || s.fsm.state() == SessionState::AwaitingPermission;
+        if was_busy {
+            // I04: force-flush partial assistant before the marker.
+            Self::maybe_flush_stream_journal(s, true, false);
+            let partial = s.stream_buf.trim().to_string();
+            let mid = Uuid::new_v4().to_string();
+            let content = if partial.is_empty() {
+                format!("{marker}|{reason}")
+            } else {
+                format!(
+                    "{marker}|{reason}|partial:{}",
+                    partial.chars().take(200).collect::<String>()
+                )
+            };
+            let _ = store::append_message(
+                &s.app_session_id,
+                ChatMessageStored {
+                    id: mid.clone(),
+                    role: "tool".into(),
+                    content: content.clone(),
+                    thought: None,
+                    created_at: chrono::Utc::now(),
+                    is_error: false,
+                    attachments: None,
+                    marker: Some(marker.to_string()),
+                },
+            );
+            let _ = app.emit(
+                "session://turn_marker",
+                serde_json::json!({
+                    "sessionId": s.app_session_id,
+                    "messageId": mid,
+                    "marker": marker,
+                    "reason": reason,
+                    "content": content,
+                }),
+            );
+            let _ = s.fsm.end_stream();
+        }
+        s.streaming_message_id = None;
+        s.stream_buf.clear();
+        s.stream_thought.clear();
+        s.stream_last_was_assistant = false;
+        s.stream_attachments.clear();
+        s.journal_throttle.reset();
+        s.last_stall_emit = None;
+        was_busy
+    }
+
     pub async fn stop(self: &Arc<Self>, app: AppHandle) -> Result<SessionSnapshot, String> {
         let acp = {
             let mut guard = self.inner.lock();
@@ -3137,53 +3200,7 @@ impl SessionManager {
             if let Some(h) = s.mock_stream.take() {
                 h.request_stop();
             }
-            let was_busy = s.fsm.state() == SessionState::Streaming
-                || s.fsm.state() == SessionState::AwaitingPermission;
-            let partial = s.stream_buf.trim().to_string();
-            // Journal a cancel marker so UI history is not left as user-only silence.
-            if was_busy {
-                // I04: force-flush partial assistant before cancel marker.
-                Self::maybe_flush_stream_journal(s, true, false);
-                let mid = Uuid::new_v4().to_string();
-                let content = if partial.is_empty() {
-                    "turn_cancelled|user_stop".to_string()
-                } else {
-                    format!("turn_cancelled|user_stop|partial:{}", partial.chars().take(200).collect::<String>())
-                };
-                let _ = store::append_message(
-                    &s.app_session_id,
-                    ChatMessageStored {
-                        id: mid.clone(),
-                        role: "tool".into(),
-                        content: content.clone(),
-                        thought: None,
-                        created_at: chrono::Utc::now(),
-                        is_error: false,
-                        attachments: None,
-                        marker: Some("turn_cancelled".into()),
-                    },
-                );
-                let _ = app.emit(
-                    "session://turn_marker",
-                    serde_json::json!({
-                        "sessionId": s.app_session_id,
-                        "messageId": mid,
-                        "marker": "turn_cancelled",
-                        "reason": "user_stop",
-                        "content": content,
-                    }),
-                );
-            }
-            if was_busy {
-                let _ = s.fsm.end_stream();
-            }
-            s.streaming_message_id = None;
-            s.stream_buf.clear();
-            s.stream_thought.clear();
-            s.stream_last_was_assistant = false;
-            s.stream_attachments.clear();
-            s.journal_throttle.reset();
-            s.last_stall_emit = None;
+            Self::finalize_busy_turn_locked(s, &app, "turn_cancelled", "user_stop");
             s.acp.clone()
         };
         if let Some(acp) = acp {
@@ -3192,6 +3209,36 @@ impl SessionManager {
         let snap = self.snapshot();
         Self::emit_state(&app, &snap);
         Ok(snap)
+    }
+
+    /// Redirect the current turn instead of just cancelling it: finalize the
+    /// in-flight partial under a distinct `"turn_steered"` marker (so the
+    /// transcript reads as a deliberate redirect, not an abandoned turn),
+    /// cancel the in-flight ACP prompt, then immediately send `text` as the
+    /// next turn. The ACP wire protocol has no way to inject input into a
+    /// turn that's already streaming — this is a cancel-and-resend, not true
+    /// mid-generation interjection — but it collapses "Stop" + "retype and
+    /// send" into one action and keeps the partial response visible.
+    /// If nothing was in flight, this is just a normal send.
+    pub async fn steer(
+        self: &Arc<Self>,
+        app: AppHandle,
+        text: String,
+        display_text: Option<String>,
+    ) -> Result<SessionSnapshot, String> {
+        let acp = {
+            let mut guard = self.inner.lock();
+            let s = guard.as_mut().ok_or("no active session")?;
+            if let Some(h) = s.mock_stream.take() {
+                h.request_stop();
+            }
+            let was_busy = Self::finalize_busy_turn_locked(s, &app, "turn_steered", "redirected");
+            if was_busy { s.acp.clone() } else { None }
+        };
+        if let Some(acp) = acp {
+            let _ = acp.cancel().await;
+        }
+        self.send_message(app, text, display_text).await
     }
 
     /// Update live Host policy (in-memory). Prefer `apply_permission_policy` for full sync.

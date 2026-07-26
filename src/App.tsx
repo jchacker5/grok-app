@@ -214,6 +214,7 @@ import {
   IconAttach,
   IconSend,
   IconQueue,
+  IconSteer,
   IconStop,
   IconMic,
   IconHeadset,
@@ -5726,6 +5727,66 @@ export default function App() {
   };
 
   /**
+   * Redirect the in-flight turn instead of cancelling it: finalizes the
+   * partial response, cancels the current agent call, and immediately sends
+   * the composer's draft as the next turn — collapsing "Stop" + "retype and
+   * send" into one action. Only meaningful mid-turn; the composer only shows
+   * the Steer button while `canStop(session.state)` is true.
+   */
+  const steer = async () => {
+    const segments = parseStoredContent(draft);
+    const storedDisplay = draft;
+    const att = attachments;
+    if (isDraftEmpty(segments) && !att.length) return;
+    if (!canStop(session.state)) return;
+    if (session.state === "awaiting_permission") {
+      showToast(tr("composer.queueBlockedPermission"), 2800);
+      return;
+    }
+    const agentText = buildAgentPrompt(
+      serializeForAgent(segments, { goalMode }),
+      att,
+    );
+    clearComposerAfterSubmit();
+    setRetryStatus(null);
+    setStreamStall(null);
+    setTurnStartedAt(Date.now());
+
+    const ts = Date.now();
+    const userMessageId = `u-${ts}`;
+    const pendingAssistantId = `a-pending-${ts}`;
+    const nowIso = new Date().toISOString();
+    const appendOptimistic = (m: ChatMessage[]): ChatMessage[] => [
+      ...clearPriorTurnStreaming(m),
+      {
+        id: userMessageId,
+        role: "user",
+        content: storedDisplay,
+        attachments: att.length ? att : undefined,
+        createdAt: nowIso,
+      },
+      {
+        id: pendingAssistantId,
+        role: "assistant",
+        content: "",
+        streaming: true,
+      },
+    ];
+    const liveId = liveHostRef.current.sessionId;
+    if (liveId) {
+      patchSessionMessages(liveId, appendOptimistic);
+    } else {
+      setMessages(appendOptimistic);
+    }
+
+    try {
+      await api.sessionSteer(agentText, storedDisplay);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /**
    * Bind (or clear) the open session's project. Draft chats only switch
    * workspace context. Untrusted projects refuse bind when a session exists.
    */
@@ -9724,16 +9785,28 @@ export default function App() {
                       !isDraftEmpty(parseStoredContent(draft)) ||
                         attachments.length > 0,
                     ) && (
-                      <Tip label={tr("composer.queue")}>
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn--primary"
-                          onClick={() => void send()}
-                          aria-label={tr("composer.queue")}
-                        >
-                          <IconQueue size={16} />
-                        </button>
-                      </Tip>
+                      <>
+                        <Tip label={tr("composer.steer")}>
+                          <button
+                            type="button"
+                            className="icon-btn icon-btn--primary"
+                            onClick={() => void steer()}
+                            aria-label={tr("composer.steer")}
+                          >
+                            <IconSteer size={16} />
+                          </button>
+                        </Tip>
+                        <Tip label={tr("composer.queue")}>
+                          <button
+                            type="button"
+                            className="icon-btn icon-btn--primary"
+                            onClick={() => void send()}
+                            aria-label={tr("composer.queue")}
+                          >
+                            <IconQueue size={16} />
+                          </button>
+                        </Tip>
+                      </>
                     )}
                     <Tip label={tr("composer.stop")}>
                       <button

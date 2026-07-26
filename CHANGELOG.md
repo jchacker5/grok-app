@@ -11,6 +11,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-07-26
+
+### Added
+
+- **Mid-turn Steer**: a "Steer" button next to Stop/Queue while the agent is streaming. Instead of waiting for the current turn to finish (Queue) or discarding it (Stop), Steer finalizes the in-progress partial response under a distinct "redirected" marker, cancels the in-flight agent call, and immediately sends your draft as the next turn — collapsing "Stop, then retype and send" into one action. Note: the ACP wire protocol has no way to inject text into a turn that's already generating, so this is a fast cancel-and-resend rather than true mid-generation interjection; the partial response stays visible in the transcript rather than being discarded.
+
 ## [0.1.15] - 2026-07-26
 
 ### Fixed

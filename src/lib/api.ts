@@ -160,6 +160,19 @@ export async function sessionStop(): Promise<SessionSnapshot> {
   return invoke("session_stop");
 }
 
+/** Redirect the current turn: cancel it (keeping the partial response) and
+ * immediately send `text` as the next turn. If nothing is in flight, this is
+ * just a normal send. */
+export async function sessionSteer(
+  text: string,
+  displayText?: string | null,
+): Promise<SessionSnapshot> {
+  return invoke("session_steer", {
+    text,
+    displayText: displayText ?? null,
+  });
+}
+
 export async function sessionDisconnect(): Promise<SessionSnapshot> {
   return invoke("session_disconnect");
 }

@@ -169,6 +169,19 @@ pub async fn session_stop(
     mgr.stop(app).await
 }
 
+/// Redirect the current turn: finalize the in-flight partial, cancel it, and
+/// immediately send `text` as the next turn (cancel-and-resend, not true
+/// mid-generation interjection — see `SessionManager::steer`).
+#[tauri::command]
+pub async fn session_steer(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    text: String,
+    display_text: Option<String>,
+) -> Result<SessionSnapshot, String> {
+    mgr.steer(app, text, display_text).await
+}
+
 /// Approve / revise / abandon pending plan (`_x.ai/exit_plan_mode`).
 #[tauri::command]
 pub async fn session_resolve_plan(

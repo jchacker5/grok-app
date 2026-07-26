@@ -413,6 +413,7 @@ const en = {
   "composer.attachSaved": "Attached {name}",
   "composer.voiceSoon": "Voice (soon)",
   "composer.send": "Send",
+  "composer.steer": "Steer — redirect this turn now",
   "composer.queue": "Queue — send after this turn (this chat)",
   "composer.queued":
     "Queued for this chat — sends when the turn ends while you stay here",

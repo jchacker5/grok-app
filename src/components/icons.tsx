@@ -12,6 +12,7 @@ import {
   IconArrowLeft as TbArrowLeft,
   IconArrowRight as TbArrowRight,
   IconArrowsMinimize as TbArrowsMinimize,
+  IconCornerUpRight as TbCornerUpRight,
   IconBell as TbBell,
   IconBolt as TbBolt,
   IconGitBranch as TbGitBranch,
@@ -238,6 +239,7 @@ export const IconAttach = wrap(TbPaperclip);
 export const IconClose = wrap(TbX);
 export const IconSend = wrap(TbSend);
 export const IconQueue = wrap(TbStack2);
+export const IconSteer = wrap(TbCornerUpRight);
 export const IconMic = wrap(TbMicrophone);
 export const IconHeadset = wrap(TbHeadset);
 export const IconPanel = wrap(TbLayoutSidebar);
