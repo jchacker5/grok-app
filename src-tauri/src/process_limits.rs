@@ -4,15 +4,15 @@
 
 use std::time::{Duration, Instant};
 
-/// Spec default: at most 3 warm/live agent processes.
-pub const DEFAULT_MAX_CONCURRENT_AGENTS: u32 = 3;
+/// Spec default: at most 8 warm/live agent processes.
+pub const DEFAULT_MAX_CONCURRENT_AGENTS: u32 = 8;
 /// Default maximum number of live embedded terminal processes.
 pub const DEFAULT_MAX_CONCURRENT_TERMINALS: u32 = 4;
 /// Spec default: recycle after ~30 minutes idle.
 pub const DEFAULT_AGENT_IDLE_MINUTES: u32 = 30;
 
 /// Hard clamp for settings (avoid 0 / absurd values).
-pub const MAX_CONCURRENT_AGENTS_CAP: u32 = 8;
+pub const MAX_CONCURRENT_AGENTS_CAP: u32 = 32;
 pub const MAX_CONCURRENT_TERMINALS_CAP: u32 = 8;
 pub const MIN_CONCURRENT_AGENTS: u32 = 1;
 pub const MAX_IDLE_MINUTES_CAP: u32 = 24 * 60;
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn defaults_match_spec() {
-        assert_eq!(DEFAULT_MAX_CONCURRENT_AGENTS, 3);
+        assert_eq!(DEFAULT_MAX_CONCURRENT_AGENTS, 8);
         assert_eq!(DEFAULT_AGENT_IDLE_MINUTES, 30);
     }
 }

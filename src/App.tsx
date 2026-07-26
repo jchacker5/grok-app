@@ -568,7 +568,14 @@ export default function App() {
   const viewingSessionIdRef = useRef<string | null>(null);
   const liveHostRef = useRef<SessionSnapshot>(IDLE_SNAPSHOT);
   const messagesRef = useRef<ChatMessage[]>([]);
-  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem("grok-app:expandedProjects");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState>(null);
@@ -665,6 +672,17 @@ export default function App() {
       return () => window.clearTimeout(t);
     }
   }, [appDialog]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "grok-app:expandedProjects",
+        JSON.stringify(expandedProjects),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [expandedProjects]);
 
   useEffect(() => {
     if (!appDialog) return;
@@ -910,7 +928,7 @@ export default function App() {
   );
   const [sshTunnelIdentityFile, setSshTunnelIdentityFile] = useState("");
   const [wslDistro, setWslDistro] = useState("");
-  const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(3);
+  const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(8);
   const [maxConcurrentTerminals, setMaxConcurrentTerminals] = useState(4);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
@@ -1168,8 +1186,8 @@ export default function App() {
       setMaxConcurrentAgents(
         typeof settings.maxConcurrentAgents === "number" &&
           settings.maxConcurrentAgents >= 1
-          ? Math.min(8, Math.round(settings.maxConcurrentAgents))
-          : 3,
+          ? Math.min(32, Math.round(settings.maxConcurrentAgents))
+          : 8,
       );
       setMaxConcurrentTerminals(
         typeof settings.maxConcurrentTerminals === "number" &&
@@ -2486,10 +2504,13 @@ export default function App() {
       backend: "grok_agent_stdio",
     });
     setLocalError(null);
-    // Disconnect any live agent for previous session (best-effort).
+    // Move any live agent for the previous session out of focus (best-effort).
+    // Park rather than hard-disconnect: a busy turn keeps streaming in the
+    // background instead of being killed, mirroring how switching to another
+    // existing chat already behaves.
     if (api.isTauri()) {
       try {
-        await api.sessionDisconnect();
+        await api.sessionParkCurrent();
         const idle = { ...IDLE_SNAPSHOT };
         setLiveHost(idle);
         liveHostRef.current = idle;

@@ -11,6 +11,16 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **New chat killed an in-flight turn**: starting a new chat while the current chat was still streaming (or awaiting a permission decision) hard-killed that agent process instead of letting it finish, losing the response. Now the outgoing session is parked/backgrounded instead of killed — same behavior already used when switching between two existing chats — so a turn that just started keeps running in the background.
+- **"Empty run" toast fired on every normal reply**: the empty-turn detection had an inverted condition and flagged turns that produced real text/thinking output as "empty," showing the toast constantly instead of only for genuinely empty turns (no tool calls, no text, no thinking).
+- **Collapsed project groups didn't survive restart**: the sidebar's expanded/collapsed state per project was in-memory only; every launch reset every project back to expanded. Now persisted to `localStorage`.
+
+### Changed
+
+- **Concurrent agent process default raised**: default max concurrent warm/live agent processes raised from 3 to 8; the Settings cap raised from 8 to 32.
+
 ## [0.1.14] - 2026-07-26
 
 ### Added

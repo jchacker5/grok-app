@@ -164,6 +164,12 @@ export async function sessionDisconnect(): Promise<SessionSnapshot> {
   return invoke("session_disconnect");
 }
 
+/** Park (not kill) the current live session — busy turns keep streaming in the
+ * background, idle sessions go warm-parked — so it can be resumed later. */
+export async function sessionParkCurrent(): Promise<SessionSnapshot> {
+  return invoke("session_park_current");
+}
+
 export async function sessionReattach(): Promise<SessionSnapshot> {
   return invoke("session_reattach");
 }

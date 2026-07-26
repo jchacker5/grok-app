@@ -1012,7 +1012,7 @@ export function SettingsPage({
   isWindows = false,
   wslDistro = "",
   onWslDistro,
-  maxConcurrentAgents = 3,
+  maxConcurrentAgents = 8,
   onMaxConcurrentAgents,
   maxConcurrentTerminals = 4,
   onMaxConcurrentTerminals,
@@ -2545,13 +2545,13 @@ export function SettingsPage({
                 className="settings-input"
                 type="number"
                 min={1}
-                max={8}
+                max={32}
                 step={1}
                 value={maxConcurrentAgents}
                 onChange={(e) => {
                   const n = Number(e.target.value);
                   if (!Number.isFinite(n)) return;
-                  onMaxConcurrentAgents?.(Math.min(8, Math.max(1, Math.round(n))));
+                  onMaxConcurrentAgents?.(Math.min(32, Math.max(1, Math.round(n))));
                 }}
               />
             </div>

@@ -157,6 +157,7 @@ pub fn run() {
             commands::session_send,
             commands::session_stop,
             commands::session_disconnect,
+            commands::session_park_current,
             commands::session_reattach,
             commands::session_resolve_permission,
             commands::session_resolve_plan,

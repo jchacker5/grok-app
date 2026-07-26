@@ -3647,6 +3647,19 @@ impl SessionManager {
         Ok(self.snapshot())
     }
 
+    /// Move the current live session out of focus without killing it: a busy
+    /// turn is demoted to `background` (keeps streaming) and an idle session is
+    /// warm-parked, mirroring how switching to another existing chat already
+    /// behaves via `try_park_live()` inside `connect_inner`. Used when starting
+    /// a new chat so an in-flight turn on the outgoing session isn't killed.
+    pub async fn park_current(self: &Arc<Self>, app: AppHandle) -> Result<SessionSnapshot, String> {
+        self.try_park_live()
+            .map_err(|e| format!("{}: {}", e.code.as_str(), e.message))?;
+        let snap = self.snapshot();
+        Self::emit_state(&app, &snap);
+        Ok(snap)
+    }
+
     pub async fn reattach(self: &Arc<Self>, app: AppHandle) -> Result<SessionSnapshot, String> {
         let (project, sid) = {
             let guard = self.inner.lock();

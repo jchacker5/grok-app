@@ -678,7 +678,7 @@ const en = {
     "No WSL distros found. Install one with “wsl --install -d <Distro>” from an elevated prompt.",
   "settings.maxConcurrentAgents": "Max concurrent agents",
   "settings.maxConcurrentAgentsDesc":
-    "Warm agent processes kept for open chats (default 3). Opening more than this prompts you to wait or free a session.",
+    "Warm agent processes kept for open chats (default 8). Opening more than this prompts you to wait or free a session.",
   "settings.maxConcurrentTerminals": "Max concurrent terminals",
   "settings.maxConcurrentTerminalsDesc":
     "Live embedded terminal shells kept open at once (default 4). Opening more than this is blocked until one is closed.",

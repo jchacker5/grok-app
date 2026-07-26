@@ -202,6 +202,14 @@ pub async fn session_disconnect(
 }
 
 #[tauri::command]
+pub async fn session_park_current(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<SessionSnapshot, String> {
+    mgr.park_current(app).await
+}
+
+#[tauri::command]
 pub async fn session_reattach(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,

@@ -1847,7 +1847,7 @@ mod tests {
         assert_eq!(s.permission_policy, "ask");
         assert_eq!(s.theme, "dark");
         assert_eq!(s.locale, "en");
-        assert_eq!(s.max_concurrent_agents, 3);
+        assert_eq!(s.max_concurrent_agents, 8);
         assert_eq!(s.agent_idle_minutes, 30);
         assert_eq!(s.stream_stall_seconds, 120);
         assert_eq!(s.sandbox_profile, "off");
