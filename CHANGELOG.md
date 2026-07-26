@@ -11,8 +11,41 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-07-25
+
+Combined release: merges the t3-parity feature set (push notifications, Live
+Preview Panel v2, SSH tunnel manager, git commit/PR workflow, inline diff
+review comments — shipped in v0.1.10) with 20 feature-plan implementations
+(001–020) and the release/v0.1.10 session's own follow-on work (fold diffs,
+copy branch name, automatic PR status, `grok.json` project config, Windows
+update warning, and CLI-native slash commands in the composer palette).
+
 ### Added
 
+- **001 — Plugin install live progress + retry**: one-click plugin installs now stream live progress and offer a retry on failure instead of a single opaque spinner.
+- **002 — Goal Mode context in the sticky plan bar**: the sticky plan bar keeps the active Goal Mode objective visible while scrolling a long session.
+- **004 — Search palette keyboard nav + match highlighting**: the command/search palette supports full keyboard navigation and highlights matched substrings in results.
+- **005 — Session presets**: save and reload composer bundles (model, effort, mode, permission policy) as named presets for fast context switching (`presets_list` / `preset_create` / `preset_update` / `preset_delete`).
+- **006 — Embedded browser navigation**: the Live Preview Panel gains a URL bar, back/forward controls, and a loading indicator for the embedded webview.
+- **007 — Session export as JSON**: export a chat's full message history as a portable JSON file, alongside the existing Markdown export.
+- **008 — Stage individual git hunks**: the workspace diff view supports staging individual hunks (not just whole files) via `git_stage_hunk`.
+- **009 — Notification preferences**: sound toggle, quiet-hours window, and per-event (completion/error) opt-outs for desktop notifications, plus a test-notification button.
+- **010 — Plugin component graph**: Settings → Extensions shows a provenance graph of which skills/MCP servers belong to which installed plugin, derived from install-path containment.
+- **011 — Prompt Library**: curated built-in prompts plus user-created custom prompts, searchable and insertable into the composer (`custom_prompts_list` / `custom_prompt_create` / `custom_prompt_update` / `custom_prompt_delete`).
+- **012 — Session diff**: compare two sessions' message history side-by-side.
+- **013 — Agent memory viewer**: browse and clear the agent's global/project/session `MEMORY.md` notes from a dedicated panel.
+- **014 — Custom slash commands**: user-defined `/name` commands with safe actions only — insert text, toggle a setting, or open a panel (no shell execution).
+- **015 — Compare a prompt with a different model**: fork a turn and re-run it against a different model to compare outputs side-by-side.
+- **016 — Per-project AGENTS.md quick-open/create**: the Resource Viewer can open or scaffold a project's `AGENTS.md` in one click.
+- **017 — Session analytics tab**: Settings → Account gains a tab summarizing session counts, message volume, and usage trends over time.
+- **018 — GitHub issue/PR/commit linking via `/gh`**: fetch an issue, PR, or commit by URL and add its content to the composer.
+- **019 — Export conversation as image**: render a selection of chat messages to a shareable PNG (light/dark style, optional title & timestamp).
+- **020 — Manual backup/restore (slice)**: export settings/projects/sessions/spaces/automations to a single portable file and restore it on another machine — no daemon, no network sync, fully user-initiated (`export_backup_bundle` / `import_backup_bundle`).
+- **Fold large diffs & code blocks by default**: git diffs (>14 lines) and any code block (>40 lines) in chat now collapse to a summary row showing the language and `+adds −dels` (diffs) or line count; click to expand. Keeps big patches from blowing out the thread. (`CodeBlock.tsx`)
+- **Copy branch name**: session right-click menu gains a "Copy branch name" item when the chat is on a git branch. (`App.tsx`)
+- **Automatic PR status**: the active session's branch and pull-request state are now detected via `git` + the GitHub CLI (`gh`) and persisted, so the sidebar PR badge (open / merged / closed) populates on its own instead of requiring manual entry. Soft-fails silently when `git`/`gh` are unavailable. (`session_branch_pr` command)
+- **Shared `grok.json` project config**: a checked-in `grok.json` (or `.grok/config.json`) at a project root can set `defaultModel`, `effort`, `permissionPolicy`, and `sandbox`. Values are validated against the live catalog and applied to the composer once when the project becomes active. (`project_config_read` command)
+- **Windows update warning**: on Windows, the update banner now shows a SmartScreen heads-up and a "Proceed" confirm before downloading and running the update.
 - **CLI-native slash commands in composer palette**: the app now fetches built-in slash commands bundled with the Grok Build CLI via `grok inspect --json` (future `commands` field) and `~/.grok/commands.json` manifest. CLI commands appear under a "CLI" section in the `/` palette, showing their `/name` and description; selecting one inserts the command text into the composer. Forward-compatible — empty list when no CLI commands are yet exposed. (`cli_builtin_commands` Rust command + `CommandsListResult` API + `cliCommandsToSlashItems` catalog)
 
 ## [0.1.10] - 2026-07-25

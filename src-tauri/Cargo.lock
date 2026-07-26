@@ -1807,7 +1807,7 @@ dependencies = [
 
 [[package]]
 name = "grok-app"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "arboard",
  "base64 0.22.1",
