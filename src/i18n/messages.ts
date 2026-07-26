@@ -8,7 +8,7 @@ const en = {
   // App chrome
   "app.name": "Grok",
   "app.tagline": "MIT · Unofficial · Sister project grok-go",
-  "app.versionFooter": "Grok v0.1.16 · MIT · Unofficial · Sister project grok-go",
+  "app.versionFooter": "Grok v0.1.17 · MIT · Unofficial · Sister project grok-go",
 
   // Window chrome (Windows self-drawn controls)
   "window.minimize": "Minimize",
