@@ -14,6 +14,40 @@ export interface GroupedSearchResult {
   matches: SearchMatch[];
 }
 
+/** One find-in-files content hit (greps file bodies — distinct from
+ * session/chat search above and from any filename-only fuzzy finder). */
+export interface FileSearchHit {
+  path: string;
+  lineNumber: number;
+  lineText: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+export type SearchPanelMode = "sessions" | "files";
+
+/**
+ * Optional find-in-files mode. When omitted the panel behaves exactly as
+ * before (sessions-only, no tab switcher) — existing callers are
+ * unaffected.
+ */
+export interface SearchPanelFileSearch {
+  hits: FileSearchHit[];
+  loading: boolean;
+  /** Whether a project is active (files search needs a workspace root). */
+  enabled: boolean;
+  ripgrepUnavailable: boolean;
+  onSelectHit: (hit: FileSearchHit) => void;
+  labels: {
+    sessionsTab: string;
+    filesTab: string;
+    filesPlaceholder: string;
+    filesEmpty: string;
+    filesEmptyProject: string;
+    ripgrepUnavailable: string;
+  };
+}
+
 export interface SearchPanelProps {
   query: string;
   results: GroupedSearchResult[];
@@ -21,6 +55,10 @@ export interface SearchPanelProps {
   onQueryChange: (q: string) => void;
   onSelectMatch: (sessionId: string, match?: SearchMatch) => void;
   onClose?: () => void;
+  /** Controlled sessions/files mode — defaults to "sessions" when omitted. */
+  mode?: SearchPanelMode;
+  onModeChange?: (mode: SearchPanelMode) => void;
+  fileSearch?: SearchPanelFileSearch;
 }
 
 export const SearchPanel: React.FC<SearchPanelProps> = ({
@@ -30,6 +68,9 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
   onQueryChange,
   onSelectMatch,
   onClose,
+  mode = "sessions",
+  onModeChange,
+  fileSearch,
 }) => {
   const [localQuery, setLocalQuery] = useState(query);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -43,26 +84,41 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
     return () => clearTimeout(handler);
   }, [localQuery, onQueryChange]);
 
+  // Reset keyboard selection when switching modes so stale indices don't
+  // point at the wrong list.
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [mode]);
+
+  const filesMode = mode === "files" && !!fileSearch;
+
   // Flatten items for keyboard navigation
   const flatItems: Array<{ sessionId: string; match?: SearchMatch }> = [];
-  for (const group of results) {
-    const isExpanded = expandedSessions[group.sessionId];
-    const displayMatches = isExpanded ? group.matches : group.matches.slice(0, 5);
-    for (const m of displayMatches) {
-      flatItems.push({ sessionId: group.sessionId, match: m });
+  if (!filesMode) {
+    for (const group of results) {
+      const isExpanded = expandedSessions[group.sessionId];
+      const displayMatches = isExpanded ? group.matches : group.matches.slice(0, 5);
+      for (const m of displayMatches) {
+        flatItems.push({ sessionId: group.sessionId, match: m });
+      }
     }
   }
+  const fileHits = filesMode ? fileSearch!.hits : [];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    const count = filesMode ? fileHits.length : flatItems.length;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % Math.max(1, flatItems.length));
+      setSelectedIndex((prev) => (prev + 1) % Math.max(1, count));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev - 1 + flatItems.length) % Math.max(1, flatItems.length));
+      setSelectedIndex((prev) => (prev - 1 + count) % Math.max(1, count));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (flatItems[selectedIndex]) {
+      if (filesMode) {
+        const hit = fileHits[selectedIndex];
+        if (hit) fileSearch!.onSelectHit(hit);
+      } else if (flatItems[selectedIndex]) {
         const item = flatItems[selectedIndex];
         onSelectMatch(item.sessionId, item.match);
       }
@@ -95,15 +151,78 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
           type="text"
           value={localQuery}
           onChange={(e) => setLocalQuery(e.target.value)}
-          placeholder="Search conversation history..."
+          placeholder={
+            filesMode ? fileSearch!.labels.filesPlaceholder : "Search conversation history..."
+          }
           className="search-panel__input"
           autoFocus
         />
-        {loading && <span style={{ marginLeft: "8px", fontSize: "12px", opacity: 0.7 }}>Searching…</span>}
+        {(filesMode ? fileSearch!.loading : loading) && (
+          <span style={{ marginLeft: "8px", fontSize: "12px", opacity: 0.7 }}>Searching…</span>
+        )}
       </div>
 
+      {fileSearch && onModeChange ? (
+        <div className="search-panel__tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!filesMode}
+            className={`search-panel__tab${!filesMode ? " is-active" : ""}`}
+            onClick={() => onModeChange("sessions")}
+          >
+            {fileSearch.labels.sessionsTab}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filesMode}
+            className={`search-panel__tab${filesMode ? " is-active" : ""}`}
+            onClick={() => onModeChange("files")}
+          >
+            {fileSearch.labels.filesTab}
+          </button>
+        </div>
+      ) : null}
+
+      {filesMode && fileSearch!.ripgrepUnavailable ? (
+        <div className="search-panel__hint" role="status">
+          {fileSearch!.labels.ripgrepUnavailable}
+        </div>
+      ) : null}
+
       <div className="search-panel__results">
-        {localQuery.trim().length < 2 ? (
+        {filesMode ? (
+          !fileSearch!.enabled ? (
+            <div className="search-panel__empty">{fileSearch!.labels.filesEmptyProject}</div>
+          ) : localQuery.trim().length < 2 ? (
+            <div className="search-panel__empty">{fileSearch!.labels.filesPlaceholder}</div>
+          ) : fileHits.length === 0 ? (
+            <div className="search-panel__empty">{fileSearch!.labels.filesEmpty}</div>
+          ) : (
+            <div className="search-result-group__matches">
+              {fileHits.map((hit, idx) => {
+                const isSelected = idx === selectedIndex;
+                return (
+                  <div
+                    key={`${hit.path}:${hit.lineNumber}:${idx}`}
+                    className={`search-result-match ${isSelected ? "search-result-match--selected" : ""}`}
+                    onClick={() => fileSearch!.onSelectHit(hit)}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                  >
+                    <span className="search-result-match__path" title={hit.path}>
+                      {hit.path}
+                    </span>
+                    <span className="search-result-match__snippet">
+                      {highlightMatch(hit.lineText, localQuery)}
+                    </span>
+                    <span className="search-result-match__line">L{hit.lineNumber}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : localQuery.trim().length < 2 ? (
           <div className="search-panel__empty">Type at least 2 characters to search...</div>
         ) : results.length === 0 ? (
           <div className="search-panel__empty">No matching messages found</div>

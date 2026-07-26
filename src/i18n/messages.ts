@@ -257,6 +257,9 @@ const en = {
   "resources.editorAria": "Edit {name}",
   "resources.saveFailed": "Could not save file",
   "resources.saveNoPath": "No path to save",
+  "resources.blameShow": "Show blame",
+  "resources.blameHide": "Hide blame",
+  "resources.blameUnavailable": "Blame unavailable for this file",
   "resources.conflictTitle": "File changed on disk",
   "resources.conflictBody":
     "This file was changed by the agent or another app while you were editing. Reload the disk version, or overwrite with your buffer.",
@@ -565,6 +568,16 @@ const en = {
   "search.addProject": "Add project",
   "search.matchCount": "{n} matches",
   "search.searchingContent": "Searching messages…",
+
+  // Find-in-files content search (SearchPanel "Files" mode) — distinct from
+  // chat/session search above and from any filename-only fuzzy finder.
+  "search.sessionsTab": "Sessions",
+  "search.filesTab": "Files",
+  "search.filesPlaceholder": "Search file contents in this project…",
+  "search.filesEmpty": "No matching lines found",
+  "search.filesEmptyProject": "Open a project to search its files",
+  "search.ripgrepUnavailable":
+    "ripgrep (rg) not found — using the slower built-in search",
 
   // Plan card
   "plan.waiting": "Waiting for plan",

@@ -84,6 +84,19 @@ function ensureLangs() {
   }
 }
 
+/**
+ * Per-line git-blame annotation (ResourceViewer file-preview gutter).
+ * Kept decoupled from `@/lib/api`'s `BlameLine` shape (same fields) so this
+ * component has no Tauri-command import.
+ */
+export interface CodePreviewBlameLine {
+  lineNumber: number;
+  author: string;
+  date: string;
+  commitShort: string;
+  summary?: string | null;
+}
+
 export interface CodePreviewProps {
   code: string;
   /** File name for language detection (preferred). */
@@ -93,6 +106,22 @@ export interface CodePreviewProps {
   className?: string;
   /** Optional footer note (e.g. truncated). */
   footer?: string | null;
+  /**
+   * Optional per-line blame annotations. When present (non-empty), switches
+   * to a lightweight per-line rendering mode (real DOM rows, one hljs
+   * highlight pass per line — same technique as DiffPanel.tsx) so each row
+   * can carry its own gutter annotation. The normal single-blob render path
+   * below is completely unchanged for every other caller.
+   */
+  blame?: CodePreviewBlameLine[] | null;
+}
+
+/** Compact author initials for the blame gutter chip (full name via title). */
+export function authorInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function readDocTheme(): "light" | "dark" {
@@ -107,6 +136,7 @@ export function CodePreview({
   language,
   className,
   footer,
+  blame,
 }: CodePreviewProps) {
   ensureLangs();
 
@@ -149,6 +179,82 @@ export function CodePreview({
     if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
     return Math.max(parts.length, 1);
   }, [code]);
+
+  const hasBlame = !!blame && blame.length > 0;
+
+  // Blame lookup + per-line source, only computed when the blame gutter is
+  // active. Each line is highlighted independently (same approach as
+  // DiffPanel.tsx) rather than splitting the full-file hljs output, which
+  // would risk breaking open <span> tags across per-line DOM nodes.
+  const blameByLine = useMemo(() => {
+    if (!hasBlame) return null;
+    const map = new Map<number, CodePreviewBlameLine>();
+    for (const b of blame!) map.set(b.lineNumber, b);
+    return map;
+  }, [blame, hasBlame]);
+
+  const codeLines = useMemo(() => {
+    if (!hasBlame) return null;
+    const parts = code.split("\n");
+    if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
+    return parts.length > 0 ? parts : [""];
+  }, [code, hasBlame]);
+
+  if (hasBlame && codeLines && blameByLine) {
+    return (
+      <div
+        className={cn(
+          "rp-code",
+          "rp-code--blame",
+          theme === "light" ? "rp-code--light" : "rp-code--dark",
+          className,
+        )}
+        data-language={lang}
+      >
+        <div className="rp-code__blame-scroll">
+          {codeLines.map((lineText, i) => {
+            const lineNumber = i + 1;
+            const info = blameByLine.get(lineNumber);
+            let lineHtml = "";
+            try {
+              lineHtml =
+                lang && hljs.getLanguage(lang)
+                  ? hljs.highlight(lineText, { language: lang, ignoreIllegals: true }).value
+                  : hljs.highlightAuto(lineText).value;
+            } catch {
+              lineHtml = lineText
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+            }
+            const title = info
+              ? `${info.author} · ${info.date} · ${info.commitShort}${
+                  info.summary ? `\n${info.summary}` : ""
+                }`
+              : undefined;
+            return (
+              <div className="rp-code__blame-row" key={lineNumber}>
+                <div className="rp-code__blame-gutter" title={title} aria-hidden={!info}>
+                  <span className="rp-code__blame-chip">
+                    {info ? authorInitials(info.author) : ""}
+                  </span>
+                  <span className="rp-code__blame-date">{info?.date ?? ""}</span>
+                  <span className="rp-code__ln rp-code__blame-ln">{lineNumber}</span>
+                </div>
+                <pre className="rp-code__blame-pre">
+                  <code
+                    className={`hljs language-${lang}`}
+                    dangerouslySetInnerHTML={{ __html: lineHtml || "&nbsp;" }}
+                  />
+                </pre>
+              </div>
+            );
+          })}
+        </div>
+        {footer ? <div className="rp-code__footer">{footer}</div> : null}
+      </div>
+    );
+  }
 
   return (
     <div

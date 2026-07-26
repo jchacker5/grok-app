@@ -587,6 +587,21 @@ export default function App() {
   >([]);
   const [contentSearchLoading, setContentSearchLoading] = useState(false);
   const contentSearchSeq = useRef(0);
+  /**
+   * Find-in-files content search (⌘K "Files" tab) — greps file bodies
+   * across the active project's workspace. Distinct from the session
+   * content search above (chat journals) and from any filename fuzzy
+   * finder.
+   */
+  const [searchMode, setSearchMode] = useState<"sessions" | "files">(
+    "sessions",
+  );
+  const [fileSearchHits, setFileSearchHits] = useState<api.WorkspaceSearchHit[]>(
+    [],
+  );
+  const [fileSearchLoading, setFileSearchLoading] = useState(false);
+  const [ripgrepAvailable, setRipgrepAvailable] = useState(true);
+  const fileSearchSeq = useRef(0);
   const [showComposerPlus, setShowComposerPlus] = useState(false);
   showComposerPlusRef.current = showComposerPlus;
   const composerPlusTriggerRef = useRef<HTMLButtonElement>(null);
@@ -762,6 +777,67 @@ export default function App() {
     }, 280);
     return () => window.clearTimeout(t);
   }, [searchQuery, showSearch]);
+
+  // Reset to Sessions mode whenever the search modal is (re)opened — Files
+  // mode is a per-visit choice, not a sticky preference.
+  useEffect(() => {
+    if (showSearch) setSearchMode("sessions");
+  }, [showSearch]);
+
+  // Probe once whether `rg` is on PATH (drives the soft "slower fallback"
+  // hint in the Files tab) — cheap, but no need to re-check every keystroke.
+  useEffect(() => {
+    if (!showSearch || searchMode !== "files" || !api.isTauri()) return;
+    let cancelled = false;
+    void api
+      .workspaceSearchRgAvailable()
+      .then((ok) => {
+        if (!cancelled) setRipgrepAvailable(ok);
+      })
+      .catch(() => {
+        if (!cancelled) setRipgrepAvailable(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showSearch, searchMode]);
+
+  // Debounced find-in-files content search (Files tab) — greps file bodies
+  // under the active project's workspace via `search_workspace_content`
+  // (rg when available, else a built-in walker). Distinct from the session
+  // content search above (chat journals) and from any filename-only fuzzy
+  // finder living elsewhere in the app.
+  useEffect(() => {
+    if (!showSearch || searchMode !== "files") {
+      setFileSearchHits([]);
+      setFileSearchLoading(false);
+      return;
+    }
+    const projectPath = activeProject?.path;
+    const q = searchQuery.trim();
+    if (!projectPath || q.length < 2) {
+      setFileSearchHits([]);
+      setFileSearchLoading(false);
+      return;
+    }
+    setFileSearchLoading(true);
+    const seq = ++fileSearchSeq.current;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const hits = await api.searchWorkspaceContent(projectPath, q, 500);
+          if (fileSearchSeq.current !== seq) return;
+          setFileSearchHits(hits);
+        } catch {
+          if (fileSearchSeq.current !== seq) return;
+          setFileSearchHits([]);
+        } finally {
+          if (fileSearchSeq.current === seq) setFileSearchLoading(false);
+        }
+      })();
+    }, 280);
+    return () => window.clearTimeout(t);
+  }, [searchQuery, showSearch, searchMode, activeProject?.path]);
 
   // Global shortcuts: search, help, doctor, new chat, settings.
   // Handlers go through refs so we don't re-bind every render.
@@ -10258,6 +10334,38 @@ export default function App() {
               );
             }}
             onClose={() => setShowSearch(false)}
+            mode={searchMode}
+            onModeChange={setSearchMode}
+            fileSearch={{
+              hits: fileSearchHits,
+              loading: fileSearchLoading,
+              enabled: !!activeProject?.path,
+              ripgrepUnavailable: !ripgrepAvailable,
+              onSelectHit: (hit) => {
+                setShowSearch(false);
+                setLayout((l) => {
+                  if (l.asideCollapsed) {
+                    const n = { ...l, asideCollapsed: false };
+                    saveLayout(localStorage, n);
+                    return n;
+                  }
+                  return l;
+                });
+                setResourceOpenTarget({
+                  type: "file",
+                  path: hit.path,
+                  line: hit.lineNumber,
+                });
+              },
+              labels: {
+                sessionsTab: tr("search.sessionsTab"),
+                filesTab: tr("search.filesTab"),
+                filesPlaceholder: tr("search.filesPlaceholder"),
+                filesEmpty: tr("search.filesEmpty"),
+                filesEmptyProject: tr("search.filesEmptyProject"),
+                ripgrepUnavailable: tr("search.ripgrepUnavailable"),
+              },
+            }}
           />
         </GlassModal>
       )}
