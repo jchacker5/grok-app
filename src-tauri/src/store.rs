@@ -1720,17 +1720,6 @@ impl Default for NotificationSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MemoryEntry {
-    pub key: String,
-    pub value: String,
-    pub timestamp: i64,
-    pub source: String,
-    pub category: String,
-    pub confidence: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CustomPrompt {
     pub id: String,
     pub name: String,

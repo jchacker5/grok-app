@@ -7396,54 +7396,151 @@ pub async fn get_plugin_dependency_graph() -> Result<DepGraph, String> {
     Ok(DepGraph { nodes: Vec::new(), edges: Vec::new() })
 }
 
-// ─── Agent Memory Viewer (Plan 013) ─────────────
+// ─── Grok cross-session memory ─────────────
 
-#[tauri::command]
-pub async fn read_agent_memories() -> Result<Vec<crate::store::MemoryEntry>, String> {
-    let mut entries = Vec::new();
+fn memory_home_dir() -> std::path::PathBuf {
+    crate::process_util::user_home().join(".grok").join("memory")
+}
 
-    let home = crate::process_util::user_home();
-    let mem_path = home.join(".grok-app").join("agent-home").join("memory.json");
-    if mem_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&mem_path) {
-            if let Ok(parsed) = serde_json::from_str::<Vec<crate::store::MemoryEntry>>(&content) {
-                entries.extend(parsed);
+fn find_project_memory_workspace_in(
+    memory_home: &std::path::Path,
+    project_path: &std::path::Path,
+) -> Vec<String> {
+    let Some(project_name) = project_path.file_name().and_then(|name| name.to_str()) else {
+        return Vec::new();
+    };
+    let project_prefix = project_name.to_lowercase();
+    let Ok(entries) = std::fs::read_dir(memory_home) else {
+        return Vec::new();
+    };
+
+    let mut matches = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let file_type = entry.file_type().ok()?;
+            if !file_type.is_dir() {
+                return None;
             }
-        }
-    }
-
-    if entries.is_empty() {
-        entries = vec![
-            crate::store::MemoryEntry {
-                key: "User Preference: Language".into(),
-                value: "Prefers concise, modular TypeScript & Rust code".into(),
-                timestamp: chrono::Utc::now().timestamp_millis(),
-                source: "user_input".into(),
-                category: "preference".into(),
-                confidence: 0.95,
-            },
-            crate::store::MemoryEntry {
-                key: "Project Context".into(),
-                value: "Grok App cross-platform desktop suite built with Tauri & React".into(),
-                timestamp: chrono::Utc::now().timestamp_millis() - 86400000,
-                source: "derived".into(),
-                category: "context".into(),
-                confidence: 0.90,
-            },
-        ];
-    }
-
-    Ok(entries)
+            let name = entry.file_name().into_string().ok()?;
+            name.to_lowercase()
+                .starts_with(&project_prefix)
+                .then_some(name)
+        })
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|name| name.to_lowercase());
+    matches
 }
 
 #[tauri::command]
-pub async fn clear_agent_memories() -> Result<(), String> {
-    let home = crate::process_util::user_home();
-    let mem_path = home.join(".grok-app").join("agent-home").join("memory.json");
-    if mem_path.exists() {
-        let _ = std::fs::remove_file(mem_path);
+pub async fn find_project_memory_workspace(project_path: String) -> Vec<String> {
+    find_project_memory_workspace_in(
+        &memory_home_dir(),
+        std::path::Path::new(&project_path),
+    )
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemorySessionEntry {
+    pub name: String,
+    pub path: String,
+    pub modified_at: i64,
+}
+
+#[tauri::command]
+pub async fn list_memory_sessions(workspace_dir_name: String) -> Vec<MemorySessionEntry> {
+    let workspace_name = std::path::Path::new(&workspace_dir_name);
+    if workspace_name.file_name().and_then(|name| name.to_str())
+        != Some(workspace_dir_name.as_str())
+    {
+        return Vec::new();
     }
-    Ok(())
+
+    let sessions_dir = memory_home_dir()
+        .join(workspace_name)
+        .join("sessions");
+    let Ok(entries) = std::fs::read_dir(sessions_dir) else {
+        return Vec::new();
+    };
+
+    let mut sessions = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !entry.file_type().ok()?.is_file()
+                || path.extension().and_then(|extension| extension.to_str()) != Some("md")
+            {
+                return None;
+            }
+            let metadata = entry.metadata().ok()?;
+            let modified_at = metadata
+                .modified()
+                .ok()?
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()?
+                .as_millis()
+                .try_into()
+                .unwrap_or(i64::MAX);
+            Some(MemorySessionEntry {
+                name: entry.file_name().to_string_lossy().into_owned(),
+                path: path.to_string_lossy().into_owned(),
+                modified_at,
+            })
+        })
+        .collect::<Vec<_>>();
+    sessions.sort_by(|a, b| {
+        b.modified_at
+            .cmp(&a.modified_at)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    sessions
+}
+
+fn memory_clear_args(
+    scope: &str,
+    project_path: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let mut args = Vec::new();
+    let scope_flag = match scope {
+        "global" => "--global",
+        "workspace" => {
+            let project_path = project_path
+                .filter(|path| !path.trim().is_empty())
+                .ok_or_else(|| "A project path is required to clear workspace memory".to_string())?;
+            args.push("--cwd".to_string());
+            args.push(project_path.to_string());
+            "--workspace"
+        }
+        "all" => "--all",
+        _ => return Err(format!("Unsupported memory clear scope: {scope}")),
+    };
+    args.extend(
+        ["memory", "clear", scope_flag, "-y"]
+            .into_iter()
+            .map(str::to_string),
+    );
+    Ok(args)
+}
+
+#[tauri::command]
+pub async fn memory_clear(scope: String, project_path: Option<String>) -> Result<(), String> {
+    let args = memory_clear_args(&scope, project_path.as_deref())?;
+    let mut command = std::process::Command::new("grok");
+    command.args(&args);
+    crate::process_util::apply_no_window_std(&mut command);
+    let output = command
+        .output()
+        .map_err(|error| format!("Failed to run `grok memory clear`: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if detail.is_empty() {
+            format!("`grok memory clear` exited with {}", output.status)
+        } else {
+            detail
+        })
+    }
 }
 
 // ─── GitHub Integration (Plan 018) ─────────────
@@ -7612,5 +7709,100 @@ mod project_inspect_tests {
         );
         assert_eq!(out["skills"]["total"], 0);
         assert_eq!(out["error"], "Grok Build CLI not found");
+    }
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::{find_project_memory_workspace_in, memory_clear_args};
+    use std::path::{Path, PathBuf};
+
+    struct TestDir(PathBuf);
+
+    impl TestDir {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "grok-memory-command-test-{}",
+                uuid::Uuid::new_v4()
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn project_workspace_match_returns_zero_candidates() {
+        let fixture = TestDir::new();
+        let memory_home = fixture.path().join("memory");
+        let project = fixture.path().join("MyProject");
+        std::fs::create_dir_all(memory_home.join("another-project-123")).unwrap();
+        std::fs::create_dir_all(&project).unwrap();
+
+        assert!(find_project_memory_workspace_in(&memory_home, &project).is_empty());
+    }
+
+    #[test]
+    fn project_workspace_match_returns_one_case_insensitive_candidate() {
+        let fixture = TestDir::new();
+        let memory_home = fixture.path().join("memory");
+        let project = fixture.path().join("MyProject");
+        std::fs::create_dir_all(memory_home.join("myproject-a1b2")).unwrap();
+        std::fs::create_dir_all(memory_home.join("unrelated")).unwrap();
+        std::fs::create_dir_all(&project).unwrap();
+
+        assert_eq!(
+            find_project_memory_workspace_in(&memory_home, &project),
+            vec!["myproject-a1b2"]
+        );
+    }
+
+    #[test]
+    fn project_workspace_match_returns_many_sorted_candidates() {
+        let fixture = TestDir::new();
+        let memory_home = fixture.path().join("memory");
+        let project = fixture.path().join("MyProject");
+        std::fs::create_dir_all(memory_home.join("myproject-z9")).unwrap();
+        std::fs::create_dir_all(memory_home.join("MYPROJECT-a1")).unwrap();
+        std::fs::create_dir_all(&project).unwrap();
+
+        assert_eq!(
+            find_project_memory_workspace_in(&memory_home, &project),
+            vec!["MYPROJECT-a1", "myproject-z9"]
+        );
+    }
+
+    #[test]
+    fn memory_clear_scope_maps_to_cli_arguments() {
+        assert_eq!(
+            memory_clear_args("global", None).unwrap(),
+            ["memory", "clear", "--global", "-y"]
+        );
+        assert_eq!(
+            memory_clear_args("workspace", Some("/tmp/project")).unwrap(),
+            [
+                "--cwd",
+                "/tmp/project",
+                "memory",
+                "clear",
+                "--workspace",
+                "-y"
+            ]
+        );
+        assert_eq!(
+            memory_clear_args("all", Some("/tmp/ignored")).unwrap(),
+            ["memory", "clear", "--all", "-y"]
+        );
+        assert!(memory_clear_args("workspace", None).is_err());
+        assert!(memory_clear_args("invalid", None).is_err());
     }
 }

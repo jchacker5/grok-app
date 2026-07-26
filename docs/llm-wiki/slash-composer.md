@@ -33,6 +33,15 @@ While the palette is open, Enter does **not** send the message.
 | `action` | Host action (modal, navigation, toggle) — no body insert |
 | `prompt` | Insert or send a slash command string |
 
+## Cross-session memory
+
+- `/memory` opens the app's real `~/.grok/memory` viewer for global memory,
+  the active project's matched workspace memory, and read-only session summaries.
+- `/flush` and `/dream` are prompt commands inserted into the composer and sent
+  through the active ACP session for Grok Build to interpret.
+- Memory clearing always delegates to `grok memory clear`; the app never deletes
+  individual session summaries or index files directly.
+
 ## Doctor
 
 Doctor is a **structured health UI**, not a raw JSON dump.

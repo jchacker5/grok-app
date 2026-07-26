@@ -21,6 +21,9 @@ describe("builtinSlashItems", () => {
       "status",
       "mcp",
       "doctor",
+      "memory",
+      "flush",
+      "dream",
       "new",
       "automations",
       "settings",
@@ -44,6 +47,18 @@ describe("builtinSlashItems", () => {
     const doctor = items.find((i) => i.name === "doctor")!;
     expect(doctor.kind).toBe("action");
     expect(doctor.action).toBe("doctor");
+
+    const memory = items.find((i) => i.name === "memory")!;
+    expect(memory.kind).toBe("action");
+    expect(memory.action).toBe("memory");
+
+    for (const name of ["flush", "dream"]) {
+      const prompt = items.find((i) => i.name === name)!;
+      expect(prompt.kind).toBe("prompt");
+      expect(prompt.action).toBeUndefined();
+      expect(prompt.titleKey).toBe(`slash.${name}`);
+      expect(prompt.descriptionKey).toBe(`slash.${name}Desc`);
+    }
 
     const yolo = items.find((i) => i.name === "yolo")!;
     expect(yolo.kind).toBe("action");

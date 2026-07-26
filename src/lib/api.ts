@@ -2564,7 +2564,7 @@ export async function gitGetStagedDiff(projectPath: string): Promise<string> {
   return invoke<string>("git_get_staged_diff", { projectPath });
 }
 
-import type { NotificationSettings, DepGraph, MemoryEntry, SyncStatus } from "./types";
+import type { NotificationSettings, DepGraph, SyncStatus } from "./types";
 
 export async function getNotificationSettings(): Promise<NotificationSettings> {
   if (!isTauri()) return {
@@ -2595,14 +2595,39 @@ export async function getPluginDependencyGraph(): Promise<DepGraph> {
   return invoke<DepGraph>("get_plugin_dependency_graph");
 }
 
-export async function readAgentMemories(): Promise<MemoryEntry[]> {
+export async function findProjectMemoryWorkspace(
+  projectPath: string,
+): Promise<string[]> {
   if (!isTauri()) return [];
-  return invoke<MemoryEntry[]>("read_agent_memories");
+  return invoke<string[]>("find_project_memory_workspace", { projectPath });
 }
 
-export async function clearAgentMemories(): Promise<void> {
+export interface MemorySessionEntry {
+  name: string;
+  path: string;
+  modifiedAt: number;
+}
+
+export async function listMemorySessions(
+  workspaceDirName: string,
+): Promise<MemorySessionEntry[]> {
+  if (!isTauri()) return [];
+  return invoke<MemorySessionEntry[]>("list_memory_sessions", {
+    workspaceDirName,
+  });
+}
+
+export type MemoryClearScope = "global" | "workspace" | "all";
+
+export async function memoryClear(
+  scope: MemoryClearScope,
+  projectPath?: string | null,
+): Promise<void> {
   if (!isTauri()) return;
-  return invoke<void>("clear_agent_memories");
+  return invoke<void>("memory_clear", {
+    scope,
+    projectPath: projectPath ?? null,
+  });
 }
 
 export async function githubFetch(url: string): Promise<string> {
