@@ -8199,6 +8199,106 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   overflow: auto;
 }
 
+/* ── "What's new" changelog panel ────────────────────────────────────────── */
+.whats-new-modal__date {
+  margin: 0;
+  color: var(--text-tertiary, var(--text-secondary));
+  font-size: var(--text-xs, 12px);
+}
+
+.whats-new-modal__scroll {
+  min-height: 120px;
+}
+
+/* ── ⌘P fuzzy file finder ─────────────────────────────────────────────────
+   Distinct from the ⌘K session search palette (SearchPanel.tsx). */
+.file-finder__body {
+  min-height: 0;
+}
+
+.file-finder {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+}
+
+.file-finder__input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: var(--text-sm, 14px);
+  outline: none;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.file-finder__input:focus {
+  border-color: var(--accent);
+}
+
+.file-finder__scroll {
+  min-height: 200px;
+  max-height: 50vh;
+}
+
+.file-finder__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-finder__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: var(--text-sm, 13px);
+  color: var(--text-secondary);
+}
+
+.file-finder__item:hover,
+.file-finder__item--selected {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.file-finder__icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.file-finder__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-finder__highlight {
+  background: var(--accent-muted, rgba(55, 148, 255, 0.35));
+  color: var(--text-primary);
+  border-radius: 2px;
+  padding: 0 1px;
+  font-weight: 600;
+}
+
+.file-finder__empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--text-sm, 13px);
+  margin: 0;
+}
+
 /* Shared head: title + close */
 .modal-head,
 .doctor-modal__head {
@@ -13235,6 +13335,27 @@ div.composer__input:empty::before {
   text-align: center;
   font-size: 13.5px;
   color: var(--text-tertiary);
+}
+
+/* ── MCP server log viewer (Settings → Extensions → "View logs") ─────────── */
+.ext-logs-modal__body {
+  min-height: 0;
+}
+
+.ext-logs-modal__scroll {
+  min-height: 160px;
+  max-height: 50vh;
+}
+
+.ext-logs-modal__lines {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
 }
 
 .ext-count {

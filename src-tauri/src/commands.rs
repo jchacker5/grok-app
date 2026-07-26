@@ -476,6 +476,17 @@ pub async fn app_check_update() -> Result<crate::app_update::AppUpdateCheck, Str
     crate::app_update::check_app_update().await
 }
 
+/// Raw `CHANGELOG.md` markdown for the in-app "What's new" panel. See
+/// `crate::changelog` for the bundled-resource-dir vs. dev-mode resolution
+/// strategy. The frontend (`src/lib/changelog.ts`) parses out just the top
+/// `## [X.Y.Z]` section for display.
+#[tauri::command]
+pub async fn read_changelog(app: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    let resource_dir = app.path().resource_dir().ok();
+    crate::changelog::read_changelog_text(resource_dir)
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CliUpdateCheck {
@@ -2234,6 +2245,15 @@ pub async fn fs_list_dir(
     crate::fs_browser::list_dir(&project_path, relative.as_deref().unwrap_or(""))
 }
 
+/// Recursively list every file under `project_path` (relative paths, `/`
+/// separators, capped at [`crate::fs_browser::MAX_RECURSIVE_FILES`]) for the
+/// ⌘P fuzzy file finder. Unlike `fs_list_dir` (single directory, used by the
+/// `@file:` mention picker), this walks the whole project tree.
+#[tauri::command]
+pub async fn list_project_files_recursive(project_path: String) -> Result<Vec<String>, String> {
+    crate::fs_browser::list_files_recursive(&project_path)
+}
+
 #[tauri::command]
 pub async fn fs_read_file(
     project_path: String,
@@ -3687,6 +3707,31 @@ fn attach_skill_enabled(skills: Vec<SkillDto>) -> Vec<serde_json::Value> {
 #[tauri::command]
 pub async fn extensions_get() -> Result<crate::extensions::ExtensionsPrefs, String> {
     Ok(crate::extensions::load_prefs())
+}
+
+/// Captured stderr/stdout log lines for an MCP server, for Settings →
+/// Extensions → "View logs".
+///
+/// **Scope-down (documented, not an oversight):** this app never spawns MCP
+/// server processes itself. MCP servers are children of the external `grok
+/// agent stdio` CLI process (see `acp_client.rs` — the host only ever spawns
+/// `grok`, then talks ACP JSON-RPC over its stdio; the CLI reads
+/// `config.toml` and launches/manages MCP subprocesses entirely inside its
+/// own process tree, which this app has no handle into). So there is no
+/// stdout/stderr pipe here to buffer from.
+///
+/// Capturing real logs would require either (a) upstream `grok` CLI support
+/// for forwarding MCP server logs over ACP (a protocol change outside this
+/// repo), or (b) this app taking over MCP process spawning itself — a deep,
+/// risky rework of already-working session/process management. Per the
+/// feature spec, we scope this down to a clearly-labeled empty result; the
+/// UI shows "logs not yet available" rather than pretending to have data.
+/// `server_name` is accepted (not `_server_name`) so the signature is ready
+/// to key a real per-server ring buffer the moment log capture exists.
+#[tauri::command]
+pub async fn get_plugin_logs(server_name: String) -> Result<Vec<String>, String> {
+    let _ = server_name;
+    Ok(Vec::new())
 }
 
 /// Toggle one MCP server; persists prefs, syncs agent-home/config, soft-respawns.

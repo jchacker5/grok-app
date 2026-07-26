@@ -471,6 +471,14 @@ export async function cliCheckUpdate() {
   return invoke<CliUpdateCheck>("cli_check_update");
 }
 
+/**
+ * Raw `CHANGELOG.md` markdown for the "What's new" panel. Parse out the top
+ * `## [X.Y.Z]` section with `parseLatestChangelogEntry` from `@/lib/changelog`.
+ */
+export async function readChangelog() {
+  return invoke<string>("read_changelog");
+}
+
 export async function projectsList() {
   return invoke<
     Array<{
@@ -795,6 +803,16 @@ export async function fsListDir(projectPath: string, relative = "") {
     projectPath,
     relative: relative || null,
   });
+}
+
+/**
+ * Recursively list every file under a project root (relative paths, `/`
+ * separators, capped server-side at 5000 entries) for the ⌘P fuzzy file
+ * finder. Distinct from `fsListDir`, which only lists one directory (used by
+ * the `@file:` mention picker).
+ */
+export async function listProjectFilesRecursive(projectPath: string) {
+  return invoke<string[]>("list_project_files_recursive", { projectPath });
 }
 
 /** Read file under project root for preview (text or base64). */
@@ -1230,6 +1248,11 @@ export interface AppSettings {
    * (`<style id="user-custom-css">`). `null`/unset = no override, local-only.
    */
   customCss?: string | null;
+  /**
+   * Last app version (top `## [X.Y.Z]` CHANGELOG.md section) the user has
+   * seen the "What's new" panel for. `null`/unset = never shown.
+   */
+  lastSeenVersion?: string | null;
 }
 
 export interface VoiceSessionState {
@@ -1673,6 +1696,20 @@ export async function inspectMcp(projectPath?: string | null) {
   return invoke<InspectMcpResult>("inspect_mcp", {
     projectPath: projectPath ?? null,
   });
+}
+
+/**
+ * Captured log lines for an MCP server (Settings → Extensions → "View logs").
+ *
+ * Currently always resolves to `[]` — this app spawns only the `grok agent
+ * stdio` CLI process; MCP servers are children of *that* CLI's own process
+ * tree, so there's no stdout/stderr handle here to buffer from. See the
+ * `get_plugin_logs` Rust command doc comment for the full rationale. The
+ * signature is real (keyed by server name) so a future host-side log capture
+ * can slot in without an API change.
+ */
+export async function getPluginLogs(serverName: string) {
+  return invoke<string[]>("get_plugin_logs", { serverName });
 }
 
 // ── Project inspect summary (`grok inspect --json`, secret-safe DTO) ────────

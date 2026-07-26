@@ -311,6 +311,9 @@ import {
   toggleMaximizeFromTitlebar,
 } from "@/components/WindowControls";
 import { CliUpdateBanner } from "@/components/CliUpdateBanner";
+import { WhatsNewModal } from "@/components/WhatsNewModal";
+import { FileFinderPanel } from "@/components/FileFinderPanel";
+import { parseLatestChangelogEntry, type ChangelogEntry } from "@/lib/changelog";
 import {
   addTag as addSessionTag,
   computeKnownTags,
@@ -592,6 +595,13 @@ export default function App() {
   appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  /** ⌘P fuzzy file finder — distinct from the ⌘K session search above. */
+  const [showFileFinder, setShowFileFinder] = useState(false);
+  const [fileFinderFiles, setFileFinderFiles] = useState<string[]>([]);
+  const [fileFinderLoading, setFileFinderLoading] = useState(false);
+  /** "What's new" changelog panel: parsed top CHANGELOG.md section. */
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [whatsNewEntry, setWhatsNewEntry] = useState<ChangelogEntry | null>(null);
   /** Debounced journal content hits from `sessions_search`. */
   const [contentSearchHits, setContentSearchHits] = useState<
     SessionContentHit[]
@@ -810,6 +820,13 @@ export default function App() {
         setShowSearch(true);
         return;
       }
+      // ⌘P fuzzy file finder — distinct from ⌘K session search above.
+      // preventDefault() also stops the browser/webview print dialog.
+      if (key === "p" && !typing) {
+        e.preventDefault();
+        setShowFileFinder(true);
+        return;
+      }
       if (key === "/") {
         e.preventDefault();
         setShowShortcuts((v) => !v);
@@ -859,6 +876,54 @@ export default function App() {
     if (appGate !== "ready") return;
     void ensureNotifyPermission();
   }, [appGate]);
+  // "What's new" panel: compare the changelog's top (non-Unreleased) version
+  // against the last-seen version stored in AppSettings. Mismatch (or first
+  // launch, when lastSeenVersion is unset) shows the modal once, then
+  // persists the new version immediately — not gated on the user closing the
+  // modal, so a crash/quit before dismissal doesn't re-show it every boot.
+  useEffect(() => {
+    if (appGate !== "ready" || !api.isTauri()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [raw, settings] = await Promise.all([
+          api.readChangelog(),
+          api.settingsGet(),
+        ]);
+        if (cancelled) return;
+        const entry = parseLatestChangelogEntry(raw);
+        if (!entry) return;
+        setWhatsNewEntry(entry);
+        if (settings.lastSeenVersion !== entry.version) {
+          setShowWhatsNew(true);
+          void api.settingsSet({ ...settings, lastSeenVersion: entry.version });
+        }
+      } catch {
+        // Changelog unavailable (e.g. dev checkout oddity) — not fatal, just
+        // skip the "what's new" panel this launch.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appGate]);
+  /** Manual reopen from Settings → About, even outside the boot version-diff check. */
+  const openWhatsNew = useCallback(() => {
+    if (whatsNewEntry) {
+      setShowWhatsNew(true);
+      return;
+    }
+    void api
+      .readChangelog()
+      .then((raw) => {
+        const entry = parseLatestChangelogEntry(raw);
+        if (entry) {
+          setWhatsNewEntry(entry);
+          setShowWhatsNew(true);
+        }
+      })
+      .catch(() => {});
+  }, [whatsNewEntry]);
   const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -902,6 +967,57 @@ export default function App() {
   /** Chat file/url card → open in right resource pane. */
   const [resourceOpenTarget, setResourceOpenTarget] =
     useState<ResourceOpenTarget | null>(null);
+  /**
+   * Expand the resource pane (if collapsed) and open a file/url/terminal
+   * there. Shared by chat file cards (`onOpenResource`) and the ⌘P fuzzy
+   * file finder, so "open a file in the resource pane" stays one code path.
+   */
+  const openResourceTarget = useCallback((target: ResourceOpenTarget) => {
+    setLayout((l) => {
+      if (l.asideCollapsed) {
+        const n = { ...l, asideCollapsed: false };
+        saveLayout(localStorage, n);
+        return n;
+      }
+      return l;
+    });
+    setResourceOpenTarget(target);
+  }, []);
+  // ⌘P fuzzy file finder: (re)index the active project's files whenever the
+  // panel opens or the active project changes while it's open. Recursive —
+  // distinct from the `@file:` mention picker's single-directory listing.
+  useEffect(() => {
+    if (!showFileFinder || !activeProject?.path) return;
+    let cancelled = false;
+    setFileFinderLoading(true);
+    api
+      .listProjectFilesRecursive(activeProject.path)
+      .then((files) => {
+        if (!cancelled) setFileFinderFiles(files);
+      })
+      .catch(() => {
+        if (!cancelled) setFileFinderFiles([]);
+      })
+      .finally(() => {
+        if (!cancelled) setFileFinderLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showFileFinder, activeProject?.path]);
+
+  const selectFileFinderResult = useCallback(
+    (relativePath: string) => {
+      const projectPath = activeProject?.path;
+      if (!projectPath) return;
+      const sep = projectPath.includes("\\") ? "\\" : "/";
+      const absolute = `${projectPath.replace(/[/\\]+$/, "")}${sep}${relativePath.replace(/\//g, sep)}`;
+      const title = relativePath.split("/").pop() || relativePath;
+      openResourceTarget({ type: "file", path: absolute, title });
+      setShowFileFinder(false);
+    },
+    [activeProject?.path, openResourceTarget],
+  );
   /** Bump to force ResourceViewer into Plan review mode (Details / auto-open). */
   const [planFocusKey, setPlanFocusKey] = useState(0);
   /** Live drag-drop target for zone overlays (null = not dragging). */
@@ -7604,6 +7720,7 @@ export default function App() {
           }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
+          onOpenWhatsNew={openWhatsNew}
           versionFooter={tr("app.versionFooter")}
           account={account}
           accountLoading={accountLoading}
@@ -9165,17 +9282,7 @@ export default function App() {
             onRewindToUserMessage={onRewindToUserMessage}
             onForkFromUserMessage={onForkFromUserMessage}
             turnStartedAt={turnStartedAt}
-            onOpenResource={(target) => {
-              setLayout((l) => {
-                if (l.asideCollapsed) {
-                  const n = { ...l, asideCollapsed: false };
-                  saveLayout(localStorage, n);
-                  return n;
-                }
-                return l;
-              });
-              setResourceOpenTarget(target);
-            }}
+            onOpenResource={openResourceTarget}
             onAddAttachmentToComposer={(att) =>
               setAttachments((prev) => mergeAttachments(prev, [att]))
             }
@@ -10430,6 +10537,26 @@ export default function App() {
             onClose={() => setShowSearch(false)}
           />
         </GlassModal>
+      )}
+
+      <FileFinderPanel
+        open={showFileFinder}
+        onClose={() => setShowFileFinder(false)}
+        locale={locale}
+        files={fileFinderFiles}
+        loading={fileFinderLoading}
+        onSelect={selectFileFinderResult}
+      />
+
+      {whatsNewEntry && (
+        <WhatsNewModal
+          open={showWhatsNew}
+          onClose={() => setShowWhatsNew(false)}
+          locale={locale}
+          version={whatsNewEntry.version}
+          date={whatsNewEntry.date}
+          body={whatsNewEntry.body}
+        />
       )}
 
       {/* In-app confirm / prompt (Tauri WebView has no reliable window.prompt/confirm) */}

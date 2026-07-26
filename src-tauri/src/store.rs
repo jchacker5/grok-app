@@ -317,6 +317,12 @@ pub struct AppSettings {
     /// no override. Local-only, never sent anywhere.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_css: Option<String>,
+    /// Last app version (from the top `## [X.Y.Z]` CHANGELOG.md section) the
+    /// user has already seen the "What's new" panel for. `None` = never shown
+    /// (first launch). Compared against the freshly-parsed changelog version
+    /// on boot; mismatch triggers the modal, then this is updated to match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_seen_version: Option<String>,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -433,6 +439,7 @@ impl Default for AppSettings {
             notification_settings: NotificationSettings::default(),
             sync_path: None,
             custom_css: None,
+            last_seen_version: None,
         }
     }
 }
@@ -1873,6 +1880,37 @@ mod tests {
         assert_eq!(s.stream_stall_seconds, 120);
         assert_eq!(s.sandbox_profile, "off");
         assert!(s.notifications_enabled);
+        assert_eq!(s.last_seen_version, None);
+    }
+
+    #[test]
+    fn last_seen_version_defaults_when_missing_from_json() {
+        // Old settings files (pre "What's new" feature) must deserialize with
+        // last_seen_version = None instead of erroring.
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "en",
+            "sessionDataMode": "independent",
+            "manualCliPath": null,
+            "permissionPolicy": "ask",
+            "modelId": null,
+            "effort": "medium",
+            "mode": "agent",
+            "onboardingDone": true,
+            "setupSkipped": false
+        }"#;
+        let s: AppSettings = serde_json::from_str(raw).expect("deserialize");
+        assert_eq!(s.last_seen_version, None);
+    }
+
+    #[test]
+    fn last_seen_version_roundtrips_through_json() {
+        let mut s = AppSettings::default();
+        s.last_seen_version = Some("0.1.13".to_string());
+        let raw = serde_json::to_string(&s).expect("serialize");
+        assert!(raw.contains("\"lastSeenVersion\":\"0.1.13\""));
+        let back: AppSettings = serde_json::from_str(&raw).expect("deserialize");
+        assert_eq!(back.last_seen_version, Some("0.1.13".to_string()));
     }
 
     #[test]

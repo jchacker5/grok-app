@@ -1181,6 +1181,7 @@ const en = {
   "shortcuts.send": "Send message",
   "shortcuts.help": "Show shortcuts",
   "shortcuts.spaceSwitch": "Switch space (while Grok is focused)",
+  "shortcuts.fileFinder": "Find file in project",
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
@@ -1612,6 +1613,21 @@ const en = {
   "sidebar.reopenLastClosedEmpty": "No recently closed chats",
   "shortcuts.reopenClosed": "Reopen last closed chat",
   "toast.sessionReopened": "Reopened “{title}”",
+
+  // What's new / changelog panel
+  "whatsNew.title": "What's new in v{v}",
+  "whatsNew.close": "Close",
+  "whatsNew.viewAgain": "What's new",
+
+  // ⌘P fuzzy file finder (distinct from ⌘K session search)
+  "fileFinder.placeholder": "Search files in this project…",
+  "fileFinder.empty": "No matching files",
+  "fileFinder.loading": "Indexing project files…",
+
+  // Extensions → MCP server log viewer
+  "extensions.viewLogs": "View logs",
+  "extensions.logsEmpty": "Logs not yet available for this server",
+  "extensions.logsRefresh": "Refresh",
 } as const;
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {
