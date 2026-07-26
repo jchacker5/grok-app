@@ -4,7 +4,7 @@ import type { MessageKey } from "./messages";
 export const zhTW: Record<MessageKey, string> = {
   "app.name": "Grok",
   "app.tagline": "MIT · 非 xAI 官方 · 姊妹專案 grok-go",
-  "app.versionFooter": "Grok v0.1.12 · MIT · 非 xAI 官方 · 姊妹專案 grok-go",
+  "app.versionFooter": "Grok v0.1.13 · MIT · 非 xAI 官方 · 姊妹專案 grok-go",
 
   "window.minimize": "最小化",
   "window.maximize": "最大化",
@@ -653,6 +653,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.maxConcurrentAgents": "最大並發 Agent 數",
   "settings.maxConcurrentAgentsDesc":
     "為開啟的對話保留的熱 Agent 行程數（預設 3）。超過上限時會提示等待或釋放其他工作階段。",
+  "settings.maxConcurrentTerminals": "最大並發終端機數",
+  "settings.maxConcurrentTerminalsDesc":
+    "同時保持開啟的嵌入式終端機數量（預設 4）。超過上限需先關閉一個才能再開新終端機。",
   "settings.agentIdleMinutes": "閒置回收（分鐘）",
   "settings.agentIdleMinutesDesc":
     "超過該分鐘數無活動後回收 Agent 行程。對話紀錄保留，下次傳送會自動重連。",

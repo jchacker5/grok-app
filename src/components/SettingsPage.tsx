@@ -139,6 +139,9 @@ export interface SettingsPageProps {
   /** Max warm/live agent processes (I02). */
   maxConcurrentAgents?: number;
   onMaxConcurrentAgents?: (v: number) => void;
+  /** Max live embedded terminal processes. */
+  maxConcurrentTerminals?: number;
+  onMaxConcurrentTerminals?: (v: number) => void;
   /** Idle recycle minutes (I03). */
   agentIdleMinutes?: number;
   onAgentIdleMinutes?: (v: number) => void;
@@ -1011,6 +1014,8 @@ export function SettingsPage({
   onWslDistro,
   maxConcurrentAgents = 3,
   onMaxConcurrentAgents,
+  maxConcurrentTerminals = 4,
+  onMaxConcurrentTerminals,
   agentIdleMinutes = 30,
   onAgentIdleMinutes,
   streamStallSeconds = 120,
@@ -2549,6 +2554,31 @@ export function SettingsPage({
                   const n = Number(e.target.value);
                   if (!Number.isFinite(n)) return;
                   onMaxConcurrentAgents?.(Math.min(8, Math.max(1, Math.round(n))));
+                }}
+              />
+            </div>
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.maxConcurrentTerminals")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.maxConcurrentTerminalsDesc")}
+                </div>
+              </div>
+              <input
+                className="settings-input"
+                type="number"
+                min={1}
+                max={8}
+                step={1}
+                value={maxConcurrentTerminals}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (!Number.isFinite(n)) return;
+                  onMaxConcurrentTerminals?.(
+                    Math.min(8, Math.max(1, Math.round(n))),
+                  );
                 }}
               />
             </div>

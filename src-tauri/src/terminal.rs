@@ -2,7 +2,6 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -133,7 +132,6 @@ pub struct TerminalHandle {
 
 pub struct TerminalManager {
     terminals: Mutex<HashMap<String, TerminalHandle>>,
-    max_concurrent: AtomicU32,
 }
 
 #[derive(Clone, Serialize)]
@@ -149,13 +147,16 @@ struct TerminalExitPayload {
     id: String,
 }
 
+impl Default for TerminalManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TerminalManager {
-    pub fn new(max_concurrent: u32) -> Self {
+    pub fn new() -> Self {
         Self {
             terminals: Mutex::new(HashMap::new()),
-            max_concurrent: AtomicU32::new(process_limits::normalize_max_concurrent(
-                max_concurrent,
-            )),
         }
     }
 
@@ -175,7 +176,12 @@ impl TerminalManager {
             return Ok(id);
         }
         let active = terminals.len() as u32;
-        let max_concurrent = self.max_concurrent.load(Ordering::Relaxed);
+        // Read live from settings (not cached at construction) so a change in
+        // Settings takes effect on the next spawn without an app restart —
+        // matches SessionManager::max_concurrent_from_settings().
+        let max_concurrent = process_limits::normalize_max_concurrent(
+            crate::store::load_settings().max_concurrent_terminals,
+        );
         if !process_limits::can_spawn_process(active, max_concurrent) {
             return Err(format!(
                 "Terminal process limit reached (max {max_concurrent})."

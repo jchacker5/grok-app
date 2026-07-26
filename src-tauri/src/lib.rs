@@ -69,10 +69,7 @@ pub fn run() {
         .init();
 
     let session_mgr = Arc::new(SessionManager::new());
-    let settings = store::load_settings();
-    let terminal_mgr = Arc::new(terminal::TerminalManager::new(
-        settings.max_concurrent_terminals,
-    ));
+    let terminal_mgr = Arc::new(terminal::TerminalManager::new());
     let voice_host = Arc::new(voice_host::VoiceHost::new());
     let ssh_tunnel_mgr = ssh_tunnel::SshTunnelManager::new();
     let recording_registry = Arc::new(commands::RecordingRegistry::new());

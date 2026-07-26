@@ -11,6 +11,16 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-07-26
+
+### Added
+
+- **Embedded Terminal Panel (Phase 2)**: "Open Terminal Here" on a project's right-click menu (opens a terminal tab with that project's path as `cwd`); Settings → General gains a "Max concurrent terminals" field next to "Max concurrent agents".
+
+### Fixed
+
+- **Terminal concurrency limit not live**: `max_concurrent_terminals` was cached once at app startup, so changing it in Settings had no effect until restart. Now read fresh from settings on every terminal spawn, matching how agent-process concurrency already works.
+
 ## [0.1.12] - 2026-07-26
 
 ### Added
