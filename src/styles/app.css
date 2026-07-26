@@ -6739,6 +6739,13 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
     transform: translateY(-3px) scale(calc(1 + var(--voice-level) * 0.05));
   }
 }
+/* The live control picks up the accent (matches the reference's lit icon). */
+.composer--voice .icon-btn--mic,
+.composer--dictating .icon-btn--mic {
+  color: color-mix(in oklab, var(--voice-accent) 85%, white);
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--voice-accent) 55%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .composer--voice::before,
   .composer--dictating::before {
