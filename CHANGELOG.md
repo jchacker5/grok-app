@@ -11,6 +11,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-07-26
+
+### Added
+
+- **Custom chat background + accent color**: Settings → Appearance now has a "Chat background" section — set a local image or video path to show behind the chat pane, with opacity and blur sliders, plus a custom accent color that overrides the theme's default. The background renders behind the main chat pane specifically (not the sidebar or window chrome, which have several platform/theme-specific opaque rules); no native file-picker dialog exists yet, so paste/type an absolute path.
+
 ## [0.1.16] - 2026-07-26
 
 ### Added
