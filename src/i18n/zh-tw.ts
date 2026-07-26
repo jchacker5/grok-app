@@ -1111,6 +1111,7 @@ export const zhTW: Record<MessageKey, string> = {
   "shortcuts.send": "傳送訊息",
   "shortcuts.help": "顯示快捷鍵",
   "shortcuts.spaceSwitch": "切換空間（需 Grok 視窗聚焦）",
+  "shortcuts.fileFinder": "在專案中尋找檔案",
 
   "session.exportMd": "匯出對話為 Markdown",
   "session.exportBundle": "匯出完整診斷包…",
@@ -1519,4 +1520,16 @@ export const zhTW: Record<MessageKey, string> = {
   "sidebar.reopenLastClosedEmpty": "沒有最近關閉的對話",
   "shortcuts.reopenClosed": "重新開啟上次關閉的對話",
   "toast.sessionReopened": "已重新開啟「{title}」",
+
+  "whatsNew.title": "v{v} 新功能",
+  "whatsNew.close": "關閉",
+  "whatsNew.viewAgain": "新功能",
+
+  "fileFinder.placeholder": "搜尋此專案中的檔案…",
+  "fileFinder.empty": "沒有符合的檔案",
+  "fileFinder.loading": "正在索引專案檔案…",
+
+  "extensions.viewLogs": "檢視日誌",
+  "extensions.logsEmpty": "此伺服器目前尚無可用日誌",
+  "extensions.logsRefresh": "重新整理",
 };

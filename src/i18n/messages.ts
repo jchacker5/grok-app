@@ -1173,6 +1173,7 @@ const en = {
   "shortcuts.send": "Send message",
   "shortcuts.help": "Show shortcuts",
   "shortcuts.spaceSwitch": "Switch space (while Grok is focused)",
+  "shortcuts.fileFinder": "Find file in project",
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
@@ -1598,6 +1599,21 @@ const en = {
   "sidebar.reopenLastClosedEmpty": "No recently closed chats",
   "shortcuts.reopenClosed": "Reopen last closed chat",
   "toast.sessionReopened": "Reopened “{title}”",
+
+  // What's new / changelog panel
+  "whatsNew.title": "What's new in v{v}",
+  "whatsNew.close": "Close",
+  "whatsNew.viewAgain": "What's new",
+
+  // ⌘P fuzzy file finder (distinct from ⌘K session search)
+  "fileFinder.placeholder": "Search files in this project…",
+  "fileFinder.empty": "No matching files",
+  "fileFinder.loading": "Indexing project files…",
+
+  // Extensions → MCP server log viewer
+  "extensions.viewLogs": "View logs",
+  "extensions.logsEmpty": "Logs not yet available for this server",
+  "extensions.logsRefresh": "Refresh",
 } as const;
 
 const zh: Record<MessageKey, string> = {
@@ -2653,6 +2669,7 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.send": "发送消息",
   "shortcuts.help": "显示快捷键",
   "shortcuts.spaceSwitch": "切换空间（需 Grok 窗口聚焦）",
+  "shortcuts.fileFinder": "在项目中查找文件",
 
   "session.exportMd": "导出会话为 Markdown",
   "session.exportBundle": "导出完整诊断包…",
@@ -3119,6 +3136,18 @@ const zh: Record<MessageKey, string> = {
   "sidebar.reopenLastClosedEmpty": "没有最近关闭的对话",
   "shortcuts.reopenClosed": "重新打开上次关闭的对话",
   "toast.sessionReopened": "已重新打开「{title}」",
+
+  "whatsNew.title": "v{v} 新功能",
+  "whatsNew.close": "关闭",
+  "whatsNew.viewAgain": "新功能",
+
+  "fileFinder.placeholder": "搜索此项目中的文件…",
+  "fileFinder.empty": "没有匹配的文件",
+  "fileFinder.loading": "正在索引项目文件…",
+
+  "extensions.viewLogs": "查看日志",
+  "extensions.logsEmpty": "此服务器暂无可用日志",
+  "extensions.logsRefresh": "刷新",
 };
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {

@@ -8,9 +8,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
+import { OverlayScroll } from "@/components/OverlayScroll";
 import { PluginDependencyGraph } from "@/components/PluginDependencyGraph";
 import {
   IconExternalLink,
+  IconFileText,
   IconFolder,
   IconPlug,
   IconPuzzle,
@@ -81,6 +83,11 @@ export function ExtensionsPanel({
   /** Grok Build Plugins tab filter: all | enabled | disabled */
   const [pluginFilter, setPluginFilter] = useState<PluginFilter>("all");
   const [installSource, setInstallSource] = useState("");
+
+  // MCP server log viewer (Settings → Extensions → "View logs").
+  const [logsTarget, setLogsTarget] = useState<string | null>(null);
+  const [logsLines, setLogsLines] = useState<string[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   // Marketplace catalog
   const [mpPlugins, setMpPlugins] = useState<api.MarketplacePluginDto[]>([]);
@@ -290,6 +297,30 @@ export function ExtensionsPanel({
       );
     } finally {
       setBusyKey(null);
+    }
+  };
+
+  /**
+   * Load captured log lines for an MCP server. Currently always resolves to
+   * `[]` (see `get_plugin_logs` Rust command doc comment): this app only
+   * ever spawns the `grok agent stdio` CLI itself; MCP servers run inside
+   * that CLI's own process tree, so there's no stdout/stderr handle here to
+   * buffer from yet. The UI shows an honest "not yet available" empty state
+   * rather than pretending to have data.
+   */
+  const loadLogs = async (name: string) => {
+    if (!api.isTauri()) {
+      setLogsLines([]);
+      return;
+    }
+    setLogsLoading(true);
+    try {
+      const lines = await api.getPluginLogs(name);
+      setLogsLines(lines);
+    } catch {
+      setLogsLines([]);
+    } finally {
+      setLogsLoading(false);
     }
   };
 
@@ -1026,12 +1057,58 @@ export function ExtensionsPanel({
                       </span>
                     </div>
                   ) : null}
+                  <div className="ext-item__meta">
+                    <button
+                      type="button"
+                      className="ext-path-btn"
+                      onClick={() => {
+                        setLogsTarget(s.name);
+                        void loadLogs(s.name);
+                      }}
+                    >
+                      <IconFileText size={13} />
+                      <span>{tr("extensions.viewLogs")}</span>
+                    </button>
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
       </div>
+
+      {logsTarget && (
+        <GlassModal
+          open={!!logsTarget}
+          onClose={() => setLogsTarget(null)}
+          title={`${tr("extensions.viewLogs")} — ${logsTarget}`}
+          size="md"
+          closeLabel={tr("common.close")}
+          bodyClassName="ext-logs-modal__body"
+          wrapBody
+          footer={
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={logsLoading}
+              onClick={() => void loadLogs(logsTarget)}
+            >
+              <IconRefresh size={14} />
+              {tr("extensions.logsRefresh")}
+            </button>
+          }
+        >
+          <OverlayScroll className="ext-logs-modal__scroll">
+            {logsLoading ? (
+              <p className="ext-empty">{tr("ext.mcp.loading")}</p>
+            ) : logsLines.length === 0 ? (
+              <p className="ext-empty">{tr("extensions.logsEmpty")}</p>
+            ) : (
+              <pre className="ext-logs-modal__lines">{logsLines.join("\n")}</pre>
+            )}
+          </OverlayScroll>
+        </GlassModal>
+      )}
 
       <p className="ext-footnote">
         <IconPuzzle size={13} />

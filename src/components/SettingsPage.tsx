@@ -28,6 +28,7 @@ import {
   IconPuzzle,
   IconSearch,
   IconSettings,
+  IconSparkles,
   IconShield,
   IconTrash,
   IconTunnel,
@@ -162,6 +163,8 @@ export interface SettingsPageProps {
     cliAuthPresent: boolean;
   };
   onDoctor: () => void;
+  /** Reopen the "What's new" changelog panel (Settings → About). */
+  onOpenWhatsNew: () => void;
   versionFooter: string;
   /** Official Grok Build account (membership / usage). */
   account: AccountStatus | null;
@@ -1026,6 +1029,7 @@ export function SettingsPage({
   onSandboxProfile,
   cliInfo,
   onDoctor,
+  onOpenWhatsNew,
   versionFooter,
   account,
   accountLoading,
@@ -2670,6 +2674,21 @@ export function SettingsPage({
                 </div>
                 <div className="settings-row__desc">{versionFooter}</div>
               </div>
+            </div>
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  <IconSparkles size={16} />
+                  {t("whatsNew.viewAgain")}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn--ghost settings-row__action"
+                onClick={onOpenWhatsNew}
+              >
+                {t("whatsNew.viewAgain")}
+              </button>
             </div>
             <AboutUpdateRow t={t} />
           </div>

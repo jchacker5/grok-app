@@ -14,6 +14,31 @@ const MAX_BINARY_BYTES: u64 = 8 * 1024 * 1024; // 8 MiB image / pdf
 /// Office packages streamed to the UI for rich render (docx-preview / xlsx / pdf).
 const MAX_OFFICE_STREAM_BYTES: u64 = 40 * 1024 * 1024;
 
+/// Heavy / generated directories skipped by tree walks (suffix search, the
+/// recursive project file lister for ⌘P). Not a `.gitignore` parser — this
+/// repo has no `ignore`/`walkdir` crate dependency yet, and pulling one in
+/// just for this would be a bigger change than the feature warrants. This
+/// fixed list covers the overwhelmingly common heavy dirs across JS/Rust/
+/// Python/etc. projects; a real `.gitignore`-aware walk is a reasonable
+/// future upgrade if this proves insufficient.
+const SKIP_DIR_NAMES: &[&str] = &[
+    "node_modules",
+    ".git",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    "vendor",
+    ".cache",
+    "repos",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".turbo",
+    "coverage",
+    "out",
+];
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsEntry {
@@ -447,6 +472,63 @@ pub fn list_dir(project_root: &str, relative: &str) -> Result<Vec<FsEntry>, Stri
     Ok(entries)
 }
 
+/// Max files returned by [`list_files_recursive`] — a hard cap so a
+/// pathologically huge repo (or an accidental project-root-at-`/`) can't
+/// hang the fuzzy finder or balloon IPC payload size.
+pub const MAX_RECURSIVE_FILES: usize = 5000;
+
+/// Recursively list every file under `project_root` (BFS), skipping
+/// [`SKIP_DIR_NAMES`] and VCS/macOS noise (`.git`, `.DS_Store`, `Thumbs.db`),
+/// for the ⌘P fuzzy file finder. Returns project-relative paths with `/`
+/// separators (matches [`FsEntry::relative_path`] convention), capped at
+/// [`MAX_RECURSIVE_FILES`] and not otherwise sorted (caller — the fuzzy
+/// scorer — imposes its own order).
+///
+/// Not `.gitignore`-aware (see [`SKIP_DIR_NAMES`] doc comment) — this is a
+/// deliberate scope-down, not an oversight.
+pub fn list_files_recursive(project_root: &str) -> Result<Vec<String>, String> {
+    use std::collections::VecDeque;
+
+    let root = PathBuf::from(project_root);
+    if !root.is_dir() {
+        return Err(format!("project root is not a directory: {project_root}"));
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    let mut queue: VecDeque<(PathBuf, String)> = VecDeque::new();
+    queue.push_back((root.clone(), String::new()));
+
+    while let Some((dir, rel_prefix)) = queue.pop_front() {
+        if out.len() >= MAX_RECURSIVE_FILES {
+            break;
+        }
+        let rd = match fs::read_dir(&dir) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        for ent in rd.flatten() {
+            if out.len() >= MAX_RECURSIVE_FILES {
+                break;
+            }
+            let name = ent.file_name().to_string_lossy().to_string();
+            if name == ".DS_Store" || name == ".git" || name == "Thumbs.db" {
+                continue;
+            }
+            let is_dir = ent.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            if is_dir {
+                if SKIP_DIR_NAMES.iter().any(|s| *s == name) {
+                    continue;
+                }
+                let child_rel = join_rel(&rel_prefix, &name);
+                queue.push_back((ent.path(), child_rel));
+            } else {
+                out.push(join_rel(&rel_prefix, &name));
+            }
+        }
+    }
+    Ok(out)
+}
+
 pub fn read_file(project_root: &str, relative: &str) -> Result<FsReadResult, String> {
     let root = PathBuf::from(project_root);
     if !root.is_dir() {
@@ -847,23 +929,7 @@ fn find_one_suffix(root: &Path, suffix: &str) -> Option<PathBuf> {
     if suffix.is_empty() {
         return None;
     }
-    let skip = [
-        "node_modules",
-        ".git",
-        "target",
-        "dist",
-        "build",
-        ".next",
-        "vendor",
-        ".cache",
-        "repos",
-        ".venv",
-        "venv",
-        "__pycache__",
-        ".turbo",
-        "coverage",
-        "out",
-    ];
+    let skip = SKIP_DIR_NAMES;
     // Prefer monorepo-ish roots so handoff/research files are visited early.
     let priority = [
         "projects",
@@ -1230,6 +1296,66 @@ mod tests {
             err.contains("escape") || err.contains("not a directory") || err.contains("resolve"),
             "{err}"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_files_recursive_excludes_heavy_dirs_and_vcs_noise() {
+        let dir = tempfile_dir();
+        fs::create_dir_all(dir.join("src")).unwrap();
+        fs::write(dir.join("src/main.rs"), "fn main() {}").unwrap();
+        fs::create_dir_all(dir.join("node_modules/pkg")).unwrap();
+        fs::write(dir.join("node_modules/pkg/index.js"), "x").unwrap();
+        fs::create_dir_all(dir.join("target/debug")).unwrap();
+        fs::write(dir.join("target/debug/out.bin"), "x").unwrap();
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::write(dir.join(".git/config"), "x").unwrap();
+        fs::write(dir.join(".DS_Store"), "x").unwrap();
+        fs::write(dir.join("readme.md"), "# hi").unwrap();
+
+        let files = list_files_recursive(dir.to_str().unwrap()).unwrap();
+        assert!(files.contains(&"src/main.rs".to_string()), "{files:?}");
+        assert!(files.contains(&"readme.md".to_string()), "{files:?}");
+        assert!(
+            !files.iter().any(|f| f.contains("node_modules")),
+            "{files:?}"
+        );
+        assert!(!files.iter().any(|f| f.contains("target")), "{files:?}");
+        assert!(!files.iter().any(|f| f.contains(".git")), "{files:?}");
+        assert!(!files.iter().any(|f| f.contains(".DS_Store")), "{files:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_files_recursive_uses_forward_slash_relative_paths() {
+        let dir = tempfile_dir();
+        fs::create_dir_all(dir.join("a/b")).unwrap();
+        fs::write(dir.join("a/b/c.txt"), "x").unwrap();
+        let files = list_files_recursive(dir.to_str().unwrap()).unwrap();
+        assert!(files.contains(&"a/b/c.txt".to_string()), "{files:?}");
+        assert!(!files.iter().any(|f| f.contains('\\')), "{files:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_files_recursive_caps_at_max() {
+        let dir = tempfile_dir();
+        // One more file than the cap to make sure truncation actually kicks in.
+        for i in 0..(MAX_RECURSIVE_FILES + 25) {
+            fs::write(dir.join(format!("f{i}.txt")), "x").unwrap();
+        }
+        let files = list_files_recursive(dir.to_str().unwrap()).unwrap();
+        assert_eq!(files.len(), MAX_RECURSIVE_FILES);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_files_recursive_rejects_non_directory_root() {
+        let dir = tempfile_dir();
+        let file = dir.join("not-a-dir.txt");
+        fs::write(&file, "x").unwrap();
+        let err = list_files_recursive(file.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("not a directory"), "{err}");
         let _ = fs::remove_dir_all(&dir);
     }
 
