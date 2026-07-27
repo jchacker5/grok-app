@@ -28,6 +28,7 @@
     "setup:cross": "bash scripts/setup-cross-compile.sh",
     "release:tag": "bash scripts/release-tag.sh",
     "preview": "vite preview",
+    "serve:snapshot": "cd dist && python3 -m http.server 5174",
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
