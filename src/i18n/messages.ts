@@ -8,7 +8,7 @@ const en = {
   // App chrome
   "app.name": "Grok",
   "app.tagline": "MIT · Unofficial · Sister project grok-go",
-  "app.versionFooter": "Grok v0.1.18 · MIT · Unofficial · Sister project grok-go",
+  "app.versionFooter": "Grok v0.1.19 · MIT · Unofficial · Sister project grok-go",
 
   // Window chrome (Windows self-drawn controls)
   "window.minimize": "Minimize",
@@ -1165,6 +1165,7 @@ const en = {
   "doctor.check.workspace": "Workspace",
   "doctor.check.backend": "Backend",
   "doctor.check.logs": "Logs",
+  "doctor.check.voice": "Voice",
   "doctor.rawToggle": "Show raw report",
   "doctor.supportZip": "Support zip",
   "doctor.supportZipHint": "Redacted Doctor report + recent logs (no secrets).",
@@ -1416,6 +1417,11 @@ const en = {
   "ext.plugins.installHint":
     "Uses `grok plugin install --trust` (path, git URL, or GitHub shorthand). Not a full marketplace browser.",
   "ext.plugins.installEmpty": "Enter a path, git URL, or owner/repo to install.",
+  "ext.plugins.installProgressTitle": "Installing {name}…",
+  "ext.plugins.installProgressStarting": "Starting plugin installation…",
+  "ext.plugins.installProgressSuccess": "✓ Installed Successfully",
+  "ext.plugins.installProgressFailed": "✗ Installation Failed",
+  "ext.plugins.installProgressRetry": "Retry",
   "ext.plugins.update": "Update",
   "ext.plugins.updateAll": "Update all",
   "ext.plugins.updating": "Updating…",
@@ -1595,6 +1601,11 @@ const en = {
   "voice.noDelegated": "No agent tasks yet",
   "voice.openSession": "Open",
   "voice.toolRan": "Tool: {name}",
+  "voice.shareScreen": "Share screen",
+  "voice.capturing": "Capturing…",
+  "voice.screenCaptured": "Screen captured",
+  "voice.screenPreview": "Screen preview",
+  "voice.screenClear": "Clear",
   "voice.settingsTitle": "Voice",
   "voice.settingsVoiceId": "Voice",
   "voice.settingsAutoSend": "Auto-send dictation on silence",
@@ -1608,6 +1619,8 @@ const en = {
   "voice.noiseSuppressionDesc": "Reduce background noise from microphone input",
   "voice.sensitivity": "Mic sensitivity",
   "voice.sensitivityDesc": "Activation threshold for voice detection (higher = more sensitive)",
+  "voice.bargeIn": "Barge-in aggressiveness",
+  "voice.bargeInDesc": "How easily your voice interrupts the AI mid-speech (higher = more responsive)",
   "voice.dictationLanguage": "Dictation language",
   "voice.dictationLanguageDesc": "Language used for speech-to-text transcription",
   "voice.langAuto": "Auto-detect",
@@ -1616,6 +1629,7 @@ const en = {
   "voice.micDefault": "System default",
   "voice.feedbackChime": "Feedback chime",
   "voice.feedbackChimeDesc": "Play a chime when voice recording starts and stops",
+  "voice.demoDelegate": "Demo: create_agent_session",
 
   "settings.chatReadAloud": "Chat read-aloud",
   "settings.autoReadReplies": "Automatically read new replies aloud",

@@ -234,6 +234,9 @@ export interface SettingsPageProps {
   /** Play chime on voice start/stop. */
   voiceFeedbackChime?: boolean;
   onVoiceFeedbackChime?: (v: boolean) => void;
+  /** Barge-in aggressiveness 0..1 (higher = easier to interrupt AI). */
+  voiceBargeIn?: number;
+  onVoiceBargeIn?: (v: number) => void;
   /** Automatically speak new assistant replies aloud (regular chat, not Live Voice). */
   autoReadReplies?: boolean;
   onAutoReadReplies?: (v: boolean) => void;
@@ -1100,6 +1103,8 @@ export function SettingsPage({
   onVoiceMicDeviceId,
   voiceFeedbackChime = false,
   onVoiceFeedbackChime,
+  voiceBargeIn = 60,
+  onVoiceBargeIn,
   autoReadReplies = false,
   onAutoReadReplies,
   voiceCommandsEnabled = false,
@@ -2224,6 +2229,29 @@ export function SettingsPage({
                 />
                 <output style={{ minWidth: 28, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
                   {Math.round(voiceSensitivity * 100)}%
+                </output>
+              </div>
+            </div>
+          ) : null}
+
+          {onVoiceBargeIn ? (
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__text">
+                <div className="settings-row__label">{t("voice.bargeIn")}</div>
+                <div className="settings-row__desc">{t("voice.bargeInDesc")}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="range"
+                  min={1}
+                  max={100}
+                  value={Math.round(voiceBargeIn)}
+                  onChange={(e) => onVoiceBargeIn(Number(e.target.value))}
+                  style={{ flex: 1, maxWidth: 200, accentColor: 'var(--accent)' }}
+                  aria-label={t("voice.bargeIn")}
+                />
+                <output style={{ minWidth: 28, textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
+                  {Math.round(voiceBargeIn)}%
                 </output>
               </div>
             </div>

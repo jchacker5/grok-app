@@ -2847,6 +2847,30 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
         }),
     ));
 
+    // 6) Voice subsystem
+    let voice_auth_ok = crate::voice_auth::resolve_bearer_token().is_ok();
+    let mic_count = match crate::voice_host::enumerate_mic_devices() {
+        Ok(n) => n,
+        Err(_) => 0,
+    };
+    let (voice_level, voice_detail) = if !voice_auth_ok {
+        ("warn", "Voice auth: no xAI credentials found. Sign in or add an API key.".into())
+    } else if mic_count == 0 {
+        ("warn", format!("Voice auth OK, but no microphone detected (found {mic_count} input devices). Audio capture may not work."))
+    } else {
+        ("ok", format!("Voice auth OK · {mic_count} mic device(s) detected"))
+    };
+    checks.push(doctor_check(
+        "voice",
+        voice_level,
+        "Voice",
+        voice_detail,
+        serde_json::json!({
+            "authOk": voice_auth_ok,
+            "micDeviceCount": mic_count,
+        }),
+    ));
+
     // Grok Build CLI `doctor --json` (terminal/clipboard/color findings).
     // Runs on a blocking pool so slow/hung CLI cannot stall the async runtime.
     let cli_doctor = tauri::async_runtime::spawn_blocking(run_cli_doctor_json)
@@ -4447,6 +4471,9 @@ pub fn normalize_plugin_update_name(name: Option<&str>) -> Option<String> {
 
 /// Install from path / git URL / GitHub shorthand (`grok plugin install <source> --trust`).
 /// Soft-respawns agent on success. `--trust` is required for non-interactive UI.
+///
+/// **Deprecated**: use `plugin_install_with_progress` for streaming CLI output.
+#[cfg(not(tarpaulin_include))]
 #[tauri::command]
 pub async fn plugin_install(
     app: tauri::AppHandle,
@@ -7373,6 +7400,8 @@ pub async fn plugin_install_with_progress(
         if !source.is_empty() {
             cmd_args.push("--from");
             cmd_args.push(&source);
+        } else {
+            cmd_args.push("--trust");
         }
 
         let mut child = Command::new("grok")

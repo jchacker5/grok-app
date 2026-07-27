@@ -257,6 +257,10 @@ pub struct AppSettings {
     /// Mic activation sensitivity 0..1 (higher = more sensitive).
     #[serde(default = "default_voice_sensitivity")]
     pub voice_sensitivity: f64,
+    /// Barge-in aggressiveness 0..1 (higher = easier to interrupt the AI mid-speech).
+    /// Controls the turn_detection threshold on the voice realtime API.
+    #[serde(default = "default_voice_barge_in")]
+    pub voice_barge_in: f64,
     /// Preferred microphone device ID (empty = system default).
     #[serde(default)]
     pub voice_mic_device_id: String,
@@ -395,6 +399,7 @@ fn default_voice_playback_rate() -> f64 { 1.0 }
 fn default_voice_dictation_language() -> String { "auto".to_string() }
 fn default_voice_noise_suppression() -> bool { true }
 fn default_voice_sensitivity() -> f64 { 0.5 }
+fn default_voice_barge_in() -> f64 { 0.6 }
 fn default_voice_feedback_chime() -> bool { false }
 
 fn default_timestamp_format() -> String {
@@ -452,6 +457,7 @@ impl Default for AppSettings {
             voice_dictation_language: default_voice_dictation_language(),
             voice_noise_suppression: default_voice_noise_suppression(),
             voice_sensitivity: default_voice_sensitivity(),
+            voice_barge_in: default_voice_barge_in(),
             voice_mic_device_id: String::new(),
             voice_feedback_chime: default_voice_feedback_chime(),
             auto_read_replies: false,

@@ -258,7 +258,6 @@ pub fn run() {
             commands::plugin_disable,
             commands::plugin_uninstall,
             commands::plugin_details,
-            commands::plugin_install,
             commands::plugin_install_with_progress,
             commands::plugin_update,
             commands::plugins_marketplace_catalog,
@@ -377,6 +376,8 @@ pub fn run() {
             voice_host::voice_push_pcm,
             voice_host::voice_invoke_tool,
             voice_host::voice_dictation_transcribe,
+            voice_host::voice_capture_screen,
+            voice_host::voice_diagnose,
             voice_host::voice_list_voices,
         ])
         .build(tauri::generate_context!())

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   isTauri,
+  voiceCaptureScreen,
   voiceInvokeTool,
   voicePushPcm,
   voiceStart,
@@ -54,6 +55,8 @@ export function VoiceOverlay({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [level, setLevel] = useState(0);
+  const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
+  const [screenCaptureBusy, setScreenCaptureBusy] = useState(false);
   const stopCapture = useRef<(() => void) | null>(null);
   const started = useRef(false);
 
@@ -165,6 +168,13 @@ export function VoiceOverlay({
             }
           });
           unsubs.push(u5);
+
+          const u6 = await listen<{ image_base64?: string }>("voice://screenshot", (e) => {
+            if (e.payload.image_base64) {
+              setScreenshotBase64(`data:image/png;base64,${e.payload.image_base64}`);
+            }
+          });
+          unsubs.push(u6);
         }
       } catch (e) {
         setError(String(e));
@@ -208,6 +218,21 @@ export function VoiceOverlay({
   };
 
   /** Dev/demo: simulate “start agent task” without S2S tool frames. */
+  const handleCaptureScreen = async () => {
+    setScreenCaptureBusy(true);
+    try {
+      const b64 = await voiceCaptureScreen(false);
+      if (b64) {
+        setScreenshotBase64(`data:image/png;base64,${b64}`);
+        appendLine("system", tt("voice.screenCaptured"), true);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setScreenCaptureBusy(false);
+    }
+  };
+
   const demoDelegate = async () => {
     try {
       await voiceInvokeTool(
@@ -264,7 +289,32 @@ export function VoiceOverlay({
 
         <div className="voice-overlay__orb-wrap">
           <VoiceOrb state={orbState} level={level} size={96} />
+          <button
+            type="button"
+            className="voice-overlay__screen-btn"
+            disabled={screenCaptureBusy || !state?.active}
+            onClick={() => void handleCaptureScreen()}
+          >
+            {screenCaptureBusy ? tt("voice.capturing") : tt("voice.shareScreen")}
+          </button>
         </div>
+
+        {screenshotBase64 ? (
+          <div className="voice-overlay__screenshot">
+            <img
+              src={screenshotBase64}
+              alt={tt("voice.screenPreview")}
+              className="voice-overlay__screenshot-img"
+            />
+            <button
+              type="button"
+              className="voice-overlay__screenshot-clear"
+              onClick={() => setScreenshotBase64(null)}
+            >
+              {tt("voice.screenClear")}
+            </button>
+          </div>
+        ) : null}
 
         <div className="voice-overlay__transcript">
           {lines.map((l) => (
@@ -307,7 +357,7 @@ export function VoiceOverlay({
               className="voice-overlay__demo"
               onClick={() => void demoDelegate()}
             >
-              Demo: create_agent_session
+              {tt("voice.demoDelegate")}
             </button>
           ) : null}
         </section>

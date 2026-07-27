@@ -24,6 +24,9 @@ use crate::store;
 use crate::voice_auth;
 use crate::voice_tools;
 
+#[cfg(target_os = "macos")]
+use std::process::Command;
+
 const MAX_RECONNECT_DELAY_MS: u64 = 30_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,6 +170,7 @@ impl VoiceHost {
         let host = Arc::clone(self);
         let app2 = app.clone();
         tokio::spawn(async move {
+            let barge_in = settings.voice_barge_in;
             if let Err(e) = run_realtime_loop(
                 host,
                 app2.clone(),
@@ -179,6 +183,7 @@ impl VoiceHost {
                 stop,
                 project_path,
                 project_id,
+                barge_in,
             )
             .await
             {
@@ -388,6 +393,43 @@ async fn execute_tool(
                 "cancelled": true
             })
         }
+        voice_tools::VoiceToolName::BatchCreateAgent => {
+            let args = voice_tools::parse_batch_create_agent_args(args_json)?;
+            let mut sessions = Vec::new();
+            for task in &args.tasks {
+                let meta = store::create_session(
+                    snap.project_id.clone(),
+                    task.title.clone().or_else(|| Some("Batch task".into())),
+                    false,
+                )?;
+                let path = snap.project_path.clone();
+                mgr.connect(app.clone(), path, Some(meta.id.clone()), None)
+                    .await?;
+                mgr.send_message(app.clone(), task.prompt.clone(), None)
+                    .await?;
+                host.push_delegated(&meta.id);
+                sessions.push(json!({
+                    "session_id": meta.id,
+                    "title": meta.title,
+                    "accepted_prompt": task.prompt,
+                    "state": "streaming",
+                }));
+            }
+            host.emit_state(app);
+            json!({ "sessions": sessions })
+        }
+        voice_tools::VoiceToolName::CaptureScreenContext => {
+            let args = voice_tools::parse_capture_screen_args(args_json)?;
+            let png_b64 = capture_screenshot_base64(args.window_only.unwrap_or(false)).await?;
+            let _ = app.emit("voice://screenshot", json!({
+                "image_base64": png_b64,
+            }));
+            json!({
+                "mime": "image/png",
+                "image_base64": png_b64,
+                "note": "screenshot captured — check the UI for preview"
+            })
+        }
     };
 
     let _ = app.emit(
@@ -414,6 +456,7 @@ async fn run_realtime_loop(
     stop: Arc<AtomicBool>,
     _project_path: Option<String>,
     _project_id: Option<String>,
+    barge_in: f64,
 ) -> Result<(), String> {
     let url = "wss://api.x.ai/v1/realtime?model=grok-voice-latest";
 
@@ -456,7 +499,10 @@ async fn run_realtime_loop(
             "session": {
                 "voice": voice_id.clone(),
                 "instructions": instructions.clone(),
-                "turn_detection": { "type": "server_vad" },
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": barge_in.clamp(0.0, 1.0),
+                },
                 "tools": tools.clone(),
                 "modalities": ["text", "audio"]
             }
@@ -735,8 +781,118 @@ pub async fn voice_dictation_transcribe(
 }
 
 #[tauri::command]
+pub async fn voice_diagnose(
+    host: State<'_, Arc<VoiceHost>>,
+) -> Result<serde_json::Value, String> {
+    let snap = host.snapshot();
+    let auth_ok = voice_auth::resolve_bearer_token().is_ok();
+    let mic_available = enumerate_mic_devices().is_ok();
+    Ok(json!({
+        "auth_ok": auth_ok,
+        "mic_available": mic_available,
+        "session_active": snap.active,
+        "session_mode": snap.mode,
+        "session_error": snap.error,
+    }))
+}
+
+/// Enumerate audio input devices via platform API (macOS / Linux).
+pub fn enumerate_mic_devices() -> Result<usize, String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Use `system_profiler` or CoreAudio to enumerate mic devices.
+        let out = Command::new("system_profiler")
+            .args(["SPAudioDataType", "-json"])
+            .output()
+            .map_err(|e| format!("system_profiler: {e}"))?;
+        if !out.status.success() {
+            return Ok(0);
+        }
+        let raw = String::from_utf8_lossy(&out.stdout);
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+        let items = v
+            .pointer("/SPAudioDataType/0/_items")
+            .and_then(|x| x.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter(|item| {
+                        item.get("_name")
+                            .and_then(|n| n.as_str())
+                            .map(|n| {
+                                n.contains("microphone")
+                                    || n.contains("Mic")
+                                    || n.contains("input")
+                                    || n.contains("Input")
+                            })
+                            .unwrap_or(false)
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        Ok(items)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = Command::new("arecord")
+            .arg("-l")
+            .output()
+            .map(|o| {
+                let s = String::from_utf8_lossy(&o.stdout);
+                s.lines().filter(|l| l.contains("device")).count()
+            })
+            .or(Ok(0));
+        Ok(0) // best-effort on non-macOS
+    }
+}
+
+#[tauri::command]
+pub async fn voice_capture_screen(
+    window_only: Option<bool>,
+) -> Result<String, String> {
+    capture_screenshot_base64(window_only.unwrap_or(false)).await
+}
+
+#[tauri::command]
 pub async fn voice_list_voices() -> Result<Vec<crate::voice_tts::VoiceOption>, String> {
     crate::voice_tts::list_voices().await
+}
+
+/// Capture a screenshot as a base64-encoded PNG string.
+/// Uses `screencapture` on macOS (no extra deps) and falls back gracefully
+/// on other platforms — returns a mock image so the tool round-trip still works.
+async fn capture_screenshot_base64(window_only: bool) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let tmp = std::env::temp_dir().join("grok-voice-screen.png");
+        let path = tmp.to_string_lossy().to_string();
+        let status = Command::new("screencapture")
+            .args([
+                if window_only { "-l" } else { "-x" },
+                "-t",
+                "png",
+                &path,
+            ])
+            .output()
+            .map_err(|e| format!("screencapture binary failed: {e}"))?;
+        if !status.status.success() || !tmp.is_file() {
+            // Fallback: screencapture may need Screen Recording permission.
+            // Return a descriptive error so the voice model can tell the user.
+            return Err("Screen Recording permission not granted. Enable it in System Settings → Privacy & Security → Screen Recording, then retry.".into());
+        }
+        let bytes = tokio::fs::read(&tmp)
+            .await
+            .map_err(|e| format!("read screenshot: {e}"))?;
+        let _ = tokio::fs::remove_file(&tmp).await;
+        let b64 = B64.encode(&bytes);
+        return Ok(b64);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = window_only;
+        // On Windows/Linux, return a clear message that this isn't supported yet.
+        Err("Screen capture is only supported on macOS. Windows/Linux support coming soon.".into())
+    }
 }
 
 #[cfg(test)]

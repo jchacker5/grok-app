@@ -11,6 +11,40 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-07-26
+
+> English summary.
+>
+> **Highlight:** Live Voice Phase 4 — screen context, multi-agent orchestration, barge-in control, and Doctor diagnostics.
+
+### Added
+
+- **Screen context (Appshots)**: voice agent can now request a desktop screenshot ("take a look at this"), shown as a preview in the Voice overlay. macOS `screencapture` CLI with permission check; `capture_screen_context` host tool on the voice realtime session.
+- **Multi-agent orchestration**: `batch_create_agent` host tool lets the voice model create multiple agent sessions in parallel (e.g. "run explore + implement at the same time"). Supports 1–5 concurrent tasks per call.
+- **Doctor panel Voice check**: the Doctor report now includes a Voice section — checks auth (xAI credentials), mic device availability (via `system_profiler` on macOS), and reports status in the health summary.
+- **Barge-in aggressiveness setting**: new slider in Settings → Voice to control how easily your voice interrupts the AI mid-speech (maps to the realtime turn_detection threshold). Default 60%.
+
+### Changed
+
+- **Voice diagnostics**: new `voice_diagnose` Tauri command exposes auth status, mic count, and session state for programmatic checks.
+- **Voice settings polish**: sensitivity (VAD) scale already matched the store correctly (0–100 UI ↔ 0–1 store); barge-in added as a complementary control.
+
+### Fixed
+
+- **Demo button i18n**: the mock-only "Demo: create_agent_session" button now uses the `voice.demoDelegate` i18n key instead of a hardcoded string.
+
+**中文 · 新增**
+- **屏幕上下文**：语音 Agent 现在可以请求截取桌面截图，并在语音悬浮窗中预览。使用 macOS `screencapture` 命令，包含权限检查。
+- **多 Agent 编排**：语音模型可以一次创建多个 Agent 会话并行工作（如"同时做探索和实现"），每次调用支持 1–5 个任务。
+- **Doctor 面闆语音诊断**：Doctor 报告新增语音区块，检查 xAI 凭证状态、麦克风可用性。
+- **语音打断灵敏度设置**：设置页新增滑块，控制您的语音打断 AI 说话的容易程度。
+
+**中文 · 变更**
+- 新增 `voice_diagnose` Tauri 命令，暴露认证、麦克风数和会话状态。
+
+**中文 · 修复**
+- Demo 按钮使用 i18n 键代替硬编码字符串。
+
 ## [0.1.18] - 2026-07-26
 
 ### Added

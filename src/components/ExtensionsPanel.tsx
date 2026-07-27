@@ -104,12 +104,12 @@ export function ExtensionsPanel({
   const [installProgressStatus, setInstallProgressStatus] = useState<"installing" | "success" | "error">("installing");
   const [installRetrySource, setInstallRetrySource] = useState<{ name: string; source: string } | null>(null);
 
-  const runInstallWithProgress = async (name: string, source: string) => {
-    setInstallProgressTitle(`Installing ${name}`);
+  const runInstallWithProgress = async (name: string, source?: string) => {
+    setInstallProgressTitle(tr("ext.plugins.installProgressTitle", { name }));
     setInstallProgressLogs([]);
     setInstallProgressStatus("installing");
     setInstallProgressOpen(true);
-    setInstallRetrySource({ name, source });
+    setInstallRetrySource({ name, source: source ?? "" });
 
     try {
       const result = await api.installGrokPluginWithProgress(name, source, (line) => {
@@ -419,7 +419,7 @@ export function ExtensionsPanel({
       return;
     }
     setInstallSource("");
-    void runInstallWithProgress(source, source);
+    void runInstallWithProgress(source);
   };
 
   const updatePlugin = (p: api.PluginDto) => {
@@ -1233,17 +1233,17 @@ export function ExtensionsPanel({
               color: installProgressStatus === "error" ? "var(--c-danger, #ef4444)" : "inherit",
             }}
           >
-            {installProgressLogs.join("\n") || "Starting plugin installation..."}
+            {installProgressLogs.join("\n") || tr("ext.plugins.installProgressStarting")}
           </pre>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              {installProgressStatus === "installing" && <span>Installing...</span>}
+              {installProgressStatus === "installing" && <span>{tr("ext.plugins.installing")}</span>}
               {installProgressStatus === "success" && (
-                <span style={{ color: "var(--c-success, #22c55e)", fontWeight: 600 }}>✓ Plugin Installed Successfully</span>
+                <span style={{ color: "var(--c-success, #22c55e)", fontWeight: 600 }}>{tr("ext.plugins.installProgressSuccess")}</span>
               )}
               {installProgressStatus === "error" && (
-                <span style={{ color: "var(--c-danger, #ef4444)", fontWeight: 600 }}>✗ Installation Failed</span>
+                <span style={{ color: "var(--c-danger, #ef4444)", fontWeight: 600 }}>{tr("ext.plugins.installProgressFailed")}</span>
               )}
             </div>
 
@@ -1261,7 +1261,7 @@ export function ExtensionsPanel({
                     cursor: "pointer",
                   }}
                 >
-                  Retry
+                  {tr("ext.plugins.installProgressRetry")}
                 </button>
               )}
               <button
@@ -1276,7 +1276,7 @@ export function ExtensionsPanel({
                   cursor: "pointer",
                 }}
               >
-                Close
+                {tr("common.close")}
               </button>
             </div>
           </div>

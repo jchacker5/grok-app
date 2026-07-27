@@ -50,6 +50,7 @@ const CHECK_TITLE_KEYS: Record<string, MessageKey> = {
   workspace: "doctor.check.workspace",
   backend: "doctor.check.backend",
   logs: "doctor.check.logs",
+  voice: "doctor.check.voice",
 };
 
 function levelLabelKey(level: DoctorLevel): MessageKey {

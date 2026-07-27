@@ -1269,6 +1269,8 @@ export interface AppSettings {
   voiceNoiseSuppression?: boolean;
   /** Mic sensitivity for dictation (0..1). */
   voiceSensitivity?: number;
+  /** Barge-in aggressiveness for live voice (0..1, higher = easier to interrupt AI). */
+  voiceBargeIn?: number;
   /** Preferred mic device ID for dictation. */
   voiceMicDeviceId?: string;
   /** Play audible chime on dictation start/stop. */
@@ -1444,6 +1446,26 @@ const BUILT_IN_VOICES: VoiceOption[] = [
 export async function voiceListVoices(): Promise<VoiceOption[]> {
   if (!isTauri()) return BUILT_IN_VOICES;
   return invoke("voice_list_voices");
+}
+
+/** Capture a screenshot for voice screen context. Returns a base64 PNG string. */
+export async function voiceCaptureScreen(windowOnly?: boolean): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("voice_capture_screen", { windowOnly: windowOnly ?? false });
+}
+
+export interface VoiceDiagnoseResult {
+  auth_ok: boolean;
+  mic_available: boolean;
+  session_active: boolean;
+  session_mode: string;
+  session_error: string | null;
+}
+
+/** Run voice subsystem diagnostics. */
+export async function voiceDiagnose(): Promise<VoiceDiagnoseResult> {
+  if (!isTauri()) return { auth_ok: false, mic_available: false, session_active: false, session_mode: "mock", session_error: null };
+  return invoke<VoiceDiagnoseResult>("voice_diagnose");
 }
 
 export interface AvailableModel {
@@ -1873,14 +1895,6 @@ export async function pluginUninstall(name: string) {
 /** Plugin component inventory text (`grok plugin details`). */
 export async function pluginDetails(name: string) {
   return invoke<PluginDetailsResult>("plugin_details", { name });
-}
-
-/**
- * Install from path, git URL, or GitHub shorthand (`grok plugin install --trust`).
- * Soft-respawns agent on success.
- */
-export async function pluginInstall(source: string) {
-  return invoke<PluginActionResult>("plugin_install", { source });
 }
 
 /** Plugin entry from marketplace catalog cache. */

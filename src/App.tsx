@@ -1153,6 +1153,7 @@ export default function App() {
   const [voiceDictationLanguage, setVoiceDictationLanguage] = useState("auto");
   const [voiceNoiseSuppression, setVoiceNoiseSuppression] = useState(true);
   const [voiceSensitivity, setVoiceSensitivity] = useState(0.5);
+  const [voiceBargeIn, setVoiceBargeIn] = useState(0.6);
   const [voiceMicDeviceId, setVoiceMicDeviceId] = useState("");
   const [voiceFeedbackChime, setVoiceFeedbackChime] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -1461,6 +1462,7 @@ export default function App() {
       setVoiceDictationLanguage(settings.voiceDictationLanguage || "auto");
       setVoiceNoiseSuppression(settings.voiceNoiseSuppression !== false);
       setVoiceSensitivity(typeof settings.voiceSensitivity === "number" ? settings.voiceSensitivity : 0.5);
+      setVoiceBargeIn(typeof settings.voiceBargeIn === "number" ? settings.voiceBargeIn : 0.6);
       setVoiceMicDeviceId(settings.voiceMicDeviceId || "");
       setVoiceFeedbackChime(!!settings.voiceFeedbackChime);
       setAutoReadReplies(!!settings.autoReadReplies);
@@ -8157,6 +8159,13 @@ export default function App() {
             setVoiceSensitivity(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, voiceSensitivity: v }),
+            );
+          }}
+          voiceBargeIn={voiceBargeIn}
+          onVoiceBargeIn={(v) => {
+            setVoiceBargeIn(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceBargeIn: v }),
             );
           }}
           voiceMicDeviceId={voiceMicDeviceId}
