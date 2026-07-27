@@ -61,7 +61,6 @@ import {
   IconMessagePlus as TbMessagePlus,
   IconMicrophone as TbMicrophone,
   IconMinus as TbMinus,
-  IconMoodSmile as TbMoodSmile,
   IconMoon as TbMoon,
   IconAt as TbAt,
   IconNetwork as TbNetwork,
@@ -335,7 +334,5 @@ export const IconCamera = wrap(TbCamera);
 export const IconRecord = wrap(TbPlayerRecordFilled, { className: "g-icon--danger" });
 export const IconVideo = wrap(TbVideo);
 
-/** Composer emoji picker toggle. */
-export const IconMoodSmile = wrap(TbMoodSmile);
 /** Composer `@`-mention section marker. */
 export const IconAt = wrap(TbAt);
