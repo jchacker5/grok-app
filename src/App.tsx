@@ -195,7 +195,7 @@ import {
 } from "@/lib/virtualList";
 import { GrokLogo } from "@/components/GrokLogo";
 import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
-import { ComposerEditor, insertTextAtCursor } from "@/components/ComposerEditor";
+import { ComposerEditor } from "@/components/ComposerEditor";
 import { VoiceOverlay } from "@/components/VoiceOverlay";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import { blobToBase64, startPcmCapture } from "@/lib/voiceAudio";
@@ -206,7 +206,6 @@ import {
   buildComposerPlusEntries,
   uploadMatchesQuery,
 } from "@/components/ComposerPlusPanel";
-import { EmojiPickerPanel } from "@/components/EmojiPickerPanel";
 import { MentionPanel } from "@/components/MentionPanel";
 import { StatusModal } from "@/components/StatusModal";
 import { McpStatusModal } from "@/components/McpStatusModal";
@@ -247,7 +246,6 @@ import {
   IconShield,
   IconCheck,
   IconTag,
-  IconMoodSmile,
 } from "@/components/icons";
 import { AutomationsPage } from "@/components/AutomationsPage";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
@@ -492,10 +490,6 @@ export default function App() {
   const slashDismissedSigRef = useRef<string | null>(null);
   const showComposerPlusRef = useRef(false);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [emojiQuery, setEmojiQuery] = useState("");
-  const emojiTriggerRef = useRef<HTMLButtonElement>(null);
-  const emojiPanelRef = useRef<HTMLDivElement>(null);
   /**
    * Live `@`-mention token from contenteditable.innerText (rAF poll) —
    * same independent-of-React-draft approach as `liveSlash` so IME / `<br>`
@@ -5359,25 +5353,6 @@ export default function App() {
     [closeMentionMenu],
   );
 
-  const closeEmojiPicker = useCallback(() => {
-    setShowEmojiPicker(false);
-  }, []);
-
-  const { pos: emojiPos, style: emojiStyle } = useFloatingMenu({
-    open: showEmojiPicker,
-    triggerRef: emojiTriggerRef,
-    panelRef: emojiPanelRef,
-    roots: [emojiTriggerRef],
-    onClose: closeEmojiPicker,
-    placement: "up",
-    fitContent: false,
-    width: 300,
-    minWidth: 280,
-    estHeight: 320,
-    gap: 8,
-    deps: [emojiQuery],
-  });
-
   const openMcpModal = useCallback(async () => {
     setShowMcpModal(true);
     setMcpLoading(true);
@@ -9775,28 +9750,6 @@ export default function App() {
                   />,
                   document.body,
                 )}
-              {showEmojiPicker &&
-                emojiPos &&
-                typeof document !== "undefined" &&
-                createPortal(
-                  <EmojiPickerPanel
-                    open
-                    panelRef={emojiPanelRef}
-                    locale={locale}
-                    query={emojiQuery}
-                    onQueryChange={setEmojiQuery}
-                    onSelect={(char) => {
-                      insertTextAtCursor(char);
-                      setShowEmojiPicker(false);
-                      setEmojiQuery("");
-                    }}
-                    style={{
-                      ...emojiStyle,
-                      zIndex: 10050,
-                    }}
-                  />,
-                  document.body,
-                )}
               <ComposerEditor
                 editorRef={composerInputRef}
                 className="composer__input"
@@ -9967,26 +9920,6 @@ export default function App() {
                     }}
                   >
                     <IconPlus size={18} />
-                  </button>
-                </Tip>
-                <Tip label={tr("composer.emoji")}>
-                  <button
-                    ref={emojiTriggerRef}
-                    type="button"
-                    aria-label={tr("composer.emoji")}
-                    className={
-                      "icon-btn" + (showEmojiPicker ? " is-open" : "")
-                    }
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      setShowEmojiPicker((v) => {
-                        const next = !v;
-                        if (!next) setEmojiQuery("");
-                        return next;
-                      });
-                    }}
-                  >
-                    <IconMoodSmile size={18} />
                   </button>
                 </Tip>
                 <ComposerProjectMenu

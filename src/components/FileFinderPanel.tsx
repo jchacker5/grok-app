@@ -4,8 +4,8 @@
  * which searches chat sessions, not files). This searches every file under
  * the active project's workspace.
  *
- * Deviation note: composer toolbar panels (`ComposerPlusPanel`,
- * `EmojiPickerPanel`) anchor to a trigger button via `useFloatingMenu`. ⌘P
+ * Deviation note: composer toolbar panels (e.g. `ComposerPlusPanel`) anchor
+ * to a trigger button via `useFloatingMenu`. ⌘P
  * has no anchor button — it's a global shortcut, like the existing ⌘K
  * session search — so this reuses `GlassModal` (the same centered-dialog
  * chrome ⌘K already uses) instead of the floating-menu pattern. The list

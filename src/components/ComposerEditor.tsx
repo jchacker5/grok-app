@@ -141,7 +141,7 @@ function placeCaretAtEnd(el: HTMLElement) {
  * Insert plain text at the current cursor/selection via
  * `document.execCommand("insertText", ...)` when supported (preserves native
  * undo), falling back to a manual Range insert otherwise. Used by the paste
- * handler below and exported so other composer affordances (emoji picker,
+ * handler below and exported so other composer affordances (e.g. the
  * `@`-mention panel) can insert plain text without bypassing native undo.
  */
 export function insertTextAtCursor(text: string) {
